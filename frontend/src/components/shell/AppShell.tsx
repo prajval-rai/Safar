@@ -6,22 +6,28 @@ import {
   Home,
   Map as MapIcon,
   MessageSquare,
+  PlayCircle,
   Route,
   Trophy,
+  UserPlus,
   User as UserIcon,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Avatar } from "@/components/ui/Bits";
+import { Avatar, ErrorNote, Skeleton } from "@/components/ui/Bits";
+import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
+import { api } from "@/lib/api";
+import { useApi } from "@/lib/hooks";
 import { themeStore } from "@/lib/themeStore";
 import { isThemeId } from "@/lib/themes";
-import { cn } from "@/lib/utils";
+import type { Notification, NotificationKind, NotificationPage } from "@/lib/types";
+import { cn, relativeTime } from "@/lib/utils";
 
 interface NavItem {
   href: string;
@@ -154,9 +160,94 @@ function titleFor(pathname: string): string {
   return hit?.label ?? "Safar";
 }
 
+/** Polls the unread count so the bell's badge is right even before it's opened.
+ *  A plain interval, not a websocket — matches how little this needs to be
+ *  instant (an invite or a follow can wait 45 seconds). */
+function useUnreadCount(enabled: boolean) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    const load = () => {
+      api
+        .get<{ unread_count: number }>("/api/notifications/unread-count/")
+        .then((data) => {
+          if (active) setCount(data.unread_count);
+        })
+        .catch(() => {
+          // A missed poll isn't worth surfacing — the next one will catch up.
+        });
+    };
+    load();
+    const interval = setInterval(load, 45_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [enabled]);
+  return [count, setCount] as const;
+}
+
+const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
+  trip_member_added: MapIcon,
+  trip_joined: UserPlus,
+  trip_started: PlayCircle,
+  track_used: Route,
+  new_follower: UserPlus,
+  achievement_unlocked: Trophy,
+};
+
+function notificationHref(note: Notification): string | null {
+  if (note.trip_id) return `/trips/${note.trip_id}`;
+  if (note.track_id) return `/explore/${note.track_id}`;
+  if (note.kind === "new_follower" && note.actor) return `/u/${note.actor.username}`;
+  return null;
+}
+
 function TopBar({ pathname }: { pathname: string }) {
   const { user } = useAuth();
+  const router = useRouter();
   const [bellOpen, setBellOpen] = useState(false);
+  const [unread, setUnread] = useUnreadCount(Boolean(user));
+  const { data, loading, error, reload, set } = useApi<NotificationPage>(
+    bellOpen ? "/api/notifications/" : null,
+  );
+  // The list fetch's own unread_count is the source of truth once it lands.
+  useEffect(() => {
+    if (data) setUnread(data.unread_count);
+  }, [data, setUnread]);
+
+  const markRead = useCallback(
+    (note: Notification) => {
+      if (note.read) return;
+      setUnread((n) => Math.max(0, n - 1));
+      if (data) {
+        set({
+          ...data,
+          results: data.results.map((n) => (n.id === note.id ? { ...n, read: true } : n)),
+          unread_count: Math.max(0, data.unread_count - 1),
+        });
+      }
+      api.post(`/api/notifications/${note.id}/read/`).catch(() => {
+        // Best-effort — worst case it still shows read next time the list loads.
+      });
+    },
+    [data, set, setUnread],
+  );
+
+  function openNotification(note: Notification) {
+    markRead(note);
+    const href = notificationHref(note);
+    setBellOpen(false);
+    if (href) router.push(href);
+  }
+
+  function markAllRead() {
+    if (!data || data.unread_count === 0) return;
+    setUnread(0);
+    set({ ...data, results: data.results.map((n) => ({ ...n, read: true })), unread_count: 0 });
+    api.post("/api/notifications/read-all/").catch(() => {});
+  }
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur">
@@ -184,10 +275,18 @@ function TopBar({ pathname }: { pathname: string }) {
           <button
             type="button"
             onClick={() => setBellOpen(true)}
-            aria-label="Notifications"
-            className="tap flex items-center justify-center rounded-full text-ink hover:bg-raised"
+            aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+            className="tap relative flex items-center justify-center rounded-full text-ink hover:bg-raised"
           >
             <Bell size={22} strokeWidth={1.8} aria-hidden="true" />
+            {unread > 0 ? (
+              <span
+                aria-hidden="true"
+                className="absolute top-2 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+              >
+                {unread > 9 ? "9+" : unread}
+              </span>
+            ) : null}
           </button>
 
           {user ? (
@@ -202,12 +301,70 @@ function TopBar({ pathname }: { pathname: string }) {
         </div>
       </div>
 
-      <Sheet open={bellOpen} onClose={() => setBellOpen(false)} title="Notifications">
-        <div className="flex flex-col items-center gap-2 py-8 text-center">
-          <Bell size={30} strokeWidth={1.6} className="text-muted" aria-hidden="true" />
-          <p className="text-[15px] font-semibold text-ink">You&apos;re all caught up.</p>
-          <p className="text-sm text-muted">Invites and trip updates will show up here.</p>
-        </div>
+      <Sheet
+        open={bellOpen}
+        onClose={() => setBellOpen(false)}
+        title="Notifications"
+        footer={
+          data && data.unread_count > 0 ? (
+            <Button variant="secondary" fullWidth onClick={markAllRead}>
+              Mark all as read
+            </Button>
+          ) : undefined
+        }
+      >
+        {loading ? (
+          <div className="space-y-2.5 py-1">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-3/4" />
+          </div>
+        ) : error ? (
+          <ErrorNote message={error} onRetry={reload} />
+        ) : !data || data.results.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <Bell size={30} strokeWidth={1.6} className="text-muted" aria-hidden="true" />
+            <p className="text-[15px] font-semibold text-ink">You&apos;re all caught up.</p>
+            <p className="text-sm text-muted">Invites and trip updates will show up here.</p>
+          </div>
+        ) : (
+          <ul className="-mx-1 space-y-1">
+            {data.results.map((note) => {
+              const Icon = NOTIFICATION_ICONS[note.kind];
+              const clickable = notificationHref(note) !== null;
+              return (
+                <li key={note.id}>
+                  <button
+                    type="button"
+                    onClick={() => openNotification(note)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors",
+                      note.read ? "hover:bg-raised" : "bg-brand-soft/50 hover:bg-brand-soft",
+                      clickable ? "cursor-pointer" : "cursor-default",
+                    )}
+                  >
+                    <span
+                      className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-raised text-brand"
+                      aria-hidden="true"
+                    >
+                      <Icon size={17} strokeWidth={1.9} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="text-[15px] font-semibold text-ink">{note.title}</span>
+                        {!note.read ? (
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+                        ) : null}
+                      </span>
+                      {note.body ? <span className="block text-sm text-muted">{note.body}</span> : null}
+                      <span className="mt-0.5 block text-xs text-muted">{relativeTime(note.created_at)}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Sheet>
     </header>
   );

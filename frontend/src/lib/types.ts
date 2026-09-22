@@ -361,6 +361,30 @@ export interface Paginated<T> {
   results: T[];
 }
 
+export type NotificationKind =
+  | "trip_member_added"
+  | "trip_joined"
+  | "trip_started"
+  | "track_used"
+  | "new_follower"
+  | "achievement_unlocked";
+
+export interface Notification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  actor: UserMini | null;
+  trip_id: string | null;
+  trip_title: string;
+  track_id: string | null;
+  track_title: string;
+  read: boolean;
+  created_at: string;
+}
+
+export type NotificationPage = Paginated<Notification> & { unread_count: number };
+
 /** A place chosen through Google, in the shape we store on trips and activities. */
 export interface PickedPlace {
   place_id: string;

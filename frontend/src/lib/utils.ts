@@ -65,6 +65,20 @@ export function relativeDays(iso: string): string {
   return `${Math.abs(days)} days ago`;
 }
 
+/** "Just now", "12m ago", "3h ago", "5d ago" — for a full timestamp, e.g. a
+ *  notification, rather than `relativeDays`'s date-only granularity. */
+export function relativeTime(iso: string): string {
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
 export const CATEGORY_ICONS: Record<ActivityCategory, string> = {
   sightseeing: "🏛️",
   food: "🍛",
