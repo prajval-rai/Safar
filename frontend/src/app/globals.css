@@ -1,0 +1,496 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Safar theme system
+
+   Five Indian-inspired palettes, each with a light and a dark version.
+   <html data-theme="saffron" data-mode="light">
+
+   Every colour is a semantic token, so components never hardcode a hex value
+   and switching themes needs no component changes.
+   --------------------------------------------------------------------------- */
+
+:root,
+[data-theme="saffron"] {
+  --canvas: #fbf9f6;
+  --surface: #ffffff;
+  --raised: #f4f0ea;
+  --line: #e9e3da;
+  --ink: #1c1917;
+  --muted: #6b625a;
+
+  --brand: #8a3204; /* deep rust — active nav, primary buttons */
+  --brand-strong: #6b2503;
+  --brand-bright: #d9772b; /* decorative only */
+  --brand-soft: #f6ebe1;
+  --on-brand: #ffffff;
+
+  --accent: #0f766e;
+  --accent-soft: #dcf1ee;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #dcf5e4;
+  --warn: #a16207;
+  --warn-soft: #fbf0d3;
+  --danger: #b91c1c;
+  --danger-soft: #fce8e8;
+
+  --ring: #c2410c;
+  --shadow: 18 12 6;
+}
+
+[data-theme="saffron"][data-mode="dark"] {
+  --canvas: #1a1410;
+  --surface: #241c16;
+  --raised: #2f251d;
+  --line: #3d3128;
+  --ink: #f7ede2;
+  --muted: #b7a494;
+
+  --brand: #f97316;
+  --brand-strong: #fb923c;
+  --brand-bright: #fdba74;
+  --brand-soft: #3a2415;
+  --on-brand: #1a1008;
+
+  --accent: #2dd4bf;
+  --accent-soft: #123330;
+  --on-accent: #06201d;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #332612;
+  --danger: #f87171;
+  --danger-soft: #3a1717;
+
+  --ring: #f97316;
+  --shadow: 0 0 0;
+}
+
+[data-theme="peacock"] {
+  --canvas: #f2f8f7;
+  --surface: #ffffff;
+  --raised: #e4f1ef;
+  --line: #c9e0dc;
+  --ink: #16302e;
+  --muted: #557470;
+
+  --brand: #0d6e6a;
+  --brand-strong: #0a5551;
+  --brand-bright: #1fa39c;
+  --brand-soft: #d8efec;
+  --on-brand: #ffffff;
+
+  --accent: #b45309;
+  --accent-soft: #fbeedc;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #d8f2e1;
+  --warn: #a16207;
+  --warn-soft: #faeed0;
+  --danger: #b91c1c;
+  --danger-soft: #fbe6e6;
+
+  --ring: #0d6e6a;
+  --shadow: 6 20 18;
+}
+
+[data-theme="peacock"][data-mode="dark"] {
+  --canvas: #0d1a19;
+  --surface: #142523;
+  --raised: #1b302e;
+  --line: #264542;
+  --ink: #e6f5f2;
+  --muted: #92b3ae;
+
+  --brand: #2dd4bf;
+  --brand-strong: #5eead4;
+  --brand-bright: #99f6e4;
+  --brand-soft: #0f302d;
+  --on-brand: #04221f;
+
+  --accent: #fbbf24;
+  --accent-soft: #33280f;
+  --on-accent: #1f1705;
+
+  --success: #4ade80;
+  --success-soft: #10301c;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #2dd4bf;
+  --shadow: 0 0 0;
+}
+
+[data-theme="backwater"] {
+  --canvas: #f4f8f1;
+  --surface: #ffffff;
+  --raised: #e7f1e2;
+  --line: #cfe2c6;
+  --ink: #1d2a1b;
+  --muted: #5c6f57;
+
+  --brand: #1f7a43;
+  --brand-strong: #155e33;
+  --brand-bright: #34a85f;
+  --brand-soft: #ddf0e2;
+  --on-brand: #ffffff;
+
+  --accent: #b45309;
+  --accent-soft: #fbeedc;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #d9f2e0;
+  --warn: #a16207;
+  --warn-soft: #faeed0;
+  --danger: #b91c1c;
+  --danger-soft: #fbe6e6;
+
+  --ring: #1f7a43;
+  --shadow: 10 20 8;
+}
+
+[data-theme="backwater"][data-mode="dark"] {
+  --canvas: #101a12;
+  --surface: #17251a;
+  --raised: #1e3022;
+  --line: #2a422f;
+  --ink: #e9f4e9;
+  --muted: #9ab39c;
+
+  --brand: #4ade80;
+  --brand-strong: #86efac;
+  --brand-bright: #bbf7d0;
+  --brand-soft: #123020;
+  --on-brand: #052112;
+
+  --accent: #fbbf24;
+  --accent-soft: #332711;
+  --on-accent: #1f1705;
+
+  --success: #4ade80;
+  --success-soft: #11301d;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #4ade80;
+  --shadow: 0 0 0;
+}
+
+[data-theme="terracotta"] {
+  --canvas: #fbf4ec;
+  --surface: #ffffff;
+  --raised: #f4e7da;
+  --line: #e4cfba;
+  --ink: #2e2018;
+  --muted: #6f5b4b;
+
+  --brand: #a63a23;
+  --brand-strong: #832c19;
+  --brand-bright: #d4643f;
+  --brand-soft: #f9e6de;
+  --on-brand: #ffffff;
+
+  --accent: #8a6d1f;
+  --accent-soft: #f6eed6;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #ddf2e3;
+  --warn: #a16207;
+  --warn-soft: #f9eed4;
+  --danger: #b91c1c;
+  --danger-soft: #fbe7e7;
+
+  --ring: #a63a23;
+  --shadow: 24 12 4;
+}
+
+[data-theme="terracotta"][data-mode="dark"] {
+  --canvas: #1b1310;
+  --surface: #261b16;
+  --raised: #32241d;
+  --line: #422f26;
+  --ink: #f6eae0;
+  --muted: #bda593;
+
+  --brand: #f87e5c;
+  --brand-strong: #fca583;
+  --brand-bright: #fdba9b;
+  --brand-soft: #3a2018;
+  --on-brand: #1d0b05;
+
+  --accent: #e0b64a;
+  --accent-soft: #33290f;
+  --on-accent: #201804;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #332612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #f87e5c;
+  --shadow: 0 0 0;
+}
+
+[data-theme="himalaya"] {
+  --canvas: #f4f6fc;
+  --surface: #ffffff;
+  --raised: #e7ebf8;
+  --line: #ccd5ee;
+  --ink: #1d2136;
+  --muted: #59608a;
+
+  --brand: #3f4f9e;
+  --brand-strong: #2f3c7c;
+  --brand-bright: #6b7cd0;
+  --brand-soft: #e2e7f9;
+  --on-brand: #ffffff;
+
+  --accent: #b1502c;
+  --accent-soft: #f9e8e1;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #ddf2e3;
+  --warn: #a16207;
+  --warn-soft: #f9eed4;
+  --danger: #b91c1c;
+  --danger-soft: #fbe7e7;
+
+  --ring: #3f4f9e;
+  --shadow: 12 14 30;
+}
+
+[data-theme="himalaya"][data-mode="dark"] {
+  --canvas: #101322;
+  --surface: #181c30;
+  --raised: #20253d;
+  --line: #2d3352;
+  --ink: #e9ecf8;
+  --muted: #a1a8ca;
+
+  --brand: #8b9cf0;
+  --brand-strong: #aab6f6;
+  --brand-bright: #c3ccf9;
+  --brand-soft: #1d2342;
+  --on-brand: #0b0f24;
+
+  --accent: #f0906b;
+  --accent-soft: #341f16;
+  --on-accent: #1e0d06;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #8b9cf0;
+  --shadow: 0 0 0;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-bright: var(--brand-bright);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --font-sans: var(--font-app), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-card: 1rem;
+  --radius-sheet: 1.5rem;
+}
+
+/* --- base ---------------------------------------------------------------- */
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+html[data-mode="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-app), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Never let content hide under the mobile bottom bar or the notch. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+*,
+::before,
+::after {
+  border-color: var(--line);
+}
+
+/* Visible focus for keyboard users on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--brand-soft);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- small utilities ----------------------------------------------------- */
+
+@utility card {
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: 0 1px 2px rgb(var(--shadow) / 0.06);
+}
+
+/* A touch target that is always at least 44x44, per the accessibility brief. */
+@utility tap {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@utility hide-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Screen-reader-only text used to label icon-led controls. */
+@utility sr-only-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* --- motion -------------------------------------------------------------- */
+
+@keyframes safar-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes safar-xp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+@keyframes safar-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes safar-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes safar-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-rise {
+  animation: safar-rise 0.28s ease-out both;
+}
+.animate-xp {
+  animation: safar-xp 2.2s ease-out forwards;
+}
+.animate-sheet {
+  animation: safar-sheet-up 0.24s ease-out;
+}
+.animate-fade {
+  animation: safar-fade 0.2s ease-out;
+}
+.animate-pop {
+  animation: safar-pop 0.32s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
