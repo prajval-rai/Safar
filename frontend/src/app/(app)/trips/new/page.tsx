@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { DestinationPicker } from "@/components/maps/DestinationPicker";
-import { DiscoverPlaces, InterestPicker } from "@/components/maps/DiscoverPlaces";
+import { InterestPicker } from "@/components/maps/DiscoverPlaces";
 import { GoogleMap, type MapPin } from "@/components/maps/GoogleMap";
-import { usePlaceActions } from "@/components/maps/usePlaceActions";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Itinerary } from "@/components/trip/Itinerary";
 import { Avatar, Chip, Progress } from "@/components/ui/Bits";
@@ -688,9 +687,8 @@ function StepItinerary({
   const [busy, setBusy] = useState(false);
   const { toast } = useCelebration();
 
-  // After every add/remove, re-read the trip so "Added · Day 2" stays truthful.
+  // After every add/remove, re-read the trip so the day list stays truthful.
   const refresh = async () => onUpdate(await api.get<TripDetail>(`/api/trips/${trip.id}/`));
-  const { interests, changeInterests, add, remove, added } = usePlaceActions(trip, true, refresh);
 
   const pins = useMemo<MapPin[]>(
     () =>
@@ -727,24 +725,8 @@ function StepItinerary({
   return (
     <section>
       <StepHeading
-        title="Pick places for your trip"
-        line={`Tap "Add to trip" on anything that looks good in ${trip.destination}. We'll spread them across your days.`}
-      />
-
-      <DiscoverPlaces
-        destination={trip.destination}
-        region={trip.region}
-        lat={trip.latitude}
-        lng={trip.longitude}
-        radiusKm={trip.area_radius_km}
-        interests={interests}
-        onInterestsChange={changeInterests}
-        added={added}
-        dayCount={trip.days.length}
-        canAdd
-        onAdd={add}
-        onRemove={remove}
-        excludeId={trip.google_place_id}
+        title="Plan your days"
+        line={`Add a stop to any day, pick a time, and we'll show places nearby as you go.`}
       />
 
       {pins.length > 0 ? (

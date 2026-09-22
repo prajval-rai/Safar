@@ -6,14 +6,16 @@ import { useState } from "react";
 import { EmptyState } from "@/components/art/Motif";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { DiscoverSheet } from "@/components/maps/DiscoverSheet";
+import { PlacePhoto } from "@/components/maps/PlacePhoto";
 import { PlaceSearch } from "@/components/maps/PlaceSearch";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
-import { Chip, Progress } from "@/components/ui/Bits";
+import { Chip, Progress, Skeleton } from "@/components/ui/Bits";
 import { Button, IconButton } from "@/components/ui/Button";
 import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
+import { usePlaceSearch } from "@/lib/places";
 import type { Activity, Day, PickedPlace, TripDetail, TripMember, XPResult } from "@/lib/types";
 import {
   CATEGORY_ICONS,
@@ -187,12 +189,16 @@ export function Itinerary({ trip, onChanged, canEdit }: Props) {
       />
 
       <ActivityDetailSheet
+        // Remounts fresh per activity, so any in-progress local state (like an
+        // armed "tap again to remove") never carries over to a different one.
+        key={detail?.id ?? "none"}
         activity={detail}
         canEdit={canEdit}
         myId={user?.id}
         members={trip.members}
         dayCount={trip.days.length}
         onClose={() => setDetail(null)}
+        onRefresh={onChanged}
         onChanged={() => {
           setDetail(null);
           onChanged();
@@ -384,6 +390,7 @@ function ActivityDetailSheet({
   dayCount,
   onClose,
   onChanged,
+  onRefresh,
 }: {
   activity: Activity | null;
   canEdit: boolean;
@@ -391,13 +398,35 @@ function ActivityDetailSheet({
   members: TripMember[];
   dayCount: number;
   onClose: () => void;
+  /** Closes the sheet too — for actions where the activity you were looking
+   *  at is now done, removed, or otherwise no longer what's on screen. */
   onChanged: () => void;
+  /** Updates the trip data in the background without closing the sheet —
+   *  for a field edit, where you're likely about to edit another field. */
+  onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const { celebrate, toast } = useCelebration();
 
   if (!activity) return null;
   const done = activity.status === "completed";
+
+  /** Every field here autosaves on blur/change, same as the "Visit time"
+   *  field below — no separate "Save" button to remember to press. */
+  async function autosave(fields: Record<string, unknown>, success = "Saved.") {
+    if (!activity) return;
+    setBusy(true);
+    try {
+      await api.patch(`/api/activities/${activity.id}/`, fields);
+      toast(success);
+      onRefresh();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't save that.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function act(fn: () => Promise<XPResult>, success?: string) {
     setBusy(true);
@@ -442,11 +471,19 @@ function ActivityDetailSheet({
 
   async function remove() {
     if (!activity) return;
+    if (!confirmingRemove) {
+      // First tap just arms the button — you have to mean it.
+      setConfirmingRemove(true);
+      return;
+    }
     setBusy(true);
     try {
       await api.del(`/api/activities/${activity.id}/`);
       toast("Removed from the plan.");
       onChanged();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't remove that.", "error");
+      setConfirmingRemove(false);
     } finally {
       setBusy(false);
     }
@@ -542,9 +579,45 @@ function ActivityDetailSheet({
         ) : null}
 
         {canEdit ? (
-          <details className="rounded-xl border border-line bg-surface p-3">
-            <summary className="cursor-pointer text-sm font-semibold text-ink">More options</summary>
+          <details className="rounded-xl border border-line bg-surface p-3" open>
+            <summary className="cursor-pointer text-sm font-semibold text-ink">Edit this stop</summary>
             <div className="mt-3 space-y-3">
+              <TextField
+                label="What are you doing?"
+                defaultValue={activity.title}
+                onBlur={(e) => {
+                  const value = e.target.value.trim();
+                  if (value && value !== activity.title) autosave({ title: value }, "Title saved.");
+                }}
+              />
+              <SelectField
+                label="Type of activity"
+                value={activity.category}
+                onChange={(e) => autosave({ category: e.target.value }, "Type saved.")}
+                options={Object.entries(CATEGORY_LABELS).map(([value, label]) => ({
+                  value,
+                  label: `${CATEGORY_ICONS[value as keyof typeof CATEGORY_ICONS]} ${label}`,
+                }))}
+              />
+              <TextAreaField
+                label="Anything to remember?"
+                defaultValue={activity.description}
+                onBlur={(e) => {
+                  const value = e.target.value.trim();
+                  if (value !== activity.description) autosave({ description: value }, "Notes saved.");
+                }}
+              />
+              <TextField
+                label="Rough cost (₹)"
+                type="number"
+                min={0}
+                defaultValue={activity.cost || ""}
+                onBlur={(e) => {
+                  const value = Number(e.target.value) || 0;
+                  if (value !== activity.cost) autosave({ cost: value }, "Cost saved.");
+                }}
+              />
+
               <SelectField
                 label="Assigned to"
                 hint="Only this person (or an organiser) can complete the stop."
@@ -578,10 +651,7 @@ function ActivityDetailSheet({
                 defaultValue={activity.start_time?.slice(0, 5) ?? ""}
                 onBlur={(e) => {
                   if (e.target.value !== (activity.start_time?.slice(0, 5) ?? "")) {
-                    void api
-                      .patch(`/api/activities/${activity.id}/`, { start_time: e.target.value || null })
-                      .then(() => toast("Time saved."))
-                      .catch(() => toast("Couldn't save the time.", "error"));
+                    autosave({ start_time: e.target.value || null }, "Time saved.");
                   }
                 }}
               />
@@ -596,9 +666,16 @@ function ActivityDetailSheet({
                   }))}
                 />
               ) : null}
-              <Button variant="danger" size="sm" fullWidth onClick={remove} disabled={busy}>
-                Remove this activity
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="danger" size="sm" fullWidth onClick={remove} disabled={busy}>
+                  {confirmingRemove ? "Tap again to confirm" : "Remove this activity"}
+                </Button>
+                {confirmingRemove ? (
+                  <Button variant="secondary" size="sm" onClick={() => setConfirmingRemove(false)} disabled={busy}>
+                    Cancel
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </details>
         ) : null}
@@ -735,7 +812,15 @@ function AddActivitySheet({
           <p className="-mt-2 text-xs text-muted">
             Pinned: {place.address}
           </p>
-        ) : null}
+        ) : (
+          <SuggestedPlaces
+            trip={trip}
+            onPick={(picked) => {
+              setPlace(picked);
+              setForm((prev) => ({ ...prev, title: prev.title || picked.name }));
+            }}
+          />
+        )}
         <TextField
           label="Time"
           type="time"
@@ -806,6 +891,41 @@ function AddActivitySheet({
         ) : null}
       </div>
     </Sheet>
+  );
+}
+
+/** Popular places for this destination, shown right in the "Add activity" form —
+ *  tapping one fills the form exactly like picking a search result does. Hidden
+ *  once a place has been picked, so it doesn't compete with the pinned address. */
+function SuggestedPlaces({ trip, onPick }: { trip: TripDetail; onPick: (place: PickedPlace) => void }) {
+  const where = trip.region && !trip.destination.includes(trip.region) ? `${trip.destination}, ${trip.region}` : trip.destination;
+  const bias =
+    trip.latitude != null && trip.longitude != null
+      ? { lat: trip.latitude, lng: trip.longitude, radiusKm: trip.area_radius_km || 15 }
+      : null;
+  const { places, loading } = usePlaceSearch(`popular places to visit in ${where}`, { bias, max: 8 });
+
+  if (!loading && places.length === 0) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold text-muted">Popular nearby — tap to fill this in</p>
+      <div className="hide-scrollbar -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
+        {loading
+          ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-28 w-32 shrink-0 rounded-xl" />)
+          : places.map((place) => (
+              <button
+                key={place.place_id}
+                type="button"
+                onClick={() => onPick(place)}
+                className="w-32 shrink-0 overflow-hidden rounded-xl border border-line bg-surface text-left transition-shadow hover:shadow-md"
+              >
+                <PlacePhoto src={place.photo_url} alt={`Photo of ${place.name}`} rating={place.rating} className="h-20 w-full" />
+                <p className="line-clamp-2 px-2 py-1.5 text-xs font-semibold text-ink">{place.name}</p>
+              </button>
+            ))}
+      </div>
+    </div>
   );
 }
 
