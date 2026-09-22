@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.serializers import UserSerializer
+from notifications.services import notify, notify_many
 from rewards.services import (
     CHECKIN_XP,
     DAY_COMPLETE_BONUS,
@@ -252,6 +253,15 @@ class TripViewSet(viewsets.ModelViewSet):
             if not friend:
                 raise ValidationError({"username": f"No traveller named '{username}' yet."})
             member, created = TripMember.objects.get_or_create(trip=trip, user=friend)
+            if created:
+                notify(
+                    friend,
+                    "trip_member_added",
+                    f"You're on {trip.title}",
+                    actor=request.user,
+                    body=f"{request.user.display_name or request.user.username} added you to a trip to {trip.destination}.",
+                    trip=trip,
+                )
             return Response(
                 TripMemberSerializer(member).data,
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -361,6 +371,15 @@ class TripViewSet(viewsets.ModelViewSet):
         ensure_can_go_live(trip, request.user)
         trip.status = "active"
         trip.save(update_fields=["status"])
+        others = [m.user for m in trip.members.exclude(user=request.user).select_related("user")]
+        notify_many(
+            others,
+            "trip_started",
+            f"{trip.title} has started!",
+            actor=request.user,
+            body=f"{request.user.display_name or request.user.username} kicked things off.",
+            trip=trip,
+        )
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
@@ -776,7 +795,17 @@ def join_trip(request):
     trip = Trip.objects.filter(join_code=code).first()
     if not trip:
         raise ValidationError({"code": "That invite code didn't match any trip."})
-    TripMember.objects.get_or_create(trip=trip, user=request.user)
+    _, created = TripMember.objects.get_or_create(trip=trip, user=request.user)
+    if created:
+        organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
+        notify_many(
+            organisers,
+            "trip_joined",
+            f"{request.user.display_name or request.user.username} joined {trip.title}",
+            actor=request.user,
+            body="They used your invite code.",
+            trip=trip,
+        )
     return Response(TripDetailSerializer(trip, context={"request": request}).data)
 
 

@@ -77,6 +77,15 @@ def evaluate_achievements(user, trip=None) -> list[Achievement]:
                 kind="bonus",
                 trip=trip,
             )
+            from notifications.services import notify
+
+            notify(
+                user,
+                "achievement_unlocked",
+                f"Achievement unlocked: {achievement.title}",
+                body=f"{achievement.description} (+{achievement.xp_reward} XP)",
+                trip=trip,
+            )
             unlocked.append(achievement)
     return unlocked
 

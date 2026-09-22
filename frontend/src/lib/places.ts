@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { describeGoogleError, loadMaps } from "./maps";
 import type { CoverKey, PickedPlace } from "./types";
+import { distanceKm } from "./utils";
 
 /**
  * Thin wrappers over Google Places (New). Nothing here talks to our backend:
@@ -52,20 +53,12 @@ function writeCache(key: string, places: PickedPlace[]) {
   }
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const rad = (d: number) => (d * Math.PI) / 180;
-  const a =
-    Math.sin(rad(lat2 - lat1) / 2) ** 2 +
-    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2;
-  return 2 * 6371 * Math.asin(Math.sqrt(a));
-}
-
 /** Half the viewport diagonal, kept to a sensible size for a "trip area". */
 function radiusFromViewport(viewport: google.maps.LatLngBounds | null | undefined): number {
   if (!viewport) return 10;
   const ne = viewport.getNorthEast();
   const sw = viewport.getSouthWest();
-  const km = haversineKm(ne.lat(), ne.lng(), sw.lat(), sw.lng()) / 2;
+  const km = distanceKm(ne.lat(), ne.lng(), sw.lat(), sw.lng()) / 2;
   return Math.min(60, Math.max(3, Math.round(km * 10) / 10));
 }
 

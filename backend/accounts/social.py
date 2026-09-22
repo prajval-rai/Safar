@@ -114,6 +114,15 @@ def follow_user(request, username):
         if created:
             # "Local Hero" and friends unlock on follower counts.
             evaluate_achievements(target)
+            from notifications.services import notify
+
+            notify(
+                target,
+                "new_follower",
+                f"{request.user.display_name or request.user.username} followed you",
+                actor=request.user,
+                body="Check out their trips and tracks.",
+            )
     else:
         Follow.objects.filter(follower=request.user, following=target).delete()
 
@@ -171,6 +180,7 @@ def user_travel_map(request, username):
             "id": str(a.id),
             "title": a.title,
             "place_name": a.place_name,
+            "category": a.category,
             "latitude": a.latitude,
             "longitude": a.longitude,
             "trip_title": a.day.trip.title,

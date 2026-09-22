@@ -7,6 +7,7 @@ from .models import User
 @admin.register(User)
 class SafarUserAdmin(UserAdmin):
     list_display = ["username", "display_name", "home_city", "xp", "level", "is_staff"]
+    search_fields = ["username", "display_name", "email"]
     fieldsets = UserAdmin.fieldsets + (
         (
             "Safar profile",

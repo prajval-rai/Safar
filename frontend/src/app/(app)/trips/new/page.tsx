@@ -9,6 +9,7 @@ import { DiscoverPlaces, InterestPicker } from "@/components/maps/DiscoverPlaces
 import { GoogleMap, type MapPin } from "@/components/maps/GoogleMap";
 import { usePlaceActions } from "@/components/maps/usePlaceActions";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
+import { Itinerary } from "@/components/trip/Itinerary";
 import { Avatar, Chip, Progress } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { ChoiceCard, SelectField, TextAreaField, TextField } from "@/components/ui/Field";
@@ -686,7 +687,6 @@ function StepItinerary({
 }) {
   const [busy, setBusy] = useState(false);
   const { toast } = useCelebration();
-  const activityCount = trip.days.reduce((sum, day) => sum + day.activities.length, 0);
 
   // After every add/remove, re-read the trip so "Added · Day 2" stays truthful.
   const refresh = async () => onUpdate(await api.get<TripDetail>(`/api/trips/${trip.id}/`));
@@ -787,31 +787,15 @@ function StepItinerary({
         </button>
       </div>
 
-      {activityCount > 0 ? (
-        <div className="mt-6">
-          <p className="mb-2 text-sm font-semibold text-ink">
-            {activityCount} {activityCount === 1 ? "place" : "places"} across {trip.days.length} days
-          </p>
-          <ul className="space-y-2">
-            {trip.days.map((day) => (
-              <li key={day.id} className="rounded-xl border border-line bg-surface p-3">
-                <p className="text-sm font-bold text-ink">
-                  Day {day.index} · {shortDate(day.date)}
-                </p>
-                <p className="mt-0.5 text-sm text-muted">
-                  {day.activities.length
-                    ? day.activities
-                        .slice(0, 3)
-                        .map((a) => a.title)
-                        .join(" · ")
-                    : "Nothing planned yet"}
-                  {day.activities.length > 3 ? ` +${day.activities.length - 3} more` : ""}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <div className="mt-8">
+        <p className="mb-1 text-base font-bold text-ink">Your day-by-day plan</p>
+        <p className="mb-3 text-sm text-muted">
+          Pick a day, set a time for each stop, and reorder as you like — exactly what you&apos;ll
+          use once the trip is under way. We&apos;ll flag stops that are a real hop from the one
+          before it.
+        </p>
+        <Itinerary trip={trip} onChanged={refresh} canEdit />
+      </div>
     </section>
   );
 }

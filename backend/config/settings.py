@@ -15,6 +15,12 @@ if not DEBUG and SECRET_KEY.startswith("dev-only"):
 ALLOWED_HOSTS = [
     h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()
 ]
+# Nobody set DJANGO_ALLOWED_HOSTS explicitly, and this is a dev server: allow any host so a
+# phone on the same network can reach it over the machine's LAN IP (for the Expo mobile app).
+# "*" is Django's own wildcard for "skip Host header validation" — never applies once an
+# operator sets DJANGO_ALLOWED_HOSTS, and DEBUG=0 already requires a real DJANGO_SECRET_KEY.
+if DEBUG and "DJANGO_ALLOWED_HOSTS" not in os.environ:
+    ALLOWED_HOSTS.append("*")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -30,6 +36,7 @@ INSTALLED_APPS = [
     "trips",
     "rewards",
     "explore",
+    "notifications",
 ]
 
 MIDDLEWARE = [

@@ -21,6 +21,8 @@ import {
   cn,
   clockTime,
   dayLabel,
+  describeDistance,
+  distanceKm,
   mapsLink,
   rupees,
   shortDate,
@@ -123,6 +125,7 @@ export function Itinerary({ trip, onChanged, canEdit }: Props) {
                   <ActivityRow
                     key={activity.id}
                     activity={activity}
+                    previous={index > 0 ? day.activities[index - 1] : null}
                     isLast={index === day.activities.length - 1}
                     canEdit={canEdit}
                     myId={user?.id}
@@ -203,6 +206,7 @@ export function Itinerary({ trip, onChanged, canEdit }: Props) {
 
 function ActivityRow({
   activity,
+  previous,
   isLast,
   canEdit,
   myId,
@@ -211,6 +215,9 @@ function ActivityRow({
   onChanged,
 }: {
   activity: Activity;
+  /** The stop right before this one in the same day, if any — used to show
+   *  how far apart they are. */
+  previous: Activity | null;
   isLast: boolean;
   canEdit: boolean;
   myId?: number;
@@ -221,6 +228,14 @@ function ActivityRow({
   const [busy, setBusy] = useState(false);
   const { celebrate, toast } = useCelebration();
   const done = activity.status === "completed";
+
+  const hop =
+    previous?.latitude != null &&
+    previous?.longitude != null &&
+    activity.latitude != null &&
+    activity.longitude != null
+      ? distanceKm(previous.latitude, previous.longitude, activity.latitude, activity.longitude)
+      : null;
 
   async function complete() {
     setBusy(true);
@@ -264,6 +279,12 @@ function ActivityRow({
       </div>
 
       <div className="min-w-0 flex-1 pb-3">
+        {hop != null ? (
+          <p className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted">
+            <span aria-hidden="true">{hop < 5 ? "🚶" : hop < 15 ? "🚗" : "🛣️"}</span>
+            {describeDistance(hop)}
+          </p>
+        ) : null}
         <div
           className={cn(
             "rounded-xl border p-3 transition-colors",

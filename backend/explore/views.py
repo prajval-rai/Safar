@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.serializers import UserSerializer
+from notifications.services import notify
 from rewards.services import TRACK_PUBLISH_XP, award_xp, evaluate_achievements
 from trips.models import Activity, Day, Trip, TripMember
 from trips.serializers import TripDetailSerializer
@@ -128,6 +129,15 @@ class TrackViewSet(viewsets.ModelViewSet):
                         xp_value=stop.xp_value,
                         order=stop.order,
                     )
+
+        notify(
+            track.author,
+            "track_used",
+            f"{request.user.display_name or request.user.username} used your track",
+            actor=request.user,
+            body=f'They started their own trip from "{track.title}".',
+            track=track,
+        )
 
         return Response(
             TripDetailSerializer(trip, context={"request": request}).data,

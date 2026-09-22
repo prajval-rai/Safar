@@ -8,6 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from accounts import social as social_views
 from accounts import views as accounts_views
 from explore import views as explore_views
+from notifications import views as notifications_views
 from rewards import views as rewards_views
 from trips import views as trips_views
 
@@ -39,6 +40,10 @@ urlpatterns = [
     path("api/rewards/me/", rewards_views.my_rewards, name="my_rewards"),
     path("api/rewards/leaderboard/", rewards_views.leaderboard, name="leaderboard"),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
+    path("api/notifications/", notifications_views.notification_list, name="notification_list"),
+    path("api/notifications/unread-count/", notifications_views.unread_count, name="notification_unread_count"),
+    path("api/notifications/read-all/", notifications_views.mark_all_read, name="notification_read_all"),
+    path("api/notifications/<uuid:pk>/read/", notifications_views.mark_read, name="notification_read"),
     path("api/", include(router.urls)),
 ]
 
