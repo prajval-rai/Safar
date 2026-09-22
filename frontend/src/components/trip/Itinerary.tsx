@@ -15,7 +15,7 @@ import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
-import { usePlaceSearch } from "@/lib/places";
+import { categoryFor, usePlaceSearch } from "@/lib/places";
 import type { Activity, Day, PickedPlace, TripDetail, TripMember, XPResult } from "@/lib/types";
 import {
   CATEGORY_ICONS,
@@ -716,7 +716,6 @@ function AddActivitySheet({
     category: "sightseeing",
     end_time: "",
     cost: "",
-    xp_value: "20",
     requires_photo: false,
     requires_checkin: false,
   });
@@ -751,7 +750,6 @@ function AddActivitySheet({
         description: form.description.trim(),
         category: advanced.category,
         cost: Number(advanced.cost) || 0,
-        xp_value: Number(advanced.xp_value) || 20,
         requires_photo: advanced.requires_photo,
         requires_checkin: advanced.requires_checkin,
       });
@@ -804,8 +802,10 @@ function AddActivitySheet({
           }
           onPick={(picked) => {
             setPlace(picked);
-            // Use the place's name as the title if nothing has been typed yet.
+            // Use the place's name as the title, and its Google type, if
+            // nothing has been typed or chosen yet.
             setForm((prev) => ({ ...prev, title: prev.title || picked.name }));
+            setAdvanced((prev) => ({ ...prev, category: categoryFor(picked.types) }));
           }}
         />
         {place ? (
@@ -818,6 +818,7 @@ function AddActivitySheet({
             onPick={(picked) => {
               setPlace(picked);
               setForm((prev) => ({ ...prev, title: prev.title || picked.name }));
+              setAdvanced((prev) => ({ ...prev, category: categoryFor(picked.types) }));
             }}
           />
         )}
@@ -867,13 +868,6 @@ function AddActivitySheet({
               min={0}
               value={advanced.cost}
               onChange={(e) => setAdvanced({ ...advanced, cost: e.target.value })}
-            />
-            <TextField
-              label="XP for finishing this"
-              type="number"
-              min={0}
-              value={advanced.xp_value}
-              onChange={(e) => setAdvanced({ ...advanced, xp_value: e.target.value })}
             />
             <div className="space-y-2">
               <Toggle

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { describeGoogleError, loadMaps } from "./maps";
-import type { CoverKey, PickedPlace } from "./types";
+import type { ActivityCategory, CoverKey, PickedPlace } from "./types";
 import { distanceKm } from "./utils";
 
 /**
@@ -179,6 +179,31 @@ export function usePlaceSearch(query: string | null, options: SearchOptions = {}
     loading: key !== null && !current,
     error: current ? state.error : null,
   };
+}
+
+/** Google place types, in priority order, mapped to our activity categories. */
+const CATEGORY_TYPE_MAP: [string[], ActivityCategory][] = [
+  [["restaurant", "cafe", "bakery", "bar", "food", "meal_takeaway", "meal_delivery"], "food"],
+  [["lodging", "hotel", "hostel", "resort_hotel", "guest_house"], "stay"],
+  [
+    ["airport", "train_station", "subway_station", "light_rail_station", "bus_station", "transit_station", "taxi_stand", "ferry_terminal"],
+    "travel",
+  ],
+  [["shopping_mall", "clothing_store", "store", "market", "department_store", "supermarket", "book_store"], "shopping"],
+  [["amusement_park", "water_park", "zoo", "aquarium", "hiking_area", "adventure_sports_center", "skateboard_park"], "adventure"],
+  [["park", "national_park", "natural_feature", "beach", "forest", "state_park", "wildlife_park"], "nature"],
+  [["spa", "beauty_salon", "night_club", "bar"], "rest"],
+  [["stadium", "movie_theater", "casino", "event_venue", "concert_hall", "performing_arts_theater"], "event"],
+];
+
+/** Best guess at the kind of activity a picked place is, from its Google
+ *  types — used to auto-fill the "Type of activity" field when someone
+ *  picks a place instead of leaving it on the generic default. */
+export function categoryFor(types: string[]): ActivityCategory {
+  for (const [keys, category] of CATEGORY_TYPE_MAP) {
+    if (types.some((t) => keys.includes(t))) return category;
+  }
+  return "sightseeing";
 }
 
 /** Best-fit illustrated cover for a Google place. */
