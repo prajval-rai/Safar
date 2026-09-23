@@ -1,6 +1,6 @@
 "use client";
 
-import { api } from "./api";
+import { postOrQueue } from "./offlineQueue";
 import type { Activity, XPResult } from "./types";
 
 export interface Position {
@@ -57,25 +57,32 @@ export function isPinned(activity: Pick<Activity, "latitude" | "longitude">): bo
 
 /**
  * Completes a stop. Pinned stops need the traveller to be within 1 km, so we
- * send where they are; the organiser can pass `override` to complete from anywhere.
+ * send where they are; the organiser can pass `override` to complete from
+ * anywhere. The GPS reading itself doesn't need signal — only saving it
+ * does — so with no connection this saves locally and finishes the moment
+ * connectivity returns (see lib/offlineQueue), instead of just failing.
  */
 export async function completeStop(
-  activity: Pick<Activity, "id" | "latitude" | "longitude">,
+  activity: Pick<Activity, "id" | "latitude" | "longitude" | "title">,
   options: { override?: boolean } = {},
 ): Promise<XPResult> {
   const path = `/api/activities/${activity.id}/complete/`;
-  if (options.override) return api.post<XPResult>(path, { override: true });
-  if (!isPinned(activity)) return api.post<XPResult>(path, {});
-  return api.post<XPResult>(path, await getPosition());
+  const label = `Complete "${activity.title}"`;
+  if (options.override) return postOrQueue<XPResult>(path, { override: true }, label);
+  if (!isPinned(activity)) return postOrQueue<XPResult>(path, {}, label);
+  return postOrQueue<XPResult>(path, await getPosition(), label);
 }
 
-/** "I'm here" — needs a real location whenever the stop is pinned. */
+/** "I'm here" — needs a real location whenever the stop is pinned. Same
+ *  offline handling as completeStop: the GPS fix is captured regardless of
+ *  signal, and only saving it waits for a connection. */
 export async function checkInStop(
-  activity: Pick<Activity, "id" | "latitude" | "longitude">,
+  activity: Pick<Activity, "id" | "latitude" | "longitude" | "title">,
 ): Promise<XPResult> {
   const path = `/api/activities/${activity.id}/checkin/`;
-  if (!isPinned(activity)) return api.post<XPResult>(path, {});
-  return api.post<XPResult>(path, await getPosition());
+  const label = `Check in at "${activity.title}"`;
+  if (!isPinned(activity)) return postOrQueue<XPResult>(path, {}, label);
+  return postOrQueue<XPResult>(path, await getPosition(), label);
 }
 
 /** Whether this person may complete the stop, before we even ask the server. */

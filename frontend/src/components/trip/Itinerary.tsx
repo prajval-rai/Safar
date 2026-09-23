@@ -15,6 +15,7 @@ import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
+import { OfflineQueuedError } from "@/lib/offlineQueue";
 import { categoryFor, usePlaceSearch } from "@/lib/places";
 import type { Activity, Day, PickedPlace, TripDetail, TripMember, XPResult } from "@/lib/types";
 import {
@@ -250,7 +251,11 @@ function ActivityRow({
       celebrate(await completeStop(activity));
       onChanged();
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Couldn't update that.", "error");
+      if (err instanceof OfflineQueuedError) {
+        toast(err.message);
+      } else {
+        toast(err instanceof Error ? err.message : "Couldn't update that.", "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -435,7 +440,13 @@ function ActivityDetailSheet({
       if (success) toast(success);
       onChanged();
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Couldn't do that.", "error");
+      if (err instanceof OfflineQueuedError) {
+        // Nothing actually changed server-side yet — no celebration, no
+        // reload, just let them know it's saved and will finish on its own.
+        toast(err.message);
+      } else {
+        toast(err instanceof Error ? err.message : "Couldn't do that.", "error");
+      }
     } finally {
       setBusy(false);
     }

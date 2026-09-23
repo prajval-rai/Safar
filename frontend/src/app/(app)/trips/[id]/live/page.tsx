@@ -10,6 +10,7 @@ import { Avatar, Chip, ErrorNote, LoadingBlock, Progress } from "@/components/ui
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
+import { OfflineQueuedError } from "@/lib/offlineQueue";
 import { useTripTheme } from "@/lib/tripTheme";
 import type { Activity, LiveTrip } from "@/lib/types";
 import { CATEGORY_ICONS, clockTime, formatNumber, mapsLink, timeWindow } from "@/lib/utils";
@@ -214,8 +215,12 @@ function NowCard({
       celebrate(await action());
       onDone();
     } catch (err) {
-      // Includes "You're 3.4 km from Baga Beach. Get within 1 km to do this."
-      toast(err instanceof Error ? err.message : "Couldn't update that.", "error");
+      if (err instanceof OfflineQueuedError) {
+        toast(err.message);
+      } else {
+        // Includes "You're 3.4 km from Baga Beach. Get within 1 km to do this."
+        toast(err instanceof Error ? err.message : "Couldn't update that.", "error");
+      }
     } finally {
       setBusy(false);
     }

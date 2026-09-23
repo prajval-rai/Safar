@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
+import { useOfflineSync, usePendingSyncCount } from "@/lib/offlineQueue";
 import { modeStore } from "@/lib/themeStore";
 import { THEMES } from "@/lib/themes";
 import type { Notification, NotificationKind, NotificationPage } from "@/lib/types";
@@ -73,6 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading } = useAuth();
   useServerMode();
+  useOfflineSync();
   const ambient = useAmbientTheme();
 
   // Live Trip mode takes over the screen — no nav competing for attention.
@@ -227,6 +229,7 @@ function TopBar({
   const router = useRouter();
   const [bellOpen, setBellOpen] = useState(false);
   const [unread, setUnread] = useUnreadCount(Boolean(user));
+  const pendingSync = usePendingSyncCount();
   const { data, loading, error, reload, set } = useApi<NotificationPage>(
     bellOpen ? "/api/notifications/" : null,
   );
@@ -287,6 +290,15 @@ function TopBar({
           >
             <span aria-hidden="true">🎨</span>
             {THEMES.find((t) => t.id === ambient.theme)?.name ?? ambient.theme}
+          </span>
+        ) : null}
+        {pendingSync > 0 ? (
+          <span
+            className="flex items-center gap-1.5 rounded-full bg-warn-soft px-3 py-1.5 text-xs font-bold text-warn"
+            title="Saved while offline — will finish once you're back online."
+          >
+            <span aria-hidden="true">📡</span>
+            {pendingSync} pending
           </span>
         ) : null}
 
