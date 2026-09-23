@@ -34,7 +34,7 @@ INSTALLED_APPS = [
     "django_filters",
     "accounts",
     "trips",
-    "rewards",
+    "rewards",  
     "explore",
     "notifications",
 ]

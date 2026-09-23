@@ -24,6 +24,7 @@ export interface UserMini {
   avatar_emoji: string;
   xp: number;
   level: number;
+  level_name: string;
 }
 
 export interface User extends UserMini {

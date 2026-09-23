@@ -7,10 +7,11 @@ User = get_user_model()
 
 class UserMiniSerializer(serializers.ModelSerializer):
     name = serializers.CharField(read_only=True)
+    level_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = User
-        fields = ["id", "username", "name", "avatar_emoji", "xp", "level"]
+        fields = ["id", "username", "name", "avatar_emoji", "xp", "level", "level_name"]
 
 
 class UserSerializer(serializers.ModelSerializer):

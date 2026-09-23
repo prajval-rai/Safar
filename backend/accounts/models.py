@@ -5,12 +5,12 @@ from django.db import models
 LEVEL_STEP = 375
 
 LEVEL_TITLES = [
-    (1, "New Traveller"),
-    (3, "Wanderer"),
-    (5, "Voyager"),
-    (7, "Explorer"),
-    (10, "Trailblazer"),
-    (13, "Safar Legend"),
+    (1, "Naya Musafir"),  # new traveller
+    (3, "Awara"),  # wanderer
+    (5, "Yatri"),  # traveller / pilgrim
+    (7, "Khoji"),  # explorer / seeker
+    (10, "Rahi"),  # wayfarer, trailblazer
+    (13, "Safar Samrat"),  # emperor of the journey
 ]
 
 THEME_CHOICES = [

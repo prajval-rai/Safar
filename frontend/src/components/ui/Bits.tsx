@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { UserMini } from "@/lib/types";
 import { cn, initials } from "@/lib/utils";
@@ -95,6 +95,51 @@ export function Avatar({
       <span aria-hidden="true">{user.avatar_emoji || initials(user.name)}</span>
       <span className="sr-only-text">{user.name}</span>
     </span>
+  );
+}
+
+/** A proper illustrated face — not just an emoji in a circle — for spots
+ *  where someone should stand out, like the rewards podium. Seeded by
+ *  username, so the same person always gets the same cartoon avatar. Falls
+ *  back to the usual emoji avatar if the image can't be fetched. */
+export function CartoonAvatar({
+  user,
+  size = 56,
+  ringClassName,
+}: {
+  user: Pick<UserMini, "username" | "name" | "avatar_emoji">;
+  size?: number;
+  ringClassName?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <span
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded-full bg-brand-soft font-semibold text-brand ring-2",
+          ringClassName,
+        )}
+        style={{ width: size, height: size, fontSize: size * 0.4 }}
+        title={user.name}
+      >
+        <span aria-hidden="true">{user.avatar_emoji || initials(user.name)}</span>
+      </span>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- external, seeded SVG; not a local asset
+    <img
+      src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(user.username)}&backgroundType=gradientLinear`}
+      alt={user.name}
+      width={size}
+      height={size}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={cn("shrink-0 rounded-full bg-brand-soft ring-2", ringClassName)}
+      style={{ width: size, height: size }}
+    />
   );
 }
 

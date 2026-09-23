@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { MotifDivider } from "@/components/art/Motif";
-import { Avatar, Chip, ErrorNote, LoadingBlock, Progress, SegmentedControl } from "@/components/ui/Bits";
+import { Avatar, CartoonAvatar, Chip, ErrorNote, LoadingBlock, Progress, SegmentedControl } from "@/components/ui/Bits";
 import { useApi } from "@/lib/hooks";
 import type { RewardsPayload, UserMini } from "@/lib/types";
 import { cn, formatNumber, shortDate } from "@/lib/utils";
@@ -152,36 +152,97 @@ export default function RewardsPage() {
   );
 }
 
+type LeaderboardRow = UserMini & { rank: number; is_me: boolean };
+
 function Leaderboard() {
   const { data, loading, error, reload } =
-    useApi<(UserMini & { rank: number; is_me: boolean })[]>("/api/rewards/leaderboard/");
+    useApi<LeaderboardRow[]>("/api/rewards/leaderboard/");
 
   if (loading) return <LoadingBlock />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
 
+  const rows = data ?? [];
+  // Only worth a podium once there's actually a top three to show off.
+  const top3 = rows.length >= 3 ? rows.slice(0, 3) : null;
+  const rest = top3 ? rows.slice(3) : rows;
+
   return (
-    <ol className="card divide-y divide-[var(--line)]">
-      {(data ?? []).map((row) => (
-        <li
-          key={row.id}
-          className={cn("flex items-center gap-3 p-3.5", row.is_me && "bg-brand-soft/50")}
-        >
-          <span className="w-6 text-sm font-bold text-muted">{row.rank}</span>
+    <div className="space-y-4">
+      {top3 ? <Podium top3={top3} /> : null}
+      {rest.length ? (
+        <ol className="card divide-y divide-[var(--line)]">
+          {rest.map((row) => (
+            <li
+              key={row.id}
+              className={cn("flex items-center gap-3 p-3.5", row.is_me && "bg-brand-soft/50")}
+            >
+              <span className="w-6 text-sm font-bold text-muted">{row.rank}</span>
+              <Link
+                href={row.is_me ? "/profile" : `/u/${row.username}`}
+                className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-80"
+              >
+                <Avatar user={row} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-semibold text-ink">
+                    {row.name} {row.is_me ? <span className="text-xs text-brand">(you)</span> : null}
+                  </p>
+                  <p className="text-xs text-muted">Level {row.level}</p>
+                </div>
+              </Link>
+              <span className="shrink-0 text-sm font-bold text-brand">{formatNumber(row.xp)} XP</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+// Classic podium layout: 2nd on the left, 1st in the middle (and raised), 3rd on the right.
+const PODIUM_ORDER = [1, 0, 2];
+
+/** Top three on the leaderboard, called out with medals and a bigger, ranked
+ *  avatar for whoever's in the lead — everyone else stays in the plain list. */
+function Podium({ top3 }: { top3: LeaderboardRow[] }) {
+  return (
+    <div className="card flex items-end justify-center gap-2 overflow-hidden p-5 sm:gap-4">
+      {PODIUM_ORDER.map((i) => {
+        const row = top3[i];
+        const isFirst = i === 0;
+        return (
           <Link
+            key={row.id}
             href={row.is_me ? "/profile" : `/u/${row.username}`}
-            className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-80"
+            className={cn(
+              "flex min-w-0 flex-1 flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-center transition-colors hover:opacity-90",
+              isFirst && "-mt-4 border border-brand/25 bg-brand-soft/40 pb-4",
+            )}
           >
-            <Avatar user={row} size="sm" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-semibold text-ink">
-                {row.name} {row.is_me ? <span className="text-xs text-brand">(you)</span> : null}
-              </p>
-              <p className="text-xs text-muted">Level {row.level}</p>
-            </div>
+            <span className={isFirst ? "text-3xl" : "text-xl"} aria-hidden="true">
+              {MEDALS[i]}
+            </span>
+            <span className="relative">
+              <CartoonAvatar
+                user={row}
+                size={isFirst ? 80 : 56}
+                ringClassName={isFirst ? "ring-[var(--brand)]" : "ring-line"}
+              />
+              <span
+                className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[var(--surface)] bg-ink text-[10px] font-bold text-white"
+                aria-hidden="true"
+              >
+                {row.rank}
+              </span>
+            </span>
+            <p className="w-full truncate text-[13px] font-bold text-ink">{row.name}</p>
+            {/* Their level title, in Hindi — "Awara" (wanderer), "Yatri" (traveller)… */}
+            <p className="-mt-0.5 truncate text-[11px] font-semibold text-brand/80">{row.level_name}</p>
+            {row.is_me ? <p className="text-[11px] font-semibold text-brand">(you)</p> : null}
+            <p className="text-xs font-bold text-brand">{formatNumber(row.xp)} XP</p>
           </Link>
-          <span className="shrink-0 text-sm font-bold text-brand">{formatNumber(row.xp)} XP</span>
-        </li>
-      ))}
-    </ol>
+        );
+      })}
+    </div>
   );
 }
