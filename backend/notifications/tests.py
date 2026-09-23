@@ -1,14 +1,16 @@
 from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from pywebpush import WebPushException
 from rest_framework.test import APIClient
 
 from explore.models import Track
 from rewards.services import evaluate_achievements, seed_achievements
 from trips.models import Day, Trip, TripMember
 
-from .models import Notification
+from .models import Notification, PushSubscription
 
 User = get_user_model()
 
@@ -164,3 +166,136 @@ class NotificationTestCase(TestCase):
         note = Notification.objects.get(user=self.ann)
         response = self.client_for(self.bob).post(f"/api/notifications/{note.id}/read/")
         self.assertEqual(response.status_code, 404)
+
+
+class PushConfigTests(NotificationTestCase):
+    def test_reports_disabled_with_no_vapid_keys(self):
+        response = self.client_for(self.me).get("/api/push/config/")
+        self.assertFalse(response.data["enabled"])
+
+    @override_settings(VAPID_PRIVATE_KEY="priv", VAPID_PUBLIC_KEY="pub")
+    def test_reports_enabled_and_the_public_key_once_keys_are_set(self):
+        response = self.client_for(self.me).get("/api/push/config/")
+        self.assertTrue(response.data["enabled"])
+        self.assertEqual(response.data["public_key"], "pub")
+
+
+class PushSubscriptionApiTests(NotificationTestCase):
+    def test_subscribing_saves_the_subscription(self):
+        response = self.client_for(self.me).post(
+            "/api/push/subscribe/",
+            {"endpoint": "https://push.example/abc", "keys": {"p256dh": "p", "auth": "a"}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 204)
+        sub = PushSubscription.objects.get(user=self.me)
+        self.assertEqual(sub.endpoint, "https://push.example/abc")
+
+    def test_resubscribing_the_same_endpoint_updates_rather_than_duplicates(self):
+        client = self.client_for(self.me)
+        client.post(
+            "/api/push/subscribe/",
+            {"endpoint": "https://push.example/abc", "keys": {"p256dh": "old", "auth": "a"}},
+            format="json",
+        )
+        client.post(
+            "/api/push/subscribe/",
+            {"endpoint": "https://push.example/abc", "keys": {"p256dh": "new", "auth": "a"}},
+            format="json",
+        )
+        self.assertEqual(PushSubscription.objects.filter(user=self.me).count(), 1)
+        self.assertEqual(PushSubscription.objects.get(user=self.me).p256dh, "new")
+
+    def test_an_incomplete_subscription_is_rejected(self):
+        response = self.client_for(self.me).post(
+            "/api/push/subscribe/", {"endpoint": "https://push.example/abc"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_unsubscribing_removes_just_that_endpoint(self):
+        client = self.client_for(self.me)
+        client.post(
+            "/api/push/subscribe/",
+            {"endpoint": "https://push.example/keep", "keys": {"p256dh": "p", "auth": "a"}},
+            format="json",
+        )
+        client.post(
+            "/api/push/subscribe/",
+            {"endpoint": "https://push.example/drop", "keys": {"p256dh": "p", "auth": "a"}},
+            format="json",
+        )
+        client.post("/api/push/unsubscribe/", {"endpoint": "https://push.example/drop"}, format="json")
+
+        remaining = PushSubscription.objects.filter(user=self.me).values_list("endpoint", flat=True)
+        self.assertEqual(list(remaining), ["https://push.example/keep"])
+
+
+class PushSendingTests(NotificationTestCase):
+    """Real push delivery, triggered from the same notify() every in-app
+    notification already goes through — webpush() itself is mocked, since
+    actually reaching a push service isn't something a test should do."""
+
+    @override_settings(VAPID_PRIVATE_KEY="priv", VAPID_PUBLIC_KEY="pub")
+    @patch("notifications.push.webpush")
+    def test_a_notification_pushes_to_every_device_the_recipient_has(self, mock_webpush):
+        PushSubscription.objects.create(
+            user=self.ann, endpoint="https://push.example/1", p256dh="p", auth="a"
+        )
+        PushSubscription.objects.create(
+            user=self.ann, endpoint="https://push.example/2", p256dh="p", auth="a"
+        )
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertEqual(mock_webpush.call_count, 2)
+
+    @patch("notifications.push.webpush")
+    def test_push_is_a_silent_no_op_without_vapid_keys_configured(self, mock_webpush):
+        PushSubscription.objects.create(
+            user=self.ann, endpoint="https://push.example/1", p256dh="p", auth="a"
+        )
+        response = self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertEqual(response.status_code, 200)
+        mock_webpush.assert_not_called()
+        # The in-app notification is completely unaffected either way.
+        self.assertTrue(Notification.objects.filter(user=self.ann).exists())
+
+    @override_settings(VAPID_PRIVATE_KEY="priv", VAPID_PUBLIC_KEY="pub")
+    @patch("notifications.push.webpush")
+    def test_a_gone_subscription_is_deleted_rather_than_retried_forever(self, mock_webpush):
+        gone = MagicMock(status_code=410)
+        mock_webpush.side_effect = WebPushException("gone", response=gone)
+        sub = PushSubscription.objects.create(
+            user=self.ann, endpoint="https://push.example/1", p256dh="p", auth="a"
+        )
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertFalse(PushSubscription.objects.filter(pk=sub.pk).exists())
+
+    @override_settings(VAPID_PRIVATE_KEY="priv", VAPID_PUBLIC_KEY="pub")
+    @patch("notifications.push.webpush")
+    def test_a_temporary_failure_keeps_the_subscription_for_next_time(self, mock_webpush):
+        server_error = MagicMock(status_code=500)
+        mock_webpush.side_effect = WebPushException("server error", response=server_error)
+        sub = PushSubscription.objects.create(
+            user=self.ann, endpoint="https://push.example/1", p256dh="p", auth="a"
+        )
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertTrue(PushSubscription.objects.filter(pk=sub.pk).exists())
+
+    @override_settings(VAPID_PRIVATE_KEY="priv", VAPID_PUBLIC_KEY="pub")
+    @patch("notifications.push.webpush")
+    def test_one_bad_device_does_not_stop_the_notification_or_other_devices(self, mock_webpush):
+        mock_webpush.side_effect = Exception("boom")
+        PushSubscription.objects.create(
+            user=self.ann, endpoint="https://push.example/1", p256dh="p", auth="a"
+        )
+
+        response = self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Notification.objects.filter(user=self.ann).exists())

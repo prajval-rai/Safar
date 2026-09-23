@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { ColorModePicker } from "@/components/settings/ColorModePicker";
+import { PushToggle } from "@/components/settings/PushToggle";
 import { ProfileExtras } from "@/components/social/TravelProfile";
 import { Avatar, Chip, Progress } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
@@ -106,6 +107,17 @@ export default function ProfilePage() {
           <Button variant="secondary" size="sm" onClick={() => setSecurityOpen(true)}>
             {user.has_security_question ? "Change" : "Set up"}
           </Button>
+        </div>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="text-lg font-bold text-ink">Notifications</h2>
+        <p className="mt-1 text-sm text-muted">
+          The bell icon always works. Turn this on for a real alert on this device — trip
+          reminders, invites — even when Safar isn&apos;t open.
+        </p>
+        <div className="mt-3">
+          <PushToggle />
         </div>
       </section>
 

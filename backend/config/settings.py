@@ -90,6 +90,17 @@ AUTH_USER_MODEL = "accounts.User"
 # Without it, "Sign in with Google" is simply switched off (see accounts.views).
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
+# Web Push (real, lock-screen-capable notifications, delivered even with the
+# site closed — not the in-app bell, which is unrelated and always on).
+# VAPID_PRIVATE_KEY never leaves the server; VAPID_PUBLIC_KEY is also handed
+# to the browser as NEXT_PUBLIC_VAPID_PUBLIC_KEY (same value, safe to expose —
+# it's how a push service checks a push claims to be from us, not a secret).
+# Without a private key, push sending is simply switched off (see
+# notifications.push) — the in-app bell still works regardless.
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIM_EMAIL = os.environ.get("VAPID_CLAIM_EMAIL", "prajvalrai2001@gmail.com")
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

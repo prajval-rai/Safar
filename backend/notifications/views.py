@@ -1,12 +1,14 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 
-from .models import Notification
+from .models import Notification, PushSubscription
+from .push import push_enabled
 from .serializers import NotificationSerializer
 
 
@@ -46,4 +48,48 @@ def mark_read(request, pk):
 @permission_classes([IsAuthenticated])
 def mark_all_read(request):
     Notification.objects.filter(user=request.user, read=False).update(read=True)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def push_config(request):
+    """Whether push is even switched on for this deploy, and the public key
+    a browser needs to subscribe — never the private one. Lets the frontend
+    quietly hide the "enable notifications" option rather than offering
+    something that'll just fail if VAPID keys aren't set."""
+    return Response({"enabled": push_enabled(), "public_key": settings.VAPID_PUBLIC_KEY})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def push_subscribe(request):
+    """Saves (or refreshes) this browser's Web Push subscription — the
+    frontend sends exactly what `PushSubscription.toJSON()` gives it."""
+    data = request.data
+    endpoint = data.get("endpoint")
+    keys = data.get("keys") or {}
+    if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+        return Response({"detail": "Incomplete subscription."}, status=status.HTTP_400_BAD_REQUEST)
+
+    PushSubscription.objects.update_or_create(
+        user=request.user,
+        endpoint=endpoint,
+        defaults={
+            "p256dh": keys["p256dh"],
+            "auth": keys["auth"],
+            "user_agent": request.META.get("HTTP_USER_AGENT", "")[:300],
+        },
+    )
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def push_unsubscribe(request):
+    """Called when someone turns push off on a device (or the browser tells
+    us the subscription's gone) — removes just that one endpoint."""
+    endpoint = request.data.get("endpoint")
+    if endpoint:
+        PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()
     return Response(status=status.HTTP_204_NO_CONTENT)

@@ -50,6 +50,9 @@ urlpatterns = [
     path("api/notifications/unread-count/", notifications_views.unread_count, name="notification_unread_count"),
     path("api/notifications/read-all/", notifications_views.mark_all_read, name="notification_read_all"),
     path("api/notifications/<uuid:pk>/read/", notifications_views.mark_read, name="notification_read"),
+    path("api/push/config/", notifications_views.push_config, name="push_config"),
+    path("api/push/subscribe/", notifications_views.push_subscribe, name="push_subscribe"),
+    path("api/push/unsubscribe/", notifications_views.push_unsubscribe, name="push_unsubscribe"),
     path("api/", include(router.urls)),
 ]
 

@@ -1,15 +1,27 @@
 from .models import Notification
+from .push import push_to_user
+
+
+def _open_url(trip=None, track=None) -> str:
+    if trip is not None:
+        return f"/trips/{trip.id}"
+    if track is not None:
+        return f"/explore/{track.id}"
+    return "/"
 
 
 def notify(user, kind, title, *, actor=None, body="", trip=None, track=None):
-    """Create a notification for `user`. Silently does nothing if `actor` is
-    `user` themselves — you don't need telling that you joined your own trip
-    or used your own track."""
+    """Create a notification for `user`, and — on whatever devices they've
+    turned it on for — a real push alongside it. Silently does nothing if
+    `actor` is `user` themselves; you don't need telling that you joined your
+    own trip or used your own track."""
     if actor is not None and actor.pk == user.pk:
         return None
-    return Notification.objects.create(
+    note = Notification.objects.create(
         user=user, actor=actor, kind=kind, title=title, body=body, trip=trip, track=track
     )
+    push_to_user(user, title, body, url=_open_url(trip=trip, track=track))
+    return note
 
 
 def notify_many(users, kind, title, *, actor=None, body="", trip=None, track=None):

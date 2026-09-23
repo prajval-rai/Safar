@@ -45,3 +45,27 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.kind} → {self.user}"
+
+
+class PushSubscription(models.Model):
+    """One browser/device that's opted in to real (lock-screen-capable) push
+    notifications — the Web Push standard's subscription object, saved as-is.
+    A traveller can have several (phone, laptop, …); each gets its own row."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="push_subscriptions"
+    )
+    endpoint = models.URLField(max_length=500)
+    # The two keys the browser hands back alongside the endpoint — needed to
+    # encrypt the payload the push service delivers.
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    # Just for anyone reading the admin list — "which of my devices is this".
+    user_agent = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "endpoint")
+
+    def __str__(self):
+        return f"{self.user}'s device ({self.endpoint[:40]}…)"

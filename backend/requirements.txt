@@ -24,3 +24,20 @@ pyasn1==0.6.4
 pyasn1-modules==0.4.2
 rsa==4.9.1
 urllib3==2.8.0
+# Sends real push notifications (lock-screen alerts, work with the browser
+# closed) via the standard Web Push protocol.
+pywebpush==2.5.0
+py-vapid==1.9.4
+http_ece==1.2.1
+cryptography==50.0.1
+cffi==2.1.1
+pycparser==3.0
+aiohttp==3.14.3
+aiosignal==1.4.0
+aiohappyeyeballs==2.7.1
+async-timeout==5.0.1
+attrs==26.1.0
+frozenlist==1.8.0
+multidict==6.9.1
+propcache==0.5.4
+yarl==1.25.1
