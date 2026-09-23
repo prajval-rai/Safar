@@ -22,4 +22,3 @@ Thumbs.db
 
 # Dev server logs (from redirecting `runserver`/`npm run dev` output to a file)
 *.log
-mobile
