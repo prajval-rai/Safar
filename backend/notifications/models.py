@@ -13,6 +13,8 @@ class Notification(models.Model):
         ("trip_member_added", "Added to a trip"),
         ("trip_joined", "Someone joined your trip"),
         ("trip_started", "Trip started"),
+        ("trip_reminder", "Trip reminder"),
+        ("activity_reminder", "Itinerary reminder"),
         ("track_used", "Someone used your track"),
         ("new_follower", "New follower"),
         ("achievement_unlocked", "Achievement unlocked"),

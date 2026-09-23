@@ -389,6 +389,8 @@ export type NotificationKind =
   | "trip_member_added"
   | "trip_joined"
   | "trip_started"
+  | "trip_reminder"
+  | "activity_reminder"
   | "track_used"
   | "new_follower"
   | "achievement_unlocked";

@@ -4,10 +4,13 @@ completion, permissions and the mobile 'move' alternative to drag and drop."""
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import level_from_xp
+from notifications.models import Notification
 from rewards.models import Achievement, XPTransaction
 from rewards.services import (
     CANCEL_PENALTY,
@@ -650,3 +653,111 @@ class ActiveThemeTests(SafarTestCase):
         response = self.client_for(self.owner).get("/api/theme/active/")
         self.assertEqual(response.data["theme"], "beach")
         self.assertEqual(response.data["source"], "live")
+
+
+class ReminderTests(SafarTestCase):
+    """send_trip_reminders — day-before trip nudges and hour-before itinerary
+    nudges, both computed straight from the plan rather than a separately
+    stored reminder time."""
+
+    def test_day_before_reminder_for_a_trip_starting_tomorrow(self):
+        self.trip.start_date = date.today() + timedelta(days=1)
+        self.trip.save()
+
+        call_command("send_trip_reminders")
+
+        self.trip.refresh_from_db()
+        self.assertTrue(self.trip.day_before_reminder_sent)
+        notes = Notification.objects.filter(trip=self.trip, kind="trip_reminder")
+        self.assertEqual({n.user_id for n in notes}, {self.owner.id, self.friend.id})
+        self.assertIn("tomorrow", notes.first().title)
+
+    def test_day_before_reminder_is_not_sent_twice(self):
+        self.trip.start_date = date.today() + timedelta(days=1)
+        self.trip.save()
+        call_command("send_trip_reminders")
+        call_command("send_trip_reminders")
+        # One per member — not doubled by the second run.
+        self.assertEqual(Notification.objects.filter(trip=self.trip, kind="trip_reminder").count(), 2)
+
+    def test_day_before_reminder_skips_a_cancelled_trip(self):
+        self.trip.start_date = date.today() + timedelta(days=1)
+        self.trip.status = "cancelled"
+        self.trip.save()
+        call_command("send_trip_reminders")
+        self.assertFalse(Notification.objects.filter(trip=self.trip, kind="trip_reminder").exists())
+
+    def test_day_before_reminder_is_not_sent_early_or_late(self):
+        self.trip.start_date = date.today() + timedelta(days=2)
+        self.trip.save()
+        call_command("send_trip_reminders")
+        self.assertFalse(Notification.objects.filter(trip=self.trip, kind="trip_reminder").exists())
+
+    def test_hour_before_reminder_for_the_first_dated_stop_reads_like_the_trip_starting(self):
+        self.a1.start_time = (timezone.localtime() + timedelta(minutes=30)).time()
+        self.a1.save()
+
+        call_command("send_trip_reminders")
+
+        self.a1.refresh_from_db()
+        self.assertTrue(self.a1.hour_before_reminder_sent)
+        note = Notification.objects.get(trip=self.trip, kind="trip_reminder", user=self.owner)
+        self.assertIn("starts in about an hour", note.title)
+        self.assertIn(self.a1.title, note.body)
+
+    def test_hour_before_reminder_for_a_later_stop_names_the_activity(self):
+        self.a1.start_time = (timezone.localtime() + timedelta(minutes=15)).time()
+        self.a1.save()
+        self.a2.start_time = (timezone.localtime() + timedelta(minutes=45)).time()
+        self.a2.save()
+
+        call_command("send_trip_reminders")
+
+        self.a2.refresh_from_db()
+        self.assertTrue(self.a2.hour_before_reminder_sent)
+        note = Notification.objects.get(trip=self.trip, kind="activity_reminder", user=self.owner)
+        self.assertIn(self.a2.title, note.title)
+
+    def test_hour_before_reminder_respects_assignment(self):
+        self.a1.start_time = (timezone.localtime() + timedelta(minutes=30)).time()
+        self.a1.assigned_to = self.friend
+        self.a1.save()
+
+        call_command("send_trip_reminders")
+
+        self.assertFalse(
+            Notification.objects.filter(trip=self.trip, user=self.owner, kind="trip_reminder").exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(trip=self.trip, user=self.friend, kind="trip_reminder").exists()
+        )
+
+    def test_hour_before_reminder_is_not_sent_twice(self):
+        self.a1.start_time = (timezone.localtime() + timedelta(minutes=30)).time()
+        self.a1.save()
+        call_command("send_trip_reminders")
+        call_command("send_trip_reminders")
+        self.assertEqual(Notification.objects.filter(trip=self.trip, kind="trip_reminder").count(), 2)
+
+    def test_hour_before_reminder_is_not_sent_outside_the_window(self):
+        self.a1.start_time = (timezone.localtime() + timedelta(hours=3)).time()
+        self.a1.save()
+
+        call_command("send_trip_reminders")
+
+        self.a1.refresh_from_db()
+        self.assertFalse(self.a1.hour_before_reminder_sent)
+        self.assertFalse(Notification.objects.filter(trip=self.trip).exists())
+
+    def test_hour_before_reminder_skips_a_completed_stop(self):
+        self.a1.start_time = (timezone.localtime() + timedelta(minutes=30)).time()
+        self.a1.status = "completed"
+        self.a1.save()
+
+        call_command("send_trip_reminders")
+
+        self.assertFalse(
+            Notification.objects.filter(
+                trip=self.trip, kind__in=["trip_reminder", "activity_reminder"]
+            ).exists()
+        )

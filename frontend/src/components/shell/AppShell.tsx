@@ -2,6 +2,8 @@
 
 import {
   Bell,
+  BellRing,
+  Clock,
   Compass,
   Home,
   Map as MapIcon,
@@ -194,6 +196,8 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_member_added: MapIcon,
   trip_joined: UserPlus,
   trip_started: PlayCircle,
+  trip_reminder: BellRing,
+  activity_reminder: Clock,
   track_used: Route,
   new_follower: UserPlus,
   achievement_unlocked: Trophy,

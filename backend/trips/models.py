@@ -94,6 +94,9 @@ class Trip(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_trips"
     )
+    # Set once the "starts tomorrow" reminder has gone out, so it's never
+    # sent twice (see trips.management.commands.send_trip_reminders).
+    day_before_reminder_sent = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -260,6 +263,9 @@ class Activity(models.Model):
     # overrides and stops with no pinned location leave this False.
     verified_by_location = models.BooleanField(default=False)
     completed_distance_m = models.FloatField(null=True, blank=True)
+    # Set once the "starts in about an hour" reminder has gone out, so a
+    # reminder is never sent twice (see trips.management.commands.send_trip_reminders).
+    hour_before_reminder_sent = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
