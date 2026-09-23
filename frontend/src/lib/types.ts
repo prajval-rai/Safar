@@ -1,4 +1,13 @@
-export type ThemeId = "saffron" | "peacock" | "backwater" | "terracotta" | "himalaya";
+export type ThemeId =
+  | "saffron"
+  | "peacock"
+  | "backwater"
+  | "terracotta"
+  | "himalaya"
+  | "beach"
+  | "pinkcity"
+  | "metro"
+  | "forest";
 export type ColorMode = "light" | "dark" | "system";
 
 export type CoverKey =
@@ -142,6 +151,9 @@ export interface Trip {
   total_xp: number;
   member_count: number;
   activity_count: number;
+  /** Palette drawn from the destination's state — the same for every member,
+   *  regardless of anyone's own personal theme. See useTripTheme(). */
+  theme: ThemeId;
 }
 
 export interface TripDetail extends Trip {

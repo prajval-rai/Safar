@@ -26,6 +26,7 @@ from rewards.services import (
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
 from .geo import distance_from_stop
+from .regional_theme import DEFAULT_TRIP_THEME
 from .models import (
     Activity,
     ChatMessage,
@@ -872,6 +873,30 @@ def home_feed(request):
             },
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def active_theme(request):
+    """The colour theme the whole app should currently wear for this
+    traveller: their live trip's, or — if nothing's live — their next
+    upcoming one's. This is the ambient, site-wide default; a specific trip's
+    own pages can still show *that* trip's theme while you're looking at it
+    even if it isn't the live/next one (see useTripTheme on the frontend)."""
+    mine = trips_for(request.user)
+    today = date.today()
+
+    live = mine.filter(status="active").first()
+    if not live:
+        live = mine.filter(start_date__lte=today, end_date__gte=today).first()
+    if live:
+        return Response({"theme": live.theme, "source": "live", "trip_title": live.title})
+
+    upcoming = mine.filter(status="planning", end_date__gte=today).order_by("start_date").first()
+    if upcoming:
+        return Response({"theme": upcoming.theme, "source": "upcoming", "trip_title": upcoming.title})
+
+    return Response({"theme": DEFAULT_TRIP_THEME, "source": "default", "trip_title": None})
 
 
 @api_view(["GET"])

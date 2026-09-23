@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
-import { ThemePicker } from "@/components/settings/ThemePicker";
+import { ColorModePicker } from "@/components/settings/ColorModePicker";
 import { ProfileExtras } from "@/components/social/TravelProfile";
 import { Avatar, Chip, Progress } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
@@ -57,8 +57,11 @@ export default function ProfilePage() {
 
       <section className="card p-5">
         <h2 className="mb-1 text-lg font-bold text-ink">Appearance</h2>
-        <p className="mb-4 text-sm text-muted">Pick the look that suits you.</p>
-        <ThemePicker />
+        <p className="mb-4 text-sm text-muted">
+          The colour theme itself now follows your trips — live if you&apos;re on one, otherwise
+          whatever&apos;s next on your calendar.
+        </p>
+        <ColorModePicker />
       </section>
 
       <section className="card p-5">

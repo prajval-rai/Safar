@@ -13,6 +13,7 @@ import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
+import { useTripTheme } from "@/lib/tripTheme";
 import type { TripSummary, XPResult } from "@/lib/types";
 import { dateRange, formatNumber, rupees } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ export default function TripCompletePage() {
   const { id } = useParams<{ id: string }>();
   const { data, loading, error, reload } = useApi<TripSummary>(`/api/trips/${id}/summary/`);
   const [sheet, setSheet] = useState<"track" | "post" | null>(null);
+  useTripTheme(data?.trip.theme);
 
   if (loading) {
     return (

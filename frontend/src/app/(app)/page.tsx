@@ -41,8 +41,6 @@ export default function HomePage() {
         </h1>
       </header>
 
-      {!user.has_security_question ? <SecurityNudge /> : null}
-
       {data.live_trip ? <LiveTripBanner trip={data.live_trip} /> : null}
 
       {/* Two primary actions, nothing else competing. */}
@@ -118,29 +116,6 @@ export default function HomePage() {
 
       <JoinSheet open={joinOpen} onClose={() => setJoinOpen(false)} />
     </div>
-  );
-}
-
-/** There's no email on file, so a security question is the only way back in
- *  after a forgotten password — worth a nudge for accounts (mostly ones from
- *  before this existed) that don't have one set yet. */
-function SecurityNudge() {
-  return (
-    <Link
-      href="/profile"
-      className="animate-rise flex items-center gap-3 rounded-xl border border-line bg-raised p-3.5 transition-colors hover:bg-surface"
-    >
-      <span className="text-xl" aria-hidden="true">
-        🔐
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold text-ink">Set a recovery question</span>
-        <span className="block text-xs text-muted">
-          There&apos;s no email on file — this is how you&apos;d get back in if you forget your password.
-        </span>
-      </span>
-      <span className="shrink-0 text-sm font-semibold text-brand">Set up →</span>
-    </Link>
   );
 }
 

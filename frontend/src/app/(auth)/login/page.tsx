@@ -35,33 +35,19 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
       {/* The decorative half only appears when there's room for it. */}
-      <aside className="relative hidden overflow-hidden bg-brand lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12">
+      <aside className="relative hidden overflow-hidden bg-brand lg:flex lg:w-1/2 lg:flex-col lg:items-center lg:justify-center lg:p-12">
         <div className="absolute inset-0 text-white/10" aria-hidden="true">
           <JaliPattern />
         </div>
-        <div className="relative text-on-brand">
-          <span className="text-3xl" aria-hidden="true">
+        <div className="relative max-w-lg text-center text-on-brand">
+          <span className="text-8xl" aria-hidden="true">
             🧭
           </span>
-          <h1 className="mt-4 text-4xl font-extrabold">Safar</h1>
-          <p className="mt-2 max-w-sm text-lg opacity-90">
+          <h1 className="mt-6 text-7xl font-extrabold">Safar</h1>
+          <p className="mt-4 text-2xl opacity-90">
             Plan the trip, follow the plan, and keep the memories — all in one place.
           </p>
         </div>
-        <ul className="relative space-y-3 text-on-brand/90">
-          {[
-            ["🗺️", "Build a day-by-day plan in minutes"],
-            ["👛", "Split what everyone spends"],
-            ["🏆", "Earn XP as you tick off each stop"],
-          ].map(([icon, line]) => (
-            <li key={line} className="flex items-center gap-3 text-[15px]">
-              <span className="text-xl" aria-hidden="true">
-                {icon}
-              </span>
-              {line}
-            </li>
-          ))}
-        </ul>
       </aside>
 
       <main id="main" className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">

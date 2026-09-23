@@ -117,6 +117,9 @@ class TripListSerializer(serializers.ModelSerializer):
     total_xp = serializers.IntegerField(read_only=True)
     member_count = serializers.IntegerField(source="members.count", read_only=True)
     activity_count = serializers.SerializerMethodField()
+    # Destination-based palette (see trips.regional_theme) — the same for
+    # every member and anyone who joins later, whatever their own account theme is.
+    theme = serializers.CharField(read_only=True)
 
     class Meta:
         model = Trip
@@ -148,6 +151,7 @@ class TripListSerializer(serializers.ModelSerializer):
             "total_xp",
             "member_count",
             "activity_count",
+            "theme",
         ]
 
     def get_activity_count(self, obj) -> int:

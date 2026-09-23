@@ -5,6 +5,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from .regional_theme import theme_for_trip
+
 TRIP_TYPES = [
     ("weekend", "Weekend Getaway"),
     ("road", "Road Trip"),
@@ -104,6 +106,15 @@ class Trip(models.Model):
     @property
     def duration_days(self) -> int:
         return (self.end_date - self.start_date).days + 1
+
+    @property
+    def theme(self) -> str:
+        """The site theme this trip's destination calls for — computed live
+        from `destination`/`region`, not stored, so it can never drift out of
+        sync with them. Every member sees the same value; joining via the
+        invite code is just becoming a member, so this comes along
+        automatically."""
+        return theme_for_trip(self.destination, self.region)
 
     @property
     def activity_counts(self) -> tuple[int, int]:

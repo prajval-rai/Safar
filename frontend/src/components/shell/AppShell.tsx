@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { useAmbientTheme } from "@/lib/ambientTheme";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Avatar, ErrorNote, Skeleton } from "@/components/ui/Bits";
@@ -24,8 +25,8 @@ import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import { themeStore } from "@/lib/themeStore";
-import { isThemeId } from "@/lib/themes";
+import { modeStore } from "@/lib/themeStore";
+import { THEMES } from "@/lib/themes";
 import type { Notification, NotificationKind, NotificationPage } from "@/lib/types";
 import { cn, relativeTime } from "@/lib/utils";
 
@@ -50,23 +51,24 @@ const NAV: NavItem[] = [
 
 /**
  * First time you sign in on a new device there's nothing saved locally, so we
- * fall back to the theme stored on your account. A local choice always wins.
+ * fall back to the light/dark mode stored on your account. A local choice
+ * always wins.
  */
-function useServerTheme() {
+function useServerMode() {
   const { user } = useAuth();
-  const { setTheme, setMode } = useTheme();
+  const { setMode } = useTheme();
 
   useEffect(() => {
     if (!user) return;
-    if (!themeStore.hasStoredTheme() && isThemeId(user.theme)) setTheme(user.theme);
-    if (!themeStore.hasStoredMode() && user.color_mode) setMode(user.color_mode);
-  }, [user, setTheme, setMode]);
+    if (!modeStore.hasStoredMode() && user.color_mode) setMode(user.color_mode);
+  }, [user, setMode]);
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading } = useAuth();
-  useServerTheme();
+  useServerMode();
+  const ambient = useAmbientTheme();
 
   // Live Trip mode takes over the screen — no nav competing for attention.
   const focusMode = /^\/trips\/[^/]+\/(live|complete)$/.test(pathname);
@@ -83,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh lg:pl-[264px]">
       <Sidebar pathname={pathname} />
       <div className="flex min-h-dvh flex-col">
-        <TopBar pathname={pathname} />
+        <TopBar pathname={pathname} ambient={ambient} />
         <main id="main" className="w-full flex-1 px-4 pt-6 pb-28 sm:px-8 lg:pb-12">
           <div className="mx-auto w-full max-w-6xl">
             {loading && !user ? <ShellSkeleton /> : children}
@@ -204,7 +206,13 @@ function notificationHref(note: Notification): string | null {
   return null;
 }
 
-function TopBar({ pathname }: { pathname: string }) {
+function TopBar({
+  pathname,
+  ambient,
+}: {
+  pathname: string;
+  ambient: ReturnType<typeof useAmbientTheme>;
+}) {
   const { user } = useAuth();
   const router = useRouter();
   const [bellOpen, setBellOpen] = useState(false);
@@ -260,6 +268,17 @@ function TopBar({ pathname }: { pathname: string }) {
           <BrandMark />
         </div>
         <p className="hidden text-base text-muted lg:block">{titleFor(pathname)}</p>
+        {/* Only shown once it's actually tied to a trip — no badge for the
+         *  plain site default, which would just be noise. */}
+        {ambient && ambient.source !== "default" ? (
+          <span
+            className="hidden items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1.5 text-xs font-bold text-brand lg:flex"
+            title={ambient.tripTitle ? `From ${ambient.tripTitle}` : undefined}
+          >
+            <span aria-hidden="true">🎨</span>
+            {THEMES.find((t) => t.id === ambient.theme)?.name ?? ambient.theme}
+          </span>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-2">
           {user ? (

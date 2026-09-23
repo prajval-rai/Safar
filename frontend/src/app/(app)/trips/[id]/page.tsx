@@ -17,6 +17,7 @@ import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
+import { useTripTheme } from "@/lib/tripTheme";
 import type { TripDetail, XPResult } from "@/lib/types";
 import {
   PACE_LABELS,
@@ -57,6 +58,9 @@ export default function TripDetailPage() {
   const { data: trip, loading, error, reload } = useApi<TripDetail>(`/api/trips/${id}/`);
   const { toast } = useCelebration();
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  // While this trip is open, the page wears its destination's colours —
+  // restored to your own the moment you leave.
+  useTripTheme(trip?.theme);
 
   // Keep the current view on screen while a refetch runs, so completing an
   // activity doesn't collapse the tab you were on.

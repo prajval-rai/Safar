@@ -10,6 +10,7 @@ import { Avatar, Chip, ErrorNote, LoadingBlock, Progress } from "@/components/ui
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
+import { useTripTheme } from "@/lib/tripTheme";
 import type { Activity, LiveTrip } from "@/lib/types";
 import { CATEGORY_ICONS, clockTime, formatNumber, mapsLink, timeWindow } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export default function LiveTripPage() {
   const { id } = useParams<{ id: string }>();
   const { data, loading, error, reload } = useApi<LiveTrip>(`/api/trips/${id}/live/`);
   const { user } = useAuth();
+  useTripTheme(data?.trip.theme);
 
   // Only show the skeleton on the very first load — ticking something off
   // should refresh in place, not blank the screen.

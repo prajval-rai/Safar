@@ -39,6 +39,7 @@ urlpatterns = [
     path("api/users/<str:username>/following/", social_views.user_following, name="user_following"),
     path("api/users/<str:username>/travel-map/", social_views.user_travel_map, name="user_travel_map"),
     path("api/home/", trips_views.home_feed, name="home_feed"),
+    path("api/theme/active/", trips_views.active_theme, name="active_theme"),
     path("api/catalog/", trips_views.catalog, name="catalog"),
     path("api/catalog/defaults/", trips_views.destination_defaults, name="destination_defaults"),
     path("api/trips/join/", trips_views.join_trip, name="join_trip"),

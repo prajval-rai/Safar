@@ -40,6 +40,30 @@ export const THEMES: ThemeMeta[] = [
     blurb: "Indigo blue with a sunset orange.",
     swatch: ["#3f4f9e", "#b1502c", "#f4f6fc"],
   },
+  {
+    id: "beach",
+    name: "Goa Beach",
+    blurb: "Ocean turquoise with a sunset gold.",
+    swatch: ["#0891b2", "#d97706", "#faf8f2"],
+  },
+  {
+    id: "pinkcity",
+    name: "Jaipur Pink City",
+    blurb: "Rose pink with a royal gold.",
+    swatch: ["#be185d", "#b45309", "#fdf5f6"],
+  },
+  {
+    id: "metro",
+    name: "City Lights",
+    blurb: "Cosmopolitan charcoal with an electric violet.",
+    swatch: ["#1e293b", "#7c3aed", "#f6f7fa"],
+  },
+  {
+    id: "forest",
+    name: "Jungle Trail",
+    blurb: "Deep forest green with an earthy amber.",
+    swatch: ["#365314", "#92400e", "#f5f7f0"],
+  },
 ];
 
 export const COLOR_MODES: { id: ColorMode; label: string; icon: string }[] = [
@@ -48,7 +72,6 @@ export const COLOR_MODES: { id: ColorMode; label: string; icon: string }[] = [
   { id: "system", label: "Auto", icon: "🌓" },
 ];
 
-export const THEME_STORAGE_KEY = "safar.theme";
 export const MODE_STORAGE_KEY = "safar.mode";
 export const DEFAULT_THEME: ThemeId = "saffron";
 
@@ -63,18 +86,21 @@ export function resolveMode(mode: ColorMode): "light" | "dark" {
 }
 
 /**
- * Runs before first paint so the saved theme is applied with no flash of the
- * wrong colours. Kept as a string because it ships in a <script> tag.
+ * Runs before first paint so light/dark mode is applied with no flash of the
+ * wrong one. The colour theme itself isn't a stored preference any more — it
+ * comes from your live or next upcoming trip (see useAmbientTheme), which
+ * needs a network round trip to know, so it starts on the site default and
+ * switches over a moment after the page loads. Kept as a string because it
+ * ships in a <script> tag.
  */
 export const themeBootstrapScript = `
 (function () {
   try {
-    var theme = localStorage.getItem('${THEME_STORAGE_KEY}') || '${DEFAULT_THEME}';
     var mode = localStorage.getItem('${MODE_STORAGE_KEY}') || 'system';
     var resolved = mode === 'system'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
       : mode;
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme', '${DEFAULT_THEME}');
     document.documentElement.setAttribute('data-mode', resolved);
   } catch (e) {
     document.documentElement.setAttribute('data-theme', '${DEFAULT_THEME}');

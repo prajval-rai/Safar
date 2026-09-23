@@ -18,6 +18,7 @@ from rewards.services import (
     seed_achievements,
 )
 from trips.models import Activity, Day, Trip, TripMember
+from trips.regional_theme import theme_for_trip
 
 User = get_user_model()
 
@@ -522,3 +523,130 @@ class DestinationPlanningTests(SafarTestCase):
             f"/api/trips/{self.trip.id}/", {"latitude": 1, "longitude": 1}, format="json"
         )
         self.assertEqual(response.status_code, 403)
+
+
+class RegionalThemeTests(SafarTestCase):
+    """A trip's colour theme follows its destination — city first, then
+    state — and is the same for every member, including someone who only
+    just joined. self.trip starts out destined for "Goa" (see SafarTestCase),
+    so tests that only care about state-level fallback point it elsewhere
+    first, to keep Goa's own city-level match out of the way."""
+
+    def test_known_cities_get_their_own_specific_theme(self):
+        self.assertEqual(theme_for_trip("Mumbai", "Maharashtra"), "metro")
+        self.assertEqual(theme_for_trip("Jaipur", "Rajasthan"), "pinkcity")
+        self.assertEqual(theme_for_trip("Goa", "Goa"), "beach")
+        self.assertEqual(theme_for_trip("Coorg", "Karnataka"), "forest")
+
+    def test_a_city_match_wins_over_its_state_level_theme(self):
+        # Maharashtra alone is "peacock", but Mumbai specifically is "metro".
+        self.assertEqual(theme_for_trip("Mumbai", "Maharashtra"), "metro")
+        self.assertEqual(theme_for_trip("Pune, Maharashtra", "Maharashtra"), "metro")
+
+    def test_known_states_map_to_the_expected_theme(self):
+        self.assertEqual(theme_for_trip("Somewhere", "Kerala"), "backwater")
+        self.assertEqual(theme_for_trip("Somewhere", "Rajasthan"), "terracotta")
+        self.assertEqual(theme_for_trip("Somewhere", "Himachal Pradesh"), "himalaya")
+        self.assertEqual(theme_for_trip("Somewhere", "West Bengal"), "peacock")
+
+    def test_matching_is_case_and_space_insensitive(self):
+        self.assertEqual(theme_for_trip("  mumbai ", ""), "metro")
+        self.assertEqual(theme_for_trip("Somewhere", "  kerala "), "backwater")
+        self.assertEqual(theme_for_trip("Somewhere", "RAJASTHAN"), "terracotta")
+
+    def test_unknown_or_blank_destination_falls_back_to_the_site_default(self):
+        self.assertEqual(theme_for_trip("Narnia", "Narnia"), "saffron")
+        self.assertEqual(theme_for_trip("", ""), "saffron")
+        self.assertEqual(theme_for_trip(None, None), "saffron")
+
+    def test_a_place_name_containing_a_keyword_is_not_a_false_match(self):
+        # Goalpara (Assam) contains the letters "goa" but isn't Goa — a whole
+        # word/whole place match is required, not a raw substring.
+        self.assertEqual(theme_for_trip("Goalpara", "Assam"), "himalaya")
+
+    def test_trip_response_carries_its_theme(self):
+        self.trip.destination = "Somewhere"
+        self.trip.region = "Kerala"
+        self.trip.save()
+        response = self.client_for(self.owner).get(f"/api/trips/{self.trip.id}/")
+        self.assertEqual(response.data["theme"], "backwater")
+
+    def test_theme_follows_the_destination_when_it_changes(self):
+        self.trip.destination = "Somewhere"
+        self.trip.region = "Goa"
+        self.trip.save()
+        self.assertEqual(self.trip.theme, "beach")
+        self.trip.destination = "Somewhere Else"
+        self.trip.region = "Punjab"
+        self.trip.save()
+        self.assertEqual(self.trip.theme, "peacock")
+
+    def test_someone_who_joins_by_code_sees_the_same_theme(self):
+        self.trip.destination = "Somewhere"
+        self.trip.region = "Rajasthan"
+        self.trip.save()
+        joined = self.client_for(self.stranger).post(
+            "/api/trips/join/", {"code": self.trip.join_code}, format="json"
+        )
+        self.assertEqual(joined.status_code, 200)
+
+        seen_by_stranger = self.client_for(self.stranger).get(f"/api/trips/{self.trip.id}/")
+        seen_by_owner = self.client_for(self.owner).get(f"/api/trips/{self.trip.id}/")
+        self.assertEqual(seen_by_stranger.data["theme"], "terracotta")
+        self.assertEqual(seen_by_stranger.data["theme"], seen_by_owner.data["theme"])
+
+
+class ActiveThemeTests(SafarTestCase):
+    """/api/theme/active/ — the ambient theme the whole app wears: the live
+    trip's, else the next upcoming one's, else the site default."""
+
+    def test_a_live_trip_sets_the_ambient_theme(self):
+        self.trip.destination = "Mumbai"
+        self.trip.region = "Maharashtra"
+        self.trip.status = "active"
+        self.trip.save()
+
+        response = self.client_for(self.owner).get("/api/theme/active/")
+        self.assertEqual(response.data["theme"], "metro")
+        self.assertEqual(response.data["source"], "live")
+        self.assertEqual(response.data["trip_title"], self.trip.title)
+
+    def test_with_nothing_live_the_next_upcoming_trip_sets_it(self):
+        # Genuinely in the future — today's date falling inside a trip's
+        # range counts as "live" even from "planning" (same rule home_feed
+        # uses), so this has to start later to actually test "upcoming".
+        self.trip.destination = "Jaipur"
+        self.trip.region = "Rajasthan"
+        self.trip.start_date = date.today() + timedelta(days=10)
+        self.trip.end_date = date.today() + timedelta(days=12)
+        self.trip.save()
+
+        response = self.client_for(self.owner).get("/api/theme/active/")
+        self.assertEqual(response.data["theme"], "pinkcity")
+        self.assertEqual(response.data["source"], "upcoming")
+
+    def test_with_no_trips_at_all_it_falls_back_to_the_default(self):
+        Trip.objects.all().delete()
+        response = self.client_for(self.owner).get("/api/theme/active/")
+        self.assertEqual(response.data["theme"], "saffron")
+        self.assertEqual(response.data["source"], "default")
+        self.assertIsNone(response.data["trip_title"])
+
+    def test_a_live_trip_takes_priority_over_an_earlier_upcoming_one(self):
+        self.trip.destination = "Jaipur"
+        self.trip.region = "Rajasthan"
+        self.trip.save()
+        live = Trip.objects.create(
+            title="Goa Now",
+            destination="Goa",
+            region="Goa",
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=2),
+            status="active",
+            created_by=self.owner,
+        )
+        TripMember.objects.create(trip=live, user=self.owner, role="owner")
+
+        response = self.client_for(self.owner).get("/api/theme/active/")
+        self.assertEqual(response.data["theme"], "beach")
+        self.assertEqual(response.data["source"], "live")

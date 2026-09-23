@@ -3,8 +3,12 @@
 /* ---------------------------------------------------------------------------
    Safar theme system
 
-   Five Indian-inspired palettes, each with a light and a dark version.
+   Nine Indian-inspired palettes, each with a light and a dark version.
    <html data-theme="saffron" data-mode="light">
+
+   Not a personal setting any more — the active one comes from wherever
+   you're travelling (see trips.regional_theme on the backend and
+   useAmbientTheme on the frontend), so the app looks like the trip you're on.
 
    Every colour is a semantic token, so components never hardcode a hex value
    and switching themes needs no component changes.
@@ -298,6 +302,238 @@
   --danger-soft: #3a1818;
 
   --ring: #8b9cf0;
+  --shadow: 0 0 0;
+}
+
+[data-theme="beach"] {
+  --canvas: #faf8f2;
+  --surface: #ffffff;
+  --raised: #eef6f2;
+  --line: #d3e8e0;
+  --ink: #163430;
+  --muted: #587871;
+
+  --brand: #0891b2; /* ocean turquoise */
+  --brand-strong: #0e7490;
+  --brand-bright: #22d3ee;
+  --brand-soft: #dff5f9;
+  --on-brand: #ffffff;
+
+  --accent: #d97706; /* sunset gold */
+  --accent-soft: #fdecd2;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #ddf3e6;
+  --warn: #a16207;
+  --warn-soft: #faeed0;
+  --danger: #b91c1c;
+  --danger-soft: #fbe6e6;
+
+  --ring: #0891b2;
+  --shadow: 4 20 24;
+}
+
+[data-theme="beach"][data-mode="dark"] {
+  --canvas: #081a1c;
+  --surface: #0f2528;
+  --raised: #143036;
+  --line: #1e434a;
+  --ink: #e3f4f5;
+  --muted: #8fb8bb;
+
+  --brand: #22d3ee;
+  --brand-strong: #67e8f9;
+  --brand-bright: #a5f3fc;
+  --brand-soft: #0d3338;
+  --on-brand: #052224;
+
+  --accent: #fbbf24;
+  --accent-soft: #332611;
+  --on-accent: #1f1704;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #22d3ee;
+  --shadow: 0 0 0;
+}
+
+[data-theme="pinkcity"] {
+  --canvas: #fdf5f6;
+  --surface: #ffffff;
+  --raised: #fbe9ec;
+  --line: #f0cdd3;
+  --ink: #351b21;
+  --muted: #85606a;
+
+  --brand: #be185d; /* Jaipur's pink sandstone */
+  --brand-strong: #9d174d;
+  --brand-bright: #ec4899;
+  --brand-soft: #fce4ee;
+  --on-brand: #ffffff;
+
+  --accent: #b45309; /* royal gold */
+  --accent-soft: #fbeedc;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #ddf2e3;
+  --warn: #a16207;
+  --warn-soft: #f9eed4;
+  --danger: #b91c1c;
+  --danger-soft: #fbe7e7;
+
+  --ring: #be185d;
+  --shadow: 24 6 14;
+}
+
+[data-theme="pinkcity"][data-mode="dark"] {
+  --canvas: #1c1013;
+  --surface: #271619;
+  --raised: #331e23;
+  --line: #452832;
+  --ink: #fbe7ec;
+  --muted: #cf9baa;
+
+  --brand: #f472b6;
+  --brand-strong: #f9a8d4;
+  --brand-bright: #fbcfe8;
+  --brand-soft: #3a1c26;
+  --on-brand: #250510;
+
+  --accent: #e0b64a;
+  --accent-soft: #33290f;
+  --on-accent: #201804;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #f472b6;
+  --shadow: 0 0 0;
+}
+
+[data-theme="metro"] {
+  --canvas: #f6f7fa;
+  --surface: #ffffff;
+  --raised: #eceef4;
+  --line: #d7dbe8;
+  --ink: #171a2b;
+  --muted: #5b6180;
+
+  --brand: #1e293b; /* cosmopolitan charcoal-navy */
+  --brand-strong: #0f172a;
+  --brand-bright: #475569;
+  --brand-soft: #e7e9f0;
+  --on-brand: #ffffff;
+
+  --accent: #7c3aed; /* electric violet, city-lights at night */
+  --accent-soft: #ede9fe;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #ddf2e3;
+  --warn: #a16207;
+  --warn-soft: #f9eed4;
+  --danger: #b91c1c;
+  --danger-soft: #fbe7e7;
+
+  --ring: #1e293b;
+  --shadow: 10 12 20;
+}
+
+[data-theme="metro"][data-mode="dark"] {
+  --canvas: #0b0d15;
+  --surface: #12141f;
+  --raised: #191c2b;
+  --line: #262a3d;
+  --ink: #eef0f8;
+  --muted: #9498b5;
+
+  --brand: #38bdf8;
+  --brand-strong: #7dd3fc;
+  --brand-bright: #bae6fd;
+  --brand-soft: #132436;
+  --on-brand: #041016;
+
+  --accent: #c084fc;
+  --accent-soft: #2c1f3d;
+  --on-accent: #180f22;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #38bdf8;
+  --shadow: 0 0 0;
+}
+
+[data-theme="forest"] {
+  --canvas: #f5f7f0;
+  --surface: #ffffff;
+  --raised: #e9efe0;
+  --line: #d0dcc1;
+  --ink: #1b2414;
+  --muted: #566146;
+
+  --brand: #365314; /* deep, wild forest green */
+  --brand-strong: #263c0d;
+  --brand-bright: #4d7c0f;
+  --brand-soft: #e3ecd4;
+  --on-brand: #ffffff;
+
+  --accent: #92400e; /* earthy bark and soil */
+  --accent-soft: #fbe8d4;
+  --on-accent: #ffffff;
+
+  --success: #15803d;
+  --success-soft: #ddf2e3;
+  --warn: #a16207;
+  --warn-soft: #f9eed4;
+  --danger: #b91c1c;
+  --danger-soft: #fbe7e7;
+
+  --ring: #365314;
+  --shadow: 14 20 4;
+}
+
+[data-theme="forest"][data-mode="dark"] {
+  --canvas: #10150a;
+  --surface: #171d0f;
+  --raised: #1f2814;
+  --line: #2c391c;
+  --ink: #eaf1de;
+  --muted: #a7b795;
+
+  --brand: #84cc16;
+  --brand-strong: #a3e635;
+  --brand-bright: #bef264;
+  --brand-soft: #24350f;
+  --on-brand: #0c1405;
+
+  --accent: #fb923c;
+  --accent-soft: #362512;
+  --on-accent: #1f1206;
+
+  --success: #4ade80;
+  --success-soft: #12301d;
+  --warn: #fbbf24;
+  --warn-soft: #322612;
+  --danger: #f87171;
+  --danger-soft: #3a1818;
+
+  --ring: #84cc16;
   --shadow: 0 0 0;
 }
 
