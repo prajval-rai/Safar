@@ -391,7 +391,10 @@ export type NotificationKind =
   | "trip_started"
   | "trip_reminder"
   | "activity_reminder"
+  | "trip_cancelled"
+  | "trip_completed"
   | "track_used"
+  | "track_published"
   | "new_follower"
   | "achievement_unlocked";
 

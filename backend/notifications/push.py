@@ -25,12 +25,16 @@ def _vapid_claims() -> dict:
     return {"sub": f"mailto:{settings.VAPID_CLAIM_EMAIL}"}
 
 
-def push_to_user(user, title: str, body: str, *, url: str = "/") -> None:
+def push_to_user(user, title: str, body: str, *, url: str = "/", tag: str | None = None) -> None:
     """Pushes to every device `user` has subscribed on. Best-effort: a
     subscription the push service no longer recognises (uninstalled,
     permission revoked, browser data cleared…) is quietly deleted rather
     than retried forever; any other failure is logged and skipped, since one
-    bad device should never stop the notification reaching the others."""
+    bad device should never stop the notification reaching the others.
+
+    `tag` groups related pushes so a burst of updates about the same trip
+    replaces the last one on the lock screen instead of piling up — pass the
+    same tag (e.g. "trip-<id>") for anything about the same trip."""
     if not push_enabled():
         return
 
@@ -39,7 +43,7 @@ def push_to_user(user, title: str, body: str, *, url: str = "/") -> None:
     from .models import PushSubscription
 
     subscriptions = PushSubscription.objects.filter(user=user)
-    payload = json.dumps({"title": title, "body": body, "url": url})
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
 
     for sub in subscriptions:
         try:

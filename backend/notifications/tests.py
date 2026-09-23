@@ -6,9 +6,10 @@ from django.test import TestCase, override_settings
 from pywebpush import WebPushException
 from rest_framework.test import APIClient
 
+from accounts.models import Follow
 from explore.models import Track
 from rewards.services import evaluate_achievements, seed_achievements
-from trips.models import Day, Trip, TripMember
+from trips.models import Activity, Day, Expense, Trip, TripMember
 
 from .models import Notification, PushSubscription
 
@@ -84,6 +85,48 @@ class NotificationTestCase(TestCase):
         self.assertTrue(Notification.objects.filter(user=self.ann, kind="trip_started").exists())
         self.assertFalse(Notification.objects.filter(user=self.me, kind="trip_started").exists())
 
+    # --- trip cancelled -----------------------------------------------------
+
+    def test_cancelling_a_trip_notifies_the_other_members(self):
+        trip = self.make_trip(self.me)
+        TripMember.objects.create(trip=trip, user=self.ann, role="member")
+        self.client_for(self.me).post(f"/api/trips/{trip.id}/cancel/")
+        note = Notification.objects.get(user=self.ann, kind="trip_cancelled")
+        self.assertEqual(note.actor_id, self.me.id)
+        self.assertEqual(note.trip_id, trip.id)
+
+    def test_cancelling_does_not_self_notify_the_canceller(self):
+        trip = self.make_trip(self.me)
+        self.client_for(self.me).post(f"/api/trips/{trip.id}/cancel/")
+        self.assertFalse(Notification.objects.filter(user=self.me, kind="trip_cancelled").exists())
+
+    # --- trip completed ------------------------------------------------------
+
+    def test_completing_the_last_activity_notifies_everyone_with_an_expense_summary(self):
+        trip = self.make_trip(self.me)
+        TripMember.objects.create(trip=trip, user=self.ann, role="member")
+        day = trip.days.first()
+        activity = Activity.objects.create(day=day, title="Beach", order=0)
+        Expense.objects.create(trip=trip, title="Hotel", amount=2000, paid_by=self.me)
+
+        self.client_for(self.me).post(f"/api/activities/{activity.id}/complete/")
+
+        # Split two ways: ann owes 1000, me (who paid) gets 1000 back.
+        note_ann = Notification.objects.get(user=self.ann, kind="trip_completed")
+        note_me = Notification.objects.get(user=self.me, kind="trip_completed")
+        self.assertIn("₹1000", note_ann.body)
+        self.assertIn("₹1000", note_me.body)
+
+    def test_completing_a_trip_with_no_expenses_says_so_plainly(self):
+        trip = self.make_trip(self.me)
+        day = trip.days.first()
+        activity = Activity.objects.create(day=day, title="Beach", order=0)
+
+        self.client_for(self.me).post(f"/api/activities/{activity.id}/complete/")
+
+        note = Notification.objects.get(user=self.me, kind="trip_completed")
+        self.assertIn("No expenses", note.body)
+
     # --- follow -----------------------------------------------------------
 
     def test_following_someone_notifies_them(self):
@@ -123,6 +166,27 @@ class NotificationTestCase(TestCase):
             f"/api/explore/tracks/{track.id}/use/", {"start_date": str(date.today() + timedelta(days=10))}
         )
         self.assertFalse(Notification.objects.filter(user=self.me).exists())
+
+    # --- track published -----------------------------------------------------
+
+    def test_publishing_a_track_notifies_followers(self):
+        Follow.objects.create(follower=self.ann, following=self.me)
+        trip = self.make_trip(self.me)
+
+        response = self.client_for(self.me).post(
+            "/api/explore/tracks/from-trip/", {"trip": str(trip.id)}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 201)
+        note = Notification.objects.get(user=self.ann, kind="track_published")
+        self.assertEqual(note.actor_id, self.me.id)
+
+    def test_publishing_a_track_does_not_notify_non_followers(self):
+        trip = self.make_trip(self.me)
+        self.client_for(self.me).post(
+            "/api/explore/tracks/from-trip/", {"trip": str(trip.id)}, format="json"
+        )
+        self.assertFalse(Notification.objects.filter(user=self.bob, kind="track_published").exists())
 
     # --- achievement unlocked ---------------------------------------------
 

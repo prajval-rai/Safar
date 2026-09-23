@@ -10,7 +10,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from accounts.serializers import UserSerializer
+from accounts.serializers import UserMiniSerializer, UserSerializer
 from notifications.services import notify, notify_many
 from rewards.services import (
     CANCEL_PENALTY,
@@ -53,6 +53,36 @@ from .serializers import (
 
 def trips_for(user):
     return Trip.objects.filter(members__user=user).distinct()
+
+
+def trip_expense_balances(trip) -> list[dict]:
+    """Per-member paid/share/balance for a trip's logged expenses — reused
+    by the expenses endpoint itself and by the trip-completed notification's
+    summary. `user` is the raw model here, not yet serialised, since the two
+    callers want different shapes from it (an API response vs. plain text)."""
+    expenses = trip.expenses.select_related("paid_by")
+    total = expenses.aggregate(total=Sum("amount"))["total"] or 0
+    head_count = max(trip.members.count(), 1)
+    share = round(total / head_count)
+    balances = []
+    for member in trip.members.select_related("user"):
+        paid = expenses.filter(paid_by=member.user).aggregate(total=Sum("amount"))["total"] or 0
+        balances.append({"user": member.user, "paid": paid, "share": share, "balance": paid - share})
+    return balances
+
+
+def expense_summary_line(trip) -> str:
+    """'Rahul gets ₹800 back, Sneha owes ₹800' — or a clean fallback when
+    nothing was ever logged. Used in the trip-completed push/notification,
+    where a full breakdown doesn't fit."""
+    balances = trip_expense_balances(trip)
+    if not any(b["paid"] for b in balances):
+        return "No expenses were logged for this trip."
+    owed_back = [b for b in balances if b["balance"] > 0]
+    owes = [b for b in balances if b["balance"] < 0]
+    parts = [f"{b['user'].name.split()[0]} gets ₹{b['balance']} back" for b in owed_back]
+    parts += [f"{b['user'].name.split()[0]} owes ₹{-b['balance']}" for b in owes]
+    return ", ".join(parts) + "." if parts else "Everyone's even — no one owes anything."
 
 
 def ensure_can_go_live(trip, user):
@@ -412,6 +442,15 @@ class TripViewSet(viewsets.ModelViewSet):
                 kind="bonus",
                 trip=trip,
             )
+        others = [m.user for m in trip.members.exclude(user=request.user).select_related("user")]
+        notify_many(
+            others,
+            "trip_cancelled",
+            f"{trip.title} was cancelled",
+            actor=request.user,
+            body=f"{request.user.name} called it off.",
+            trip=trip,
+        )
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
@@ -439,24 +478,15 @@ class TripViewSet(viewsets.ModelViewSet):
 
         expenses = trip.expenses.select_related("paid_by")
         total = expenses.aggregate(total=Sum("amount"))["total"] or 0
-        head_count = max(trip.members.count(), 1)
-        per_person = []
-        for member in trip.members.select_related("user"):
-            paid = expenses.filter(paid_by=member.user).aggregate(total=Sum("amount"))["total"] or 0
-            per_person.append(
-                {
-                    "user": TripMemberSerializer(member).data["user"],
-                    "paid": paid,
-                    "share": round(total / head_count),
-                    "balance": paid - round(total / head_count),
-                }
-            )
+        balances = trip_expense_balances(trip)
         return Response(
             {
                 "results": ExpenseSerializer(expenses, many=True).data,
                 "total": total,
-                "per_person_share": round(total / head_count),
-                "balances": per_person,
+                "per_person_share": balances[0]["share"] if balances else 0,
+                "balances": [
+                    {**b, "user": UserMiniSerializer(b["user"]).data} for b in balances
+                ],
             }
         )
 
@@ -687,6 +717,14 @@ class ActivityViewSet(viewsets.ModelViewSet):
             )
             if trip.created_by_id == request.user.id:
                 xp += ORGANIZER_COMPLETE_BONUS
+            members = [m.user for m in trip.members.select_related("user")]
+            notify_many(
+                members,
+                "trip_completed",
+                f"{trip.title} is complete! 🎉",
+                body=expense_summary_line(trip),
+                trip=trip,
+            )
         elif trip.status == "planning":
             trip.status = "active"
             trip.save(update_fields=["status"])

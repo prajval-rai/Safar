@@ -8,11 +8,14 @@ import {
   Home,
   Map as MapIcon,
   MessageSquare,
+  PartyPopper,
   PlayCircle,
+  Rss,
   Route,
   Trophy,
   UserPlus,
   User as UserIcon,
+  XCircle,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -198,7 +201,10 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_started: PlayCircle,
   trip_reminder: BellRing,
   activity_reminder: Clock,
+  trip_cancelled: XCircle,
+  trip_completed: PartyPopper,
   track_used: Route,
+  track_published: Rss,
   new_follower: UserPlus,
   achievement_unlocked: Trophy,
 };

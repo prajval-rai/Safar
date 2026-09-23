@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.serializers import UserSerializer
-from notifications.services import notify
+from notifications.services import notify, notify_many
 from rewards.services import TRACK_PUBLISH_XP, award_xp, evaluate_achievements
 from trips.models import Activity, Day, Trip, TripMember
 from trips.serializers import TripDetailSerializer
@@ -199,6 +199,17 @@ def track_from_trip(request):
     award_xp(request.user, TRACK_PUBLISH_XP, f"Published '{track.title}'", kind="track", trip=trip)
     unlocked = evaluate_achievements(request.user, trip=trip)
     request.user.refresh_from_db()
+
+    if track.is_published:
+        followers = [f.follower for f in request.user.follows_in.select_related("follower")]
+        notify_many(
+            followers,
+            "track_published",
+            f"{request.user.name} published a new track: {track.title}",
+            actor=request.user,
+            body=f"{track.destination} · {track.days} {'day' if track.days == 1 else 'days'}.",
+            track=track,
+        )
     return Response(
         {
             "track": TrackDetailSerializer(track, context={"request": request}).data,

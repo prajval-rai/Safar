@@ -24,12 +24,17 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
+      // A real branded mark, not the browser's own generic icon — icon is
+      // the full-colour badge shown in the notification body; badge is a
+      // plain white silhouette Android tints itself for the status bar.
+      icon: "/icons/notification-icon.png",
+      badge: "/icons/notification-badge.png",
       data: { url: payload.url || "/" },
-      // Two pushes for the same trip/thing replace each other instead of
-      // piling up, once we start passing a real tag.
+      vibrate: [120, 60, 120],
+      // Two pushes about the same trip replace each other instead of
+      // piling up, when the backend sends a tag (it does, per trip).
       tag: payload.tag || undefined,
+      renotify: Boolean(payload.tag),
     }),
   );
 });
