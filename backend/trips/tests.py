@@ -9,7 +9,14 @@ from rest_framework.test import APIClient
 
 from accounts.models import level_from_xp
 from rewards.models import Achievement, XPTransaction
-from rewards.services import DAY_COMPLETE_BONUS, TRIP_COMPLETE_BONUS, seed_achievements
+from rewards.services import (
+    CANCEL_PENALTY,
+    DAY_COMPLETE_BONUS,
+    ORGANIZER_COMPLETE_BONUS,
+    TRIP_COMPLETE_BONUS,
+    TRIP_CREATE_XP,
+    seed_achievements,
+)
 from trips.models import Activity, Day, Trip, TripMember
 
 User = get_user_model()
@@ -85,11 +92,67 @@ class XPTests(SafarTestCase):
         response = client.post(f"/api/activities/{self.a3.id}/complete/")
 
         self.assertTrue(response.data["trip_completed"])
-        # activity + its day bonus + the trip bonus
-        self.assertEqual(response.data["xp_awarded"], 30 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS)
+        # activity + its day bonus + the trip bonus + the organiser bonus,
+        # since self.owner (who tapped the last stop) is also the organiser.
+        self.assertEqual(
+            response.data["xp_awarded"],
+            30 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS,
+        )
 
         self.trip.refresh_from_db()
         self.assertEqual(self.trip.status, "completed")
+
+    def test_organizer_gets_a_bonus_even_when_someone_else_finishes_the_trip(self):
+        # The friend taps the very last stop; the owner still organised it.
+        client = self.client_for(self.friend)
+        client.post(f"/api/activities/{self.a1.id}/complete/")
+        client.post(f"/api/activities/{self.a2.id}/complete/")
+        client.post(f"/api/activities/{self.a3.id}/complete/")
+
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, ORGANIZER_COMPLETE_BONUS)
+
+    def test_cancelling_an_active_trip_costs_the_organizer_xp(self):
+        client = self.client_for(self.owner)
+        # Starts the trip (moves it out of "planning").
+        client.post(f"/api/activities/{self.a1.id}/complete/")
+        before = self.owner.xp
+
+        response = client.post(f"/api/trips/{self.trip.id}/cancel/")
+        self.assertEqual(response.status_code, 200)
+
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, before + CANCEL_PENALTY)
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.status, "cancelled")
+
+    def test_cancelling_a_trip_still_in_planning_is_free(self):
+        client = self.client_for(self.owner)
+        before = self.owner.xp
+
+        response = client.post(f"/api/trips/{self.trip.id}/cancel/")
+        self.assertEqual(response.status_code, 200)
+
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, before)
+
+    def test_creating_a_trip_rewards_the_initiative(self):
+        response = self.client_for(self.owner).post(
+            "/api/trips/",
+            {
+                "title": "Manali Trip",
+                "destination": "Manali",
+                "start_date": str(date.today()),
+                "end_date": str(date.today() + timedelta(days=3)),
+                "trip_type": "friends",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["xp_awarded"], TRIP_CREATE_XP)
+
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, TRIP_CREATE_XP)
 
     def test_undo_takes_the_xp_back(self):
         client = self.client_for(self.owner)

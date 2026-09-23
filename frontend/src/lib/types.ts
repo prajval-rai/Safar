@@ -40,6 +40,9 @@ export interface User extends UserMini {
   theme: ThemeId;
   color_mode: ColorMode;
   date_joined: string;
+  /** Whether a recovery question is set — never the question code or answer. */
+  has_security_question: boolean;
+  security_question_label: string;
 }
 
 export type ActivityStatus = "planned" | "completed" | "skipped";
@@ -312,12 +315,20 @@ export interface XPTransaction {
   created_at: string;
 }
 
+/** One entry in the "How XP works" rulebook — what earns it, or costs it. */
+export interface XPRule {
+  icon: string;
+  title: string;
+  detail: string;
+}
+
 export interface RewardsPayload {
   user: User;
   achievements: AchievementRow[];
   unlocked_count: number;
   total_count: number;
   recent: XPTransaction[];
+  xp_rules: XPRule[];
 }
 
 export interface HomePayload {
@@ -401,6 +412,12 @@ export interface PickedPlace {
   radius_km: number;
   /** For display only — the URL carries our key, so it is never saved. */
   photo_url?: string | null;
+}
+
+/** One option in the fixed catalog for account-recovery questions. */
+export interface SecurityQuestion {
+  value: string;
+  label: string;
 }
 
 /** Someone in a followers / following list, or a search result. */

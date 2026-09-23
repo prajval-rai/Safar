@@ -137,12 +137,17 @@ export default function NewTripPage() {
     setBusy(true);
     setError(null);
     try {
-      const created = await api.post<TripDetail>("/api/trips/", {
+      const created = await api.post<TripDetail & { xp_awarded?: number }>("/api/trips/", {
         ...draft,
         title: draft.title.trim() || `${draft.destination} trip`,
       });
       setTrip(created);
       setStep(5);
+      // A small reward just for taking the initiative to plan something —
+      // separate from the bigger bonus that lands once it's actually done.
+      if (created.xp_awarded) {
+        toast(`Trip planned — +${created.xp_awarded} XP for taking the initiative.`);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create the trip.");
     } finally {

@@ -9,6 +9,73 @@ TRIP_COMPLETE_BONUS = 500
 CHECKIN_XP = 10
 MEMORY_XP = 15
 TRACK_PUBLISH_XP = 150
+TRIP_CREATE_XP = 20
+# The organiser earns this on top of TRIP_COMPLETE_BONUS once their trip is
+# fully done — a reward for the initiative of planning it, not just for
+# whoever happened to tap the last stop.
+ORGANIZER_COMPLETE_BONUS = 250
+# Cancelling a trip that's already under way (people are on it, stops are
+# being completed) costs the organiser XP. Cancelling one still in planning
+# is free — changing your mind before anyone's set off isn't a penalty.
+CANCEL_PENALTY = -75
+
+# The rulebook behind every number above, in the order they'd apply across a
+# trip's life — powers the "How XP works" info tag on the Rewards screen, so
+# there's exactly one place these numbers are written down.
+XP_RULES = [
+    {
+        "icon": "🧭",
+        "title": "Plan a trip",
+        "detail": f"+{TRIP_CREATE_XP} XP for starting a new trip as its organiser — initiative counts.",
+    },
+    {
+        "icon": "📍",
+        "title": "Complete a stop",
+        "detail": "Whatever that activity is worth (usually 10–40 XP) for marking it done.",
+    },
+    {
+        "icon": "🌅",
+        "title": "Finish a full day",
+        "detail": f"+{DAY_COMPLETE_BONUS} XP bonus once every stop planned for that day is done.",
+    },
+    {
+        "icon": "📸",
+        "title": "Add a memory",
+        "detail": f"+{MEMORY_XP} XP for uploading a photo from the trip.",
+    },
+    {
+        "icon": "🗺️",
+        "title": "Check in at a place",
+        "detail": f"+{CHECKIN_XP} XP for confirming you've actually arrived somewhere.",
+    },
+    {
+        "icon": "🏁",
+        "title": "Complete the whole trip",
+        "detail": f"+{TRIP_COMPLETE_BONUS} XP bonus for whoever completes the trip's very last stop.",
+    },
+    {
+        "icon": "👑",
+        "title": "Organise it to the end",
+        "detail": (
+            f"+{ORGANIZER_COMPLETE_BONUS} XP extra for the trip's organiser once the whole trip "
+            "is completed — on top of the usual completion bonus, even if someone else tapped "
+            "the last stop."
+        ),
+    },
+    {
+        "icon": "✍️",
+        "title": "Publish a track",
+        "detail": f"+{TRACK_PUBLISH_XP} XP for turning a finished trip into a track others can follow.",
+    },
+    {
+        "icon": "⚠️",
+        "title": "Cancel a trip you've already started",
+        "detail": (
+            f"{CANCEL_PENALTY} XP for the organiser if a trip that's already active gets "
+            "cancelled. Cancelling one that's still in planning costs nothing."
+        ),
+    },
+]
 
 
 @transaction.atomic

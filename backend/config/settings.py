@@ -84,6 +84,12 @@ if os.environ.get("DATABASE_URL"):
 
 AUTH_USER_MODEL = "accounts.User"
 
+# The OAuth 2.0 Client ID from Google Cloud Console (Credentials → Web
+# application). Public by design — it's sent to the browser anyway — but
+# still comes from the environment so dev/prod can use different ones.
+# Without it, "Sign in with Google" is simply switched off (see accounts.views).
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -119,6 +125,10 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    # Only the forgot-password endpoints use this scope (see accounts.views.
+    # ResetAttemptThrottle) — they're unauthenticated by nature, so this is
+    # what actually stops someone from machine-guessing usernames or answers.
+    "DEFAULT_THROTTLE_RATES": {"password_reset": "10/hour"},
 }
 
 SIMPLE_JWT = {

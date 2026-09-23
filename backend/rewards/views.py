@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from accounts.serializers import UserMiniSerializer, UserSerializer
 
 from .models import XPTransaction
-from .services import achievement_progress
+from .services import XP_RULES, achievement_progress
 
 
 class XPTransactionSerializer(serializers.ModelSerializer):
@@ -30,6 +30,7 @@ def my_rewards(request):
             "unlocked_count": sum(1 for a in achievements if a["unlocked"]),
             "total_count": len(achievements),
             "recent": XPTransactionSerializer(recent, many=True).data,
+            "xp_rules": XP_RULES,
         }
     )
 

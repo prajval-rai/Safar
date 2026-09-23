@@ -1,9 +1,11 @@
 """Following, public profiles and the travel map."""
 
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import Follow
@@ -199,6 +201,233 @@ class TravelMapTests(SocialTestCase):
         for place in ("Goa", "Jaipur", "Leh"):
             self.make_trip(self.me, place)
         self.assertEqual(_stats(self.me)["areas_covered"], 3)
+
+
+class SecurityQuestionTests(SocialTestCase):
+    """Account recovery via a saved question/answer instead of email."""
+
+    def setUp(self):
+        super().setUp()
+        # The reset endpoints are throttled by IP; start each test with a
+        # clean counter so tests can't fail each other by sharing a budget.
+        cache.clear()
+
+    def test_answers_match_regardless_of_case_or_spacing(self):
+        self.me.security_question = "pet_name"
+        self.me.set_security_answer("  Simba ")
+        self.me.save()
+        self.assertTrue(self.me.check_security_answer("simba"))
+        self.assertTrue(self.me.check_security_answer("SIMBA"))
+        self.assertFalse(self.me.check_security_answer("max"))
+
+    def test_the_raw_answer_is_never_stored(self):
+        self.me.set_security_answer("Simba")
+        self.assertNotIn("Simba", self.me.security_answer_hash)
+        self.assertNotIn("simba", self.me.security_answer_hash)
+
+    def test_setting_a_security_question_from_settings(self):
+        response = self.client_for(self.me).post(
+            "/api/auth/security-question/",
+            {"question": "pet_name", "answer": "Simba"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["has_security_question"])
+        self.assertEqual(response.data["security_question_label"], "What was the name of your first pet?")
+
+        self.me.refresh_from_db()
+        self.assertTrue(self.me.check_security_answer("simba"))
+
+    def test_signing_up_with_a_security_question(self):
+        response = APIClient().post(
+            "/api/auth/register/",
+            {
+                "username": "newbie",
+                "password": "correcthorsebattery9",
+                "display_name": "New Traveller",
+                "security_question": "birth_city",
+                "security_answer": "Pune",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(username="newbie")
+        self.assertTrue(user.check_security_answer("pune"))
+
+    def test_signing_up_with_a_question_but_no_answer_is_rejected(self):
+        response = APIClient().post(
+            "/api/auth/register/",
+            {
+                "username": "newbie",
+                "password": "correcthorsebattery9",
+                "display_name": "New Traveller",
+                "security_question": "birth_city",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_reset_lookup_does_not_reveal_whether_a_username_exists(self):
+        client = APIClient()
+        # No question set for self.me at all yet.
+        no_question = client.post("/api/auth/reset/question/", {"username": "me"}, format="json")
+        unknown = client.post("/api/auth/reset/question/", {"username": "nobody-here"}, format="json")
+        self.assertEqual(no_question.data, unknown.data)
+        self.assertFalse(no_question.data["available"])
+
+    def test_reset_lookup_returns_the_question_once_set(self):
+        self.me.security_question = "favourite_food"
+        self.me.set_security_answer("Biryani")
+        self.me.save()
+        response = APIClient().post("/api/auth/reset/question/", {"username": "me"}, format="json")
+        self.assertTrue(response.data["available"])
+        self.assertEqual(response.data["question"], "What is your favourite food?")
+
+    def test_reset_confirm_with_the_right_answer_changes_the_password(self):
+        self.me.security_question = "favourite_food"
+        self.me.set_security_answer("Biryani")
+        self.me.save()
+
+        response = APIClient().post(
+            "/api/auth/reset/confirm/",
+            {"username": "me", "answer": "biryani", "new_password": "correcthorsebattery9"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.assertTrue(
+            APIClient()
+            .post("/api/auth/token/", {"username": "me", "password": "correcthorsebattery9"}, format="json")
+            .status_code
+            == 200
+        )
+
+    def test_reset_confirm_with_the_wrong_answer_is_rejected_and_password_unchanged(self):
+        self.me.security_question = "favourite_food"
+        self.me.set_security_answer("Biryani")
+        self.me.save()
+
+        response = APIClient().post(
+            "/api/auth/reset/confirm/",
+            {"username": "me", "answer": "pizza", "new_password": "correcthorsebattery9"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.me.refresh_from_db()
+        self.assertTrue(self.me.check_security_answer("biryani"))
+
+    def test_reset_confirm_for_an_unknown_username_gives_the_same_error_shape(self):
+        known_wrong = APIClient().post(
+            "/api/auth/reset/confirm/",
+            {"username": "bob", "answer": "whatever", "new_password": "correcthorsebattery9"},
+            format="json",
+        )
+        unknown = APIClient().post(
+            "/api/auth/reset/confirm/",
+            {"username": "nobody-here", "answer": "whatever", "new_password": "correcthorsebattery9"},
+            format="json",
+        )
+        self.assertEqual(known_wrong.status_code, 400)
+        self.assertEqual(unknown.status_code, 400)
+        self.assertEqual(known_wrong.data.keys(), unknown.data.keys())
+
+
+def google_claims(**overrides):
+    claims = {
+        "iss": "accounts.google.com",
+        "sub": "1234567890",
+        "email": "traveller@gmail.com",
+        "email_verified": True,
+        "name": "Gita Traveller",
+    }
+    claims.update(overrides)
+    return claims
+
+
+@override_settings(GOOGLE_CLIENT_ID="test-client-id.apps.googleusercontent.com")
+class GoogleLoginTests(TestCase):
+    """The token itself is never real here — verify_oauth2_token is mocked,
+    since actually talking to Google isn't something a test should do. What's
+    under test is what Safar does with the claims it gets back."""
+
+    def setUp(self):
+        cache.clear()
+
+    def post(self, credential="fake-token"):
+        return APIClient().post("/api/auth/google/", {"credential": credential}, format="json")
+
+    @patch("accounts.google_auth.id_token.verify_oauth2_token")
+    def test_first_time_google_sign_in_creates_an_account(self, verify):
+        verify.return_value = google_claims()
+        response = self.post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["created"])
+        self.assertIn("access", response.data)
+        user = User.objects.get(google_sub="1234567890")
+        self.assertEqual(user.email, "traveller@gmail.com")
+        self.assertEqual(user.display_name, "Gita Traveller")
+        self.assertFalse(user.has_usable_password())
+
+    @patch("accounts.google_auth.id_token.verify_oauth2_token")
+    def test_returning_google_user_is_recognised_by_sub_not_email(self, verify):
+        verify.return_value = google_claims()
+        first = self.post().data["user"]["id"]
+        second = self.post().data
+
+        self.assertFalse(second["created"])
+        self.assertEqual(second["user"]["id"], first)
+        self.assertEqual(User.objects.filter(google_sub="1234567890").count(), 1)
+
+    @patch("accounts.google_auth.id_token.verify_oauth2_token")
+    def test_an_existing_email_account_is_linked_instead_of_duplicated(self, verify):
+        existing = User.objects.create_user(
+            "gita", password="safar1234", email="traveller@gmail.com", display_name="Gita"
+        )
+        verify.return_value = google_claims()
+        response = self.post()
+
+        self.assertFalse(response.data["created"])
+        self.assertEqual(response.data["user"]["id"], existing.id)
+        existing.refresh_from_db()
+        self.assertEqual(existing.google_sub, "1234567890")
+        # The password they signed up with still works — Google is an
+        # additional way in, not a replacement.
+        self.assertTrue(existing.check_password("safar1234"))
+
+    @patch("accounts.google_auth.id_token.verify_oauth2_token")
+    def test_two_different_people_never_collide_on_username(self, verify):
+        # Different Google accounts (different sub), whose emails just happen
+        # to share the same local part on different providers.
+        verify.return_value = google_claims(sub="1111", email="raj@gmail.com")
+        first = self.post().data["user"]["username"]
+        verify.return_value = google_claims(sub="2222", email="raj@outlook.com")
+        second = self.post().data["user"]["username"]
+
+        self.assertNotEqual(first, second)
+
+    @patch("accounts.google_auth.id_token.verify_oauth2_token")
+    def test_an_unverified_email_is_rejected(self, verify):
+        verify.return_value = google_claims(email_verified=False)
+        response = self.post()
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(User.objects.exists())
+
+    @patch("accounts.google_auth.id_token.verify_oauth2_token")
+    def test_a_token_that_fails_verification_is_rejected(self, verify):
+        verify.side_effect = ValueError("bad signature")
+        response = self.post()
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(User.objects.exists())
+
+    def test_missing_credential_is_a_400_not_a_500(self):
+        response = APIClient().post("/api/auth/google/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    @override_settings(GOOGLE_CLIENT_ID="")
+    def test_google_sign_in_is_off_when_no_client_id_is_configured(self):
+        response = self.post()
+        self.assertEqual(response.status_code, 401)
 
 
 class WritePostTests(SocialTestCase):

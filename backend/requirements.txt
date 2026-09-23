@@ -13,3 +13,14 @@ gunicorn==23.0.0
 whitenoise==6.9.0
 dj-database-url==2.3.0
 psycopg[binary]==3.2.9
+# Verifies Google's "Sign in with Google" ID tokens server-side.
+google-auth==2.35.0
+requests==2.32.3
+cachetools==5.5.2
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.20
+pyasn1==0.6.4
+pyasn1-modules==0.4.2
+rsa==4.9.1
+urllib3==2.8.0

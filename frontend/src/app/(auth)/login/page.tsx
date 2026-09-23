@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { JaliPattern } from "@/components/art/Motif";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
@@ -100,11 +101,25 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <Link
+              href="/forgot-password"
+              className="-mt-2 self-end text-xs font-semibold text-muted hover:text-ink"
+            >
+              Forgot password?
+            </Link>
 
             <Button type="submit" size="lg" fullWidth disabled={busy}>
               {busy ? "Signing you in…" : "Log in"}
             </Button>
           </form>
+
+          <GoogleSignInButton
+            onSignedIn={(signedInUser) => {
+              setUser(signedInUser);
+              router.replace("/");
+            }}
+            onError={(message) => setError(message)}
+          />
 
           <p className="mt-5 text-center text-sm text-muted">
             New here?{" "}

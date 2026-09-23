@@ -13,10 +13,13 @@ from rest_framework.response import Response
 from accounts.serializers import UserSerializer
 from notifications.services import notify, notify_many
 from rewards.services import (
+    CANCEL_PENALTY,
     CHECKIN_XP,
     DAY_COMPLETE_BONUS,
     MEMORY_XP,
+    ORGANIZER_COMPLETE_BONUS,
     TRIP_COMPLETE_BONUS,
+    TRIP_CREATE_XP,
     award_xp,
     evaluate_achievements,
 )
@@ -144,6 +147,8 @@ class TripViewSet(viewsets.ModelViewSet):
                 friend = User.objects.filter(username__iexact=username.strip()).first()
                 if friend and friend != self.request.user:
                     TripMember.objects.get_or_create(trip=trip, user=friend)
+        # Rewards taking the initiative to plan something, not just finishing it.
+        award_xp(self.request.user, TRIP_CREATE_XP, f"Planned {trip.title}", kind="trip", trip=trip)
         self._created_trip = trip
 
     def create(self, request, *args, **kwargs):
@@ -152,7 +157,9 @@ class TripViewSet(viewsets.ModelViewSet):
         self.perform_create(serializer)
         trip = self._created_trip
         detail = TripDetailSerializer(trip, context=self.get_serializer_context())
-        return Response(detail.data, status=status.HTTP_201_CREATED)
+        payload = dict(detail.data)
+        payload["xp_awarded"] = TRIP_CREATE_XP
+        return Response(payload, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         require_member(self.get_object(), self.request.user, editors_only=True)
@@ -383,14 +390,27 @@ class TripViewSet(viewsets.ModelViewSet):
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def cancel(self, request, pk=None):
-        """Call the trip off. Finished trips can't be cancelled; XP already earned stays."""
+        """Call the trip off. Finished trips can't be cancelled. XP anyone
+        already earned for real (completed stops, check-ins…) stays theirs —
+        but if the trip had already started, the organiser who calls it off
+        pays a small XP penalty; cancelling one still in planning is free."""
         trip = self.get_object()
         require_member(trip, request.user, editors_only=True)
         if trip.status == "completed":
             raise ValidationError({"detail": "A finished trip can't be cancelled."})
+        was_active = trip.status == "active"
         trip.status = "cancelled"
         trip.save(update_fields=["status"])
+        if was_active:
+            award_xp(
+                request.user,
+                CANCEL_PENALTY,
+                f"Cancelled {trip.title} after it had started",
+                kind="bonus",
+                trip=trip,
+            )
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
@@ -655,6 +675,17 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 request.user, TRIP_COMPLETE_BONUS, f"Completed {trip.title}", kind="trip", trip=trip
             )
             xp += TRIP_COMPLETE_BONUS
+            # The organiser gets extra for seeing their trip through to the
+            # end — even if someone else on the crew tapped the last stop.
+            award_xp(
+                trip.created_by,
+                ORGANIZER_COMPLETE_BONUS,
+                f"Organised {trip.title} to completion",
+                kind="trip",
+                trip=trip,
+            )
+            if trip.created_by_id == request.user.id:
+                xp += ORGANIZER_COMPLETE_BONUS
         elif trip.status == "planning":
             trip.status = "active"
             trip.save(update_fields=["status"])

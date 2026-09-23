@@ -157,6 +157,8 @@ export async function signup(payload: {
   email?: string;
   home_city?: string;
   avatar_emoji?: string;
+  security_question?: string;
+  security_answer?: string;
 }): Promise<User> {
   const res = await fetch(`${API_BASE}/api/auth/register/`, {
     method: "POST",
@@ -167,4 +169,50 @@ export async function signup(payload: {
   if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
   tokens.set(data.access, data.refresh);
   return data.user as User;
+}
+
+/** One button for both signup and login — the backend decides which one this
+ *  Google account needs and returns the same shape either way. */
+export async function loginWithGoogle(credential: string): Promise<User> {
+  const res = await fetch(`${API_BASE}/api/auth/google/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
+  tokens.set(data.access, data.refresh);
+  return data.user as User;
+}
+
+/**
+ * The forgot-password flow — both steps are unauthenticated by nature (that's
+ * the whole point), so these go straight through `fetch` rather than `api.*`,
+ * same as `login`/`signup` above.
+ */
+export async function fetchResetQuestion(
+  username: string,
+): Promise<{ available: boolean; question?: string }> {
+  const res = await fetch(`${API_BASE}/api/auth/reset/question/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
+  return data;
+}
+
+export async function confirmPasswordReset(payload: {
+  username: string;
+  answer: string;
+  new_password: string;
+}): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/reset/confirm/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
 }

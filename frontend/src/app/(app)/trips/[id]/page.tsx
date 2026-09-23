@@ -587,8 +587,11 @@ function TripSettings({
         <section className="card space-y-3 border-danger/25 p-4">
           <h2 className="text-sm font-bold text-danger">Cancel this trip</h2>
           <p className="text-sm text-muted">
-            Calling it off keeps the plan and any XP already earned, but nothing can be ticked off until you reopen it.
-            {trip.status === "active" ? " It also frees you to start another trip." : ""}
+            Calling it off keeps the plan and any XP already earned for real stops, but nothing can be
+            ticked off until you reopen it.
+            {trip.status === "active"
+              ? " Since this trip is already under way, cancelling it now costs the organiser some XP — cancelling one that's still in planning is free. It also frees you to start another trip."
+              : ""}
           </p>
           <Button variant="danger" fullWidth onClick={() => setConfirmCancel(true)} disabled={busy}>
             Cancel trip
@@ -627,6 +630,12 @@ function TripSettings({
         <p className="text-sm text-muted">
           <b className="text-ink">{trip.title}</b> will be marked as cancelled for all {trip.member_count} travellers.
         </p>
+        {trip.status === "active" ? (
+          <p className="mt-2 text-sm text-danger">
+            <span aria-hidden="true">⚠️</span> This trip has already started, so cancelling it now costs
+            you some XP.
+          </p>
+        ) : null}
       </Sheet>
 
       <Sheet

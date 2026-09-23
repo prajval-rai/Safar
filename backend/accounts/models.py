@@ -1,8 +1,26 @@
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 # XP needed to move from level L to L + 1. Level 8 -> 9 costs 3000 XP.
 LEVEL_STEP = 375
+
+# Fixed catalog a traveller picks one from when setting up account recovery —
+# not free text, so there's always a consistent label to show back to them.
+SECURITY_QUESTIONS = [
+    ("pet_name", "What was the name of your first pet?"),
+    ("birth_city", "In which city were you born?"),
+    ("school_name", "What was the name of your first school?"),
+    ("mother_maiden", "What is your mother's maiden name?"),
+    ("favourite_food", "What is your favourite food?"),
+    ("childhood_friend", "Who was your best friend growing up?"),
+]
+
+
+def _normalise_answer(raw: str) -> str:
+    """Answers match regardless of case or stray spaces — "Simba", "simba "
+    and "SIMBA" are all the same answer to a person, just not to ==."""
+    return raw.strip().lower()
 
 LEVEL_TITLES = [
     (1, "Naya Musafir"),  # new traveller
@@ -55,6 +73,15 @@ class User(AbstractUser):
         choices=[("light", "Light"), ("dark", "Dark"), ("system", "System")],
         default="system",
     )
+    # Account recovery without email: pick one fixed question, answer it once.
+    # The answer is hashed with the same machinery as the password itself —
+    # never stored, or shown back to anyone, in the clear.
+    security_question = models.CharField(max_length=20, choices=SECURITY_QUESTIONS, blank=True)
+    security_answer_hash = models.CharField(max_length=128, blank=True)
+    # Google's stable per-account id ("sub" claim) for anyone who has ever
+    # signed in with Google — never reused for a different Google account,
+    # unlike email, which someone could theoretically change on Google's end.
+    google_sub = models.CharField(max_length=64, unique=True, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -66,6 +93,18 @@ class User(AbstractUser):
     @property
     def name(self) -> str:
         return self.display_name or self.get_full_name() or self.username
+
+    @property
+    def security_question_label(self) -> str:
+        return dict(SECURITY_QUESTIONS).get(self.security_question, "")
+
+    def set_security_answer(self, raw_answer: str) -> None:
+        self.security_answer_hash = make_password(_normalise_answer(raw_answer))
+
+    def check_security_answer(self, raw_answer: str) -> bool:
+        if not self.security_answer_hash:
+            return False
+        return check_password(_normalise_answer(raw_answer), self.security_answer_hash)
 
     @property
     def level(self) -> int:

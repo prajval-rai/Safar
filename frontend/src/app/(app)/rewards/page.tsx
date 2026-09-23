@@ -5,8 +5,9 @@ import { useState } from "react";
 
 import { MotifDivider } from "@/components/art/Motif";
 import { Avatar, CartoonAvatar, Chip, ErrorNote, LoadingBlock, Progress, SegmentedControl } from "@/components/ui/Bits";
+import { Sheet } from "@/components/ui/Sheet";
 import { useApi } from "@/lib/hooks";
-import type { RewardsPayload, UserMini } from "@/lib/types";
+import type { RewardsPayload, UserMini, XPRule } from "@/lib/types";
 import { cn, formatNumber, shortDate } from "@/lib/utils";
 
 type View = "achievements" | "activity" | "leaderboard";
@@ -17,6 +18,7 @@ type View = "achievements" | "activity" | "leaderboard";
  */
 export default function RewardsPage() {
   const [view, setView] = useState<View>("achievements");
+  const [rulesOpen, setRulesOpen] = useState(false);
   const { data, loading, error, reload } = useApi<RewardsPayload>("/api/rewards/me/");
 
   if (loading) return <LoadingBlock label="Loading your rewards…" />;
@@ -33,6 +35,14 @@ export default function RewardsPage() {
       </header>
 
       <section className="card relative overflow-hidden p-5 text-center">
+        <button
+          type="button"
+          onClick={() => setRulesOpen(true)}
+          aria-label="How XP works"
+          className="tap absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface text-sm font-bold text-muted hover:text-ink"
+        >
+          <span aria-hidden="true">ⓘ</span>
+        </button>
         <p className="text-sm font-bold tracking-widest text-muted uppercase">Level {user.level}</p>
         <p className="mt-1 text-3xl font-extrabold text-brand">{user.level_name}</p>
         <p className="mt-1 text-sm text-muted">
@@ -51,6 +61,8 @@ export default function RewardsPage() {
           achievements
         </p>
       </section>
+
+      <XPRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} rules={data.xp_rules} />
 
       <div className="hide-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <SegmentedControl
@@ -149,6 +161,36 @@ export default function RewardsPage() {
 
       {view === "leaderboard" ? <Leaderboard /> : null}
     </div>
+  );
+}
+
+/** The full XP rulebook — what earns it and what costs it, in one place, so
+ *  nobody has to guess why a number moved. */
+function XPRulesSheet({
+  open,
+  onClose,
+  rules,
+}: {
+  open: boolean;
+  onClose: () => void;
+  rules: XPRule[];
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} title="How XP works" description="Every way to earn it, and the one way to lose it.">
+      <ul className="space-y-3">
+        {rules.map((rule) => (
+          <li key={rule.title} className="flex items-start gap-3 rounded-xl bg-raised p-3">
+            <span className="mt-0.5 text-xl" aria-hidden="true">
+              {rule.icon}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-ink">{rule.title}</p>
+              <p className="mt-0.5 text-sm text-muted">{rule.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Sheet>
   );
 }
 

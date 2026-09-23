@@ -4,21 +4,27 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
-import { TextField } from "@/components/ui/Field";
+import { SelectField, TextField } from "@/components/ui/Field";
 import { ApiError, signup } from "@/lib/api";
+import { useApi } from "@/lib/hooks";
+import type { SecurityQuestion } from "@/lib/types";
 
 const AVATARS = ["🧳", "🏍️", "📸", "⛰️", "🌴", "🍛", "🚂", "🪂", "🧭", "🎒"];
 
 export default function SignupPage() {
   const router = useRouter();
   const { setUser } = useAuth();
+  const { data: questions } = useApi<SecurityQuestion[]>("/api/auth/security-questions/");
   const [form, setForm] = useState({
     display_name: "",
     username: "",
     password: "",
     home_city: "",
+    security_question: "",
+    security_answer: "",
   });
   const [avatar, setAvatar] = useState(AVATARS[0]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -103,6 +109,35 @@ export default function SignupPage() {
             placeholder="Pune"
           />
 
+          <fieldset className="space-y-3 rounded-xl border border-line p-3.5">
+            <legend className="px-1 text-sm font-semibold text-ink">
+              Recovery question <span className="font-normal text-muted">(optional)</span>
+            </legend>
+            <p className="text-xs text-muted">
+              No email on file — this is how you&apos;d get back in if you forget your password.
+              You can also set this up later from Settings.
+            </p>
+            <SelectField
+              label="Question"
+              value={form.security_question}
+              error={errors.security_question}
+              onChange={(e) => update("security_question", e.target.value)}
+              options={[
+                { value: "", label: "Choose a question…" },
+                ...(questions ?? []).map((q) => ({ value: q.value, label: q.label })),
+              ]}
+            />
+            {form.security_question ? (
+              <TextField
+                label="Your answer"
+                value={form.security_answer}
+                error={errors.security_answer}
+                onChange={(e) => update("security_answer", e.target.value)}
+                hint="Answer it the way you'd remember, not the way it sounds official."
+              />
+            ) : null}
+          </fieldset>
+
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-ink">Pick an avatar</legend>
             <div className="flex flex-wrap gap-2">
@@ -132,6 +167,14 @@ export default function SignupPage() {
             {busy ? "Creating your account…" : "Create account"}
           </Button>
         </form>
+
+        <GoogleSignInButton
+          onSignedIn={(user) => {
+            setUser(user);
+            router.replace("/");
+          }}
+          onError={(message) => setErrors({ detail: message })}
+        />
       </div>
     </main>
   );
