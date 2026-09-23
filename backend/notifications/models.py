@@ -72,3 +72,23 @@ class PushSubscription(models.Model):
 
     def __str__(self):
         return f"{self.user}'s device ({self.endpoint[:40]}…)"
+
+
+class ExpoPushToken(models.Model):
+    """One mobile device (the Safar Android/iOS app, not the website)
+    registered for push via Expo's push service — separate from
+    PushSubscription, which is Web Push and browser-only. `token` is
+    globally unique on Expo's side already, not just unique per user: if the
+    same device token turns up for a different user (someone logged out and
+    someone else logged in on that phone), it's reassigned to them, since a
+    device token really does belong to whoever's currently signed in there."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="expo_push_tokens"
+    )
+    token = models.CharField(max_length=200, unique=True)
+    device_name = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user}'s device ({self.token[:24]}…)"

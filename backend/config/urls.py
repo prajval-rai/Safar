@@ -53,6 +53,8 @@ urlpatterns = [
     path("api/push/config/", notifications_views.push_config, name="push_config"),
     path("api/push/subscribe/", notifications_views.push_subscribe, name="push_subscribe"),
     path("api/push/unsubscribe/", notifications_views.push_unsubscribe, name="push_unsubscribe"),
+    path("api/push/expo/register/", notifications_views.expo_push_register, name="expo_push_register"),
+    path("api/push/expo/unregister/", notifications_views.expo_push_unregister, name="expo_push_unregister"),
     path("api/", include(router.urls)),
 ]
 

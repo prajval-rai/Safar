@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 
-from .models import Notification, PushSubscription
+from .models import ExpoPushToken, Notification, PushSubscription
 from .push import push_enabled
 from .serializers import NotificationSerializer
 
@@ -92,4 +92,33 @@ def push_unsubscribe(request):
     endpoint = request.data.get("endpoint")
     if endpoint:
         PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def expo_push_register(request):
+    """Saves (or reassigns) this device's Expo push token — the mobile app's
+    equivalent of push_subscribe. A token is globally unique on Expo's side,
+    so `update_or_create` on the token alone correctly hands it to whoever's
+    signed in on that device right now, even if that's a different account
+    than last time."""
+    token = request.data.get("token")
+    if not token:
+        return Response({"detail": "Missing token."}, status=status.HTTP_400_BAD_REQUEST)
+
+    ExpoPushToken.objects.update_or_create(
+        token=token,
+        defaults={"user": request.user, "device_name": (request.data.get("device_name") or "")[:120]},
+    )
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def expo_push_unregister(request):
+    """Called when someone turns push off on a device, or signs out of it."""
+    token = request.data.get("token")
+    if token:
+        ExpoPushToken.objects.filter(user=request.user, token=token).delete()
     return Response(status=status.HTTP_204_NO_CONTENT)

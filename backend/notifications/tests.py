@@ -11,7 +11,7 @@ from explore.models import Track
 from rewards.services import evaluate_achievements, seed_achievements
 from trips.models import Activity, Day, Expense, Trip, TripMember
 
-from .models import Notification, PushSubscription
+from .models import ExpoPushToken, Notification, PushSubscription
 
 User = get_user_model()
 
@@ -363,3 +363,111 @@ class PushSendingTests(NotificationTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Notification.objects.filter(user=self.ann).exists())
+
+
+class ExpoPushTokenApiTests(NotificationTestCase):
+    def test_registering_a_token_saves_it(self):
+        response = self.client_for(self.me).post(
+            "/api/push/expo/register/", {"token": "ExponentPushToken[abc]"}, format="json"
+        )
+        self.assertEqual(response.status_code, 204)
+        token = ExpoPushToken.objects.get(user=self.me)
+        self.assertEqual(token.token, "ExponentPushToken[abc]")
+
+    def test_registering_the_same_token_again_updates_rather_than_duplicates(self):
+        client = self.client_for(self.me)
+        client.post("/api/push/expo/register/", {"token": "ExponentPushToken[abc]"}, format="json")
+        client.post("/api/push/expo/register/", {"token": "ExponentPushToken[abc]"}, format="json")
+        self.assertEqual(ExpoPushToken.objects.filter(token="ExponentPushToken[abc]").count(), 1)
+
+    def test_a_token_moves_to_whoever_is_signed_in_on_that_device_now(self):
+        self.client_for(self.me).post(
+            "/api/push/expo/register/", {"token": "ExponentPushToken[abc]"}, format="json"
+        )
+        self.client_for(self.ann).post(
+            "/api/push/expo/register/", {"token": "ExponentPushToken[abc]"}, format="json"
+        )
+        token = ExpoPushToken.objects.get(token="ExponentPushToken[abc]")
+        self.assertEqual(token.user_id, self.ann.id)
+
+    def test_missing_token_is_rejected(self):
+        response = self.client_for(self.me).post("/api/push/expo/register/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_unregistering_removes_it(self):
+        client = self.client_for(self.me)
+        client.post("/api/push/expo/register/", {"token": "ExponentPushToken[abc]"}, format="json")
+        client.post("/api/push/expo/unregister/", {"token": "ExponentPushToken[abc]"}, format="json")
+        self.assertFalse(ExpoPushToken.objects.filter(token="ExponentPushToken[abc]").exists())
+
+
+class ExpoPushSendingTests(NotificationTestCase):
+    """Real push delivery to the mobile app, triggered from the same
+    notify() every in-app notification already goes through —
+    requests.post itself is mocked, since actually reaching Expo's service
+    isn't something a test should do."""
+
+    @patch("notifications.expo_push.requests.post")
+    def test_a_notification_pushes_to_every_expo_token_the_recipient_has(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"data": [{"status": "ok"}, {"status": "ok"}]}
+        )
+        ExpoPushToken.objects.create(user=self.ann, token="ExponentPushToken[1]")
+        ExpoPushToken.objects.create(user=self.ann, token="ExponentPushToken[2]")
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertEqual(mock_post.call_count, 1)  # one batched request for both tokens
+        sent_tokens = {m["to"] for m in mock_post.call_args.kwargs["json"]}
+        self.assertEqual(sent_tokens, {"ExponentPushToken[1]", "ExponentPushToken[2]"})
+
+    @patch("notifications.expo_push.requests.post")
+    def test_no_tokens_means_no_request_at_all(self, mock_post):
+        self.client_for(self.me).post("/api/users/ann/follow/")
+        mock_post.assert_not_called()
+
+    @patch("notifications.expo_push.requests.post")
+    def test_a_dead_token_is_deleted_rather_than_retried_forever(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"data": [{"status": "error", "details": {"error": "DeviceNotRegistered"}}]},
+        )
+        token = ExpoPushToken.objects.create(user=self.ann, token="ExponentPushToken[dead]")
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertFalse(ExpoPushToken.objects.filter(pk=token.pk).exists())
+
+    @patch("notifications.expo_push.requests.post")
+    def test_a_non_dead_error_keeps_the_token(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"data": [{"status": "error", "details": {"error": "MessageTooBig"}}]},
+        )
+        token = ExpoPushToken.objects.create(user=self.ann, token="ExponentPushToken[1]")
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertTrue(ExpoPushToken.objects.filter(pk=token.pk).exists())
+
+    @patch("notifications.expo_push.requests.post")
+    def test_a_batch_failure_does_not_block_the_in_app_notification(self, mock_post):
+        mock_post.side_effect = Exception("network blip")
+        ExpoPushToken.objects.create(user=self.ann, token="ExponentPushToken[1]")
+
+        response = self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Notification.objects.filter(user=self.ann).exists())
+
+    @patch("notifications.expo_push.requests.post")
+    def test_more_than_a_hundred_tokens_are_sent_in_batches(self, mock_post):
+        mock_post.return_value = MagicMock(
+            status_code=200, json=lambda: {"data": [{"status": "ok"}] * 100}
+        )
+        for i in range(150):
+            ExpoPushToken.objects.create(user=self.ann, token=f"ExponentPushToken[{i}]")
+
+        self.client_for(self.me).post("/api/users/ann/follow/")
+
+        self.assertEqual(mock_post.call_count, 2)  # 100 + 50
