@@ -21,6 +21,7 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
   activity_reminder: 'time-outline',
   trip_cancelled: 'close-circle-outline',
   trip_completed: 'trophy-outline',
+  chat_message: 'chatbubble-outline',
   settle_paid: 'cash-outline',
   settle_confirmed: 'checkmark-done-outline',
   xp_released: 'lock-open-outline',

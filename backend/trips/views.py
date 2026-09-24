@@ -19,7 +19,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from accounts.authentication import OptionalJWTAuthentication
 from accounts.serializers import UserMiniSerializer, UserSerializer
-from notifications.services import notify, notify_many
+from notifications.services import mark_chat_seen, notify, notify_chat_message, notify_many
 from rewards.services import (
     CANCEL_PENALTY,
     CHECKIN_XP,
@@ -190,6 +190,22 @@ def share_experience_to_feed(experience, soundtrack=_KEEP):
         return
     experience.post = TravelPost.objects.create(author=experience.user, trip=trip, **fields)
     experience.save(update_fields=["post"])
+
+
+def photo_fingerprint(image, image_url: str) -> str:
+    """SHA-256 of an uploaded photo's bytes, or of its link when it's a URL.
+    Empty when there's no photo at all (a caption-only memory earns nothing)."""
+    import hashlib
+
+    if image:
+        digest = hashlib.sha256()
+        for chunk in image.chunks():
+            digest.update(chunk)
+        image.seek(0)
+        return digest.hexdigest()
+    if image_url:
+        return hashlib.sha256(f"url:{image_url.strip()}".encode()).hexdigest()
+    return ""
 
 
 def xp_result(user, extra=None):
@@ -788,9 +804,16 @@ class TripViewSet(viewsets.ModelViewSet):
         if request.method == "POST":
             serializer = MemorySerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            serializer.save(trip=trip, user=request.user)
-            award_xp(request.user, MEMORY_XP, "Added a memory", kind="photo", trip=trip)
-            unlocked = evaluate_achievements(request.user, trip=trip)
+            fingerprint = photo_fingerprint(
+                serializer.validated_data.get("image"), serializer.validated_data.get("image_url", "")
+            )
+            # A photo earns XP once, ever: the same picture uploaded again — by
+            # anyone, on any trip — is still added, just without XP.
+            original = bool(fingerprint) and not Memory.objects.filter(content_hash=fingerprint).exists()
+            serializer.save(trip=trip, user=request.user, content_hash=fingerprint, is_original=original)
+            awarded = MEMORY_XP if original else 0
+            award_xp(request.user, awarded, "Added a photo", kind="photo", trip=trip)
+            unlocked = evaluate_achievements(request.user, trip=trip) if original else []
             request.user.refresh_from_db()
             return Response(
                 {
@@ -798,7 +821,9 @@ class TripViewSet(viewsets.ModelViewSet):
                     **xp_result(
                         request.user,
                         {
-                            "xp_awarded": MEMORY_XP,
+                            "xp_awarded": awarded,
+                            # Tells the app why there was no XP this time.
+                            "duplicate_photo": bool(fingerprint) and not original,
                             "unlocked": [
                                 {"title": a.title, "icon": a.icon} for a in unlocked
                             ],
@@ -816,8 +841,13 @@ class TripViewSet(viewsets.ModelViewSet):
         if request.method == "POST":
             serializer = ChatMessageSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            serializer.save(trip=trip, user=request.user)
+            message = serializer.save(trip=trip, user=request.user)
+            # Sending means you're in the chat too.
+            mark_chat_seen(trip, request.user)
+            notify_chat_message(message)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # The chat polls while it's open — so this person is reading it right now.
+        mark_chat_seen(trip, request.user)
         messages = trip.messages.select_related("user")
         # The chat polls with ?after=<last id it has> to fetch only what's new.
         after = request.query_params.get("after")

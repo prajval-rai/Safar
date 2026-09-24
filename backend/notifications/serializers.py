@@ -17,6 +17,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "kind",
+            "count",
             "title",
             "body",
             "actor",

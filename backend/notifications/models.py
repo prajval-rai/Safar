@@ -18,6 +18,7 @@ class Notification(models.Model):
         ("activity_reminder", "Itinerary reminder"),
         ("trip_cancelled", "Trip cancelled"),
         ("trip_completed", "Trip completed"),
+        ("chat_message", "New message in trip chat"),
         ("settle_paid", "Someone says they paid you back"),
         ("settle_confirmed", "Your payment was confirmed"),
         ("xp_released", "Held XP released after settling up"),
@@ -44,6 +45,9 @@ class Notification(models.Model):
     track = models.ForeignKey("explore.Track", on_delete=models.CASCADE, null=True, blank=True, related_name="+")
 
     read = models.BooleanField(default=False)
+    # How many events one notification stands for — chat collapses a trip's
+    # unread messages into a single "3 new messages" entry.
+    count = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -394,6 +394,8 @@ export interface XPResult {
   trip_completed?: boolean;
   /** Completion XP kept back because you still owe money on the trip. */
   xp_held?: number;
+  /** This photo was uploaded before (by anyone), so it earned no XP. */
+  duplicate_photo?: boolean;
   unlocked?: { title: string; icon: string }[];
   activity?: Activity;
 }
@@ -430,6 +432,7 @@ export type NotificationKind =
   | "activity_reminder"
   | "trip_cancelled"
   | "trip_completed"
+  | "chat_message"
   | "settle_paid"
   | "settle_confirmed"
   | "xp_released"

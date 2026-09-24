@@ -286,6 +286,7 @@ export type NotificationKind =
   | "activity_reminder"
   | "trip_cancelled"
   | "trip_completed"
+  | "chat_message"
   | "settle_paid"
   | "settle_confirmed"
   | "xp_released"

@@ -11,6 +11,7 @@ import {
   Compass,
   Home,
   Map as MapIcon,
+  MessageCircle,
   MessageSquare,
   PartyPopper,
   PlayCircle,
@@ -211,6 +212,7 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_cancelled: XCircle,
   trip_left: UserMinus,
   trip_completed: PartyPopper,
+  chat_message: MessageCircle,
   settle_paid: IndianRupee,
   settle_confirmed: BadgeCheck,
   xp_released: Unlock,
@@ -222,9 +224,10 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
 
 function notificationHref(note: Notification): string | null {
   if (note.trip_id) {
-    // Money notifications open the trip straight on its Money tab.
+    // Money and chat notifications open the trip straight on that tab.
     const money = note.kind === "settle_paid" || note.kind === "settle_confirmed";
-    return `/trips/${note.trip_id}${money ? "?tab=expenses" : ""}`;
+    const tab = money ? "?tab=expenses" : note.kind === "chat_message" ? "?tab=chat" : "";
+    return `/trips/${note.trip_id}${tab}`;
   }
   if (note.track_id) return `/explore/${note.track_id}`;
   if (note.kind === "new_follower" && note.actor) return `/u/${note.actor.username}`;

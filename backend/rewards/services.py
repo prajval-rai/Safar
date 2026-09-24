@@ -79,8 +79,11 @@ XP_RULES = [
     },
     {
         "icon": "📸",
-        "title": "Add a memory",
-        "detail": f"+{MEMORY_XP} XP for uploading a photo from the trip.",
+        "title": "Add a photo",
+        "detail": (
+            f"+{MEMORY_XP} XP for each new photo from the trip. A photo only earns XP the first "
+            "time it's uploaded — the same picture uploaded again, by you or anyone, earns nothing."
+        ),
     },
     {
         "icon": "🗺️",
@@ -203,7 +206,8 @@ def _stats(user) -> dict:
     return {
         "trips_completed": finished.count(),
         "activities_completed": done.count(),
-        "photos_uploaded": Memory.objects.filter(user=user).count(),
+        # Only first-time photos count — re-uploading one picture doesn't add up.
+        "photos_uploaded": Memory.objects.filter(user=user, is_original=True).count(),
         "places_visited": done.exclude(place_name="")
         .values("place_name")
         .distinct()

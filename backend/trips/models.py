@@ -165,6 +165,11 @@ class TripMember(models.Model):
     )
     role = models.CharField(max_length=10, choices=ROLES, default="member")
     joined_at = models.DateTimeField(auto_now_add=True)
+    # When this member last had the group chat open (it polls while open), so
+    # nobody is pushed about messages already in front of them — and when they
+    # were last pushed about chat, so a burst of messages is one alert, not ten.
+    chat_seen_at = models.DateTimeField(null=True, blank=True)
+    chat_pushed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ("trip", "user")
@@ -382,6 +387,11 @@ class Memory(models.Model):
     image = models.ImageField(upload_to="memories/", null=True, blank=True)
     image_url = models.URLField(blank=True)
     caption = models.CharField(max_length=240, blank=True)
+    # Fingerprint of the photo (SHA-256 of the file, or of the link) so the
+    # same picture only ever earns XP once, whoever uploads it again.
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    # True for the first upload of this photo anywhere — the one that earned XP.
+    is_original = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
