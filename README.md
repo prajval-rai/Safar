@@ -225,14 +225,15 @@ Defined in one place, `backend/rewards/services.py`:
 | Plan a trip | +2 (organiser) |
 | Complete a stop (everyone on the trip) | 1–5 by category: adventure 5, sightseeing/nature 4, event/travel 3, food/shopping 2, stay/rest 1 |
 | Finish every stop in a day (everyone) | +5 |
-| Finish the trip (everyone) | +15, and +10 more for the organiser |
-| Write about a finished trip | +3 |
+| Finish the trip (everyone) | +10, and +10 more for the organiser |
+| Write about a finished trip (shared to the Feed) | +10 |
 | Check in at a place | +1 |
 | Add a memory | +1 |
 | Publish a track | +10 |
+| Unlock an achievement | 2–10 |
 | Cancel a trip that's already live | −10 (organiser) |
 
-A stop's XP is set by the server from its category; clients can't set it. Levels get
+Every reward is between 1 and 10 XP. A stop's XP is set by the server from its category; clients can't set it. Levels get
 steeper: moving from level *L* to *L+1* costs `25 × L × (L+1)` XP — 50, 150, 300, 500… —
 so level 3 takes about three trips and level 8 about 4,200 XP.
 

@@ -4,13 +4,14 @@ from django.db import transaction
 
 from .models import Achievement, UserAchievement, XPTransaction
 
-# XP is deliberately scarce: one full trip is worth well under a single
-# level, so a high level actually says something about how much you travel.
+# XP is deliberately scarce: every single reward is between 1 and 10 XP
+# (MAX_REWARD), so a high level actually says something about how much you travel.
+MAX_REWARD = 10
 DAY_COMPLETE_BONUS = 5
-TRIP_COMPLETE_BONUS = 15
+TRIP_COMPLETE_BONUS = 10
 CHECKIN_XP = 1
 MEMORY_XP = 1
-EXPERIENCE_XP = 3
+EXPERIENCE_XP = 10
 TRACK_PUBLISH_XP = 10
 TRIP_CREATE_XP = 2
 # The organiser earns this on top of TRIP_COMPLETE_BONUS once their trip is
@@ -221,20 +222,20 @@ def achievement_progress(user) -> list[dict]:
 
 
 DEFAULT_ACHIEVEMENTS = [
-    ("first-steps", "First Steps", "Complete your first activity", "👣", 5, "activities_completed", 1),
-    ("first-journey", "First Journey", "Complete your first trip", "🎒", 20, "trips_completed", 1),
-    ("shutterbug", "Shutterbug", "Upload 10 travel photos", "📸", 10, "photos_uploaded", 10),
-    ("explorer", "Explorer", "Visit 5 different places", "🗺️", 10, "places_visited", 5),
-    ("pathfinder", "Pathfinder", "Visit 25 different places", "🧭", 30, "places_visited", 25),
-    ("storyteller", "Storyteller", "Publish your first track", "✍️", 15, "tracks_published", 1),
-    ("weekend-regular", "Weekend Regular", "Complete 3 trips", "🚗", 25, "trips_completed", 3),
-    ("state-hopper", "State Hopper", "Travel across 3 regions", "🛤️", 25, "states_visited", 3),
+    ("first-steps", "First Steps", "Complete your first activity", "👣", 2, "activities_completed", 1),
+    ("first-journey", "First Journey", "Complete your first trip", "🎒", 5, "trips_completed", 1),
+    ("shutterbug", "Shutterbug", "Upload 10 travel photos", "📸", 5, "photos_uploaded", 10),
+    ("explorer", "Explorer", "Visit 5 different places", "🗺️", 5, "places_visited", 5),
+    ("pathfinder", "Pathfinder", "Visit 25 different places", "🧭", 10, "places_visited", 25),
+    ("storyteller", "Storyteller", "Publish your first track", "✍️", 5, "tracks_published", 1),
+    ("weekend-regular", "Weekend Regular", "Complete 3 trips", "🚗", 8, "trips_completed", 3),
+    ("state-hopper", "State Hopper", "Travel across 3 regions", "🛤️", 8, "states_visited", 3),
     # Code kept from when this was 5,000 XP so existing unlocks still match.
-    ("five-k-club", "500 Club", "Earn 500 XP", "⭐", 25, "xp_total", 500),
-    ("busy-boots", "Busy Boots", "Complete 50 activities", "🥾", 30, "activities_completed", 50),
-    ("been-there", "Been There", "Complete 5 stops by actually being there", "📍", 15, "places_verified", 5),
-    ("area-explorer", "Area Explorer", "Finish trips in 3 different areas", "🗺️", 25, "areas_covered", 3),
-    ("local-hero", "Local Hero", "Get 5 followers", "🤝", 15, "followers", 5),
+    ("five-k-club", "500 Club", "Earn 500 XP", "⭐", 10, "xp_total", 500),
+    ("busy-boots", "Busy Boots", "Complete 50 activities", "🥾", 10, "activities_completed", 50),
+    ("been-there", "Been There", "Complete 5 stops by actually being there", "📍", 5, "places_verified", 5),
+    ("area-explorer", "Area Explorer", "Finish trips in 3 different areas", "🗺️", 8, "areas_covered", 3),
+    ("local-hero", "Local Hero", "Get 5 followers", "🤝", 5, "followers", 5),
 ]
 
 

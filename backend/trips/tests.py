@@ -139,6 +139,10 @@ class XPTests(SafarTestCase):
         client = self.client_for(self.owner)
         # Starts the trip (moves it out of "planning").
         client.post(f"/api/activities/{self.a1.id}/complete/")
+        # Enough XP that the penalty isn't cut short by XP never going below zero.
+        self.owner.refresh_from_db()
+        self.owner.xp = 100
+        self.owner.save(update_fields=["xp"])
         before = self.owner.xp
 
         response = client.post(f"/api/trips/{self.trip.id}/cancel/")
