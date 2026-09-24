@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 import { useMediaQuery, useScrollLock } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,10 @@ interface SheetProps {
  * One component, two presentations:
  *  - phones: a bottom sheet that keeps the page visible behind it
  *  - tablets and up: a centred dialog
+ *
+ * Rendered straight into <body>: a sheet opened from inside something with a
+ * backdrop-filter or transform (like the blurred sticky header) would
+ * otherwise be positioned against that element and get cut off.
  */
 export function Sheet({ open, onClose, title, description, children, footer }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -65,7 +70,7 @@ export function Sheet({ open, onClose, title, description, children, footer }: S
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       role="dialog"
@@ -113,6 +118,7 @@ export function Sheet({ open, onClose, title, description, children, footer }: S
           <div className="border-t border-line bg-surface px-5 py-3 sm:rounded-b-3xl">{footer}</div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
