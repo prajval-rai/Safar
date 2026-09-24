@@ -19,9 +19,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_ROUTES = ["/login", "/signup", "/forgot-password"];
-// Open to everyone, signed in or not — e.g. an invite link someone opens
-// before they have an account.
-const OPEN_ROUTE_PREFIXES = ["/join/"];
+// Open to everyone, signed in or not — an invite link, the Feed, or a shared
+// story someone opens before they have an account.
+const OPEN_ROUTE_PREFIXES = ["/join/", "/feed", "/p/"];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

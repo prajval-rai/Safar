@@ -1,16 +1,20 @@
 "use client";
 
-import { Heart, MapPin } from "lucide-react";
+import { ExternalLink, Heart, MapPin, Share2 } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/art/Motif";
 import { TripCover } from "@/components/art/TripCover";
+import { ShareStorySheet } from "@/components/explore/ShareStorySheet";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Avatar, Chip, ErrorNote, Skeleton } from "@/components/ui/Bits";
 import { ExpandableText } from "@/components/ui/ExpandableText";
 import { api, rows } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { Paginated, Track, TravelPost } from "@/lib/types";
+import { rememberReturnPath } from "@/lib/returnPath";
 import { formatNumber, rupees } from "@/lib/utils";
 
 export function TrackCard({ track }: { track: Track }) {
@@ -76,11 +80,21 @@ export function TrackCard({ track }: { track: Track }) {
   );
 }
 
-export function PostCard({ post }: { post: TravelPost }) {
+export function PostCard({ post, full = false }: { post: TravelPost; full?: boolean }) {
   const [liked, setLiked] = useState(post.liked);
   const [likes, setLikes] = useState(post.likes_count);
+  const [sharing, setSharing] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
 
   async function toggleLike() {
+    // Reading is open to everyone; liking needs an account — come back here after.
+    if (!user) {
+      rememberReturnPath(pathname);
+      router.push("/login");
+      return;
+    }
     const result = await api.post<{ liked: boolean; likes_count: number }>(
       `/api/explore/posts/${post.id}/like/`,
     );
@@ -119,7 +133,11 @@ export function PostCard({ post }: { post: TravelPost }) {
         <Chip tone="brand">Level {post.author.level}</Chip>
       </div>
 
-      <ExpandableText text={post.caption} className="mt-3 text-[15px] leading-relaxed text-ink" />
+      {full ? (
+        <p className="mt-3 text-[16px] leading-relaxed whitespace-pre-line text-ink">{post.caption}</p>
+      ) : (
+        <ExpandableText text={post.caption} className="mt-3 text-[15px] leading-relaxed text-ink" />
+      )}
 
       <div className="mt-3 flex items-center gap-2">
         <button
@@ -145,7 +163,28 @@ export function PostCard({ post }: { post: TravelPost }) {
             <Chip>From {post.trip_title}</Chip>
           )
         ) : null}
+        <span className="ml-auto flex items-center gap-1">
+          {!full ? (
+            <Link
+              href={`/p/${post.id}`}
+              className="tap flex items-center justify-center rounded-xl px-2 text-muted hover:text-brand"
+              aria-label="Open this post"
+              title="Open this post"
+            >
+              <ExternalLink size={18} strokeWidth={1.9} aria-hidden="true" />
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            className="tap flex items-center gap-1.5 rounded-xl px-2 text-sm font-semibold text-muted hover:text-brand"
+          >
+            <Share2 size={18} strokeWidth={1.9} aria-hidden="true" />
+            Share
+          </button>
+        </span>
       </div>
+      <ShareStorySheet post={post} open={sharing} onClose={() => setSharing(false)} />
     </article>
   );
 }

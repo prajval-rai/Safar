@@ -5,9 +5,10 @@ from django.db.models import Count
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
+from accounts.authentication import OptionalJWTAuthentication
 from accounts.serializers import UserSerializer
 from notifications.services import notify, notify_many
 from rewards.services import TRACK_PUBLISH_XP, award_xp, evaluate_achievements
@@ -222,17 +223,27 @@ def track_from_trip(request):
 
 
 class TravelPostViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    """The Feed is open to read for anyone, signed in or not; posting, liking
+    and deleting still need an account."""
+
+    authentication_classes = [OptionalJWTAuthentication]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     serializer_class = TravelPostSerializer
     search_fields = ["caption", "place"]
 
     def get_queryset(self):
         qs = TravelPost.objects.select_related("author", "trip")
+        user = self.request.user
+        # "Mine" and "Following" only mean something when you're signed in.
         if self.request.query_params.get("mine"):
-            qs = qs.filter(author=self.request.user)
+            qs = qs.filter(author=user) if user.is_authenticated else qs.none()
         # "Following": only people I follow (plus nothing of my own).
         if self.request.query_params.get("following"):
-            qs = qs.filter(author__follows_in__follower=self.request.user)
+            qs = (
+                qs.filter(author__follows_in__follower=user)
+                if user.is_authenticated
+                else qs.none()
+            )
         author = self.request.query_params.get("author")
         if author:
             qs = qs.filter(author__username__iexact=author)
@@ -245,6 +256,54 @@ class TravelPostViewSet(viewsets.ModelViewSet):
         if instance.author != self.request.user:
             raise PermissionDenied("You can only delete your own posts.")
         instance.delete()
+
+    @action(detail=True, methods=["get"], permission_classes=[AllowAny])
+    def story(self, request, pk=None):
+        """Everything a shared post's page shows: the post itself and — only
+        when its trip is public — the trip's photos and day-by-day plan."""
+        post = self.get_object()
+        payload = {"post": TravelPostSerializer(post, context={"request": request}).data, "trip": None}
+        trip = post.trip
+        if trip and trip.is_public:
+            photos = [
+                {"image": m.image.url if m.image else "", "image_url": m.image_url, "caption": m.caption}
+                for m in trip.memories.all()[:24]
+                if m.image or m.image_url
+            ]
+            payload["trip"] = {
+                "title": trip.title,
+                "destination": trip.destination,
+                "region": trip.region,
+                "summary": trip.summary,
+                "cover_key": trip.cover_key,
+                "cover_image": trip.cover_image,
+                "theme": trip.theme,
+                "start_date": trip.start_date,
+                "end_date": trip.end_date,
+                "duration_days": trip.duration_days,
+                "trip_type": trip.trip_type,
+                "member_count": trip.members.count(),
+                "photos": photos,
+                "days": [
+                    {
+                        "index": day.index,
+                        "date": day.date,
+                        "title": day.title,
+                        "stops": [
+                            {
+                                "title": a.title,
+                                "category": a.category,
+                                "place_name": a.place_name,
+                                "start_time": a.start_time,
+                                "done": a.status == "completed",
+                            }
+                            for a in day.activities.all()
+                        ],
+                    }
+                    for day in trip.days.prefetch_related("activities")
+                ],
+            }
+        return Response(payload)
 
     @action(detail=True, methods=["post"])
     def like(self, request, pk=None):

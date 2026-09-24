@@ -247,7 +247,7 @@ export async function renderInviteCard(trip: TripDetail, link: string): Promise<
   );
 }
 
-async function qrImage(text: string, size: number, dark: string): Promise<HTMLImageElement> {
+export async function qrImage(text: string, size: number, dark: string): Promise<HTMLImageElement> {
   const url = await QRCode.toDataURL(text, {
     width: size * 2,
     margin: 0,
@@ -266,7 +266,7 @@ function toHex(color: string): string {
 }
 
 /** A faint lattice of dots, like the jali pattern used across the app. */
-function drawJali(ctx: CanvasRenderingContext2D, height: number) {
+export function drawJali(ctx: CanvasRenderingContext2D, height: number) {
   ctx.fillStyle = "rgba(255,255,255,0.07)";
   for (let y = 24; y < height; y += 48) {
     for (let x = (y / 48) % 2 ? 24 : 48; x < W; x += 48) {
@@ -279,7 +279,7 @@ function drawJali(ctx: CanvasRenderingContext2D, height: number) {
 
 /** A simple silhouette for the kind of place, drawn in translucent white so it
  *  takes on whatever theme colour sits behind it. */
-function drawScene(ctx: CanvasRenderingContext2D, cover: CoverKey, height: number) {
+export function drawScene(ctx: CanvasRenderingContext2D, cover: CoverKey, height: number) {
   // Sun
   ctx.fillStyle = "rgba(255,255,255,0.18)";
   ctx.beginPath();
@@ -339,7 +339,7 @@ function spaced(code: string): string {
   return code.split("").join(" ");
 }
 
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
+export function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let line = "";
@@ -359,14 +359,14 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, max
   return kept;
 }
 
-function fit(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+export function fit(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let t = text;
   while (t.length > 4 && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
   return `${t}…`;
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);

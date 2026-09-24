@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { PostList } from "@/components/explore/Cards";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { WritePostSheet } from "@/components/explore/WritePostSheet";
 import { FollowButton } from "@/components/social/FollowButton";
 import { Avatar, SegmentedControl } from "@/components/ui/Bits";
+import { ButtonLink } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import type { Person } from "@/lib/types";
 
@@ -16,6 +18,7 @@ type Scope = "everyone" | "following";
 const ICON = { size: 18, strokeWidth: 1.9 } as const;
 
 export default function FeedPage() {
+  const { user } = useAuth();
   const [scope, setScope] = useState<Scope>("everyone");
   const [query, setQuery] = useState("");
   const [writing, setWriting] = useState(false);
@@ -31,31 +34,46 @@ export default function FeedPage() {
         </div>
       </header>
 
-      <button
-        type="button"
-        onClick={() => setWriting(true)}
-        className="card mx-auto flex w-full max-w-2xl items-center gap-3 p-4 text-left transition-colors hover:bg-raised"
-      >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-soft text-brand" aria-hidden="true">
-          <PenLine size={18} strokeWidth={1.9} />
-        </span>
-        <span className="text-[15px] text-muted">Share a story or tip from your travels…</span>
-      </button>
-
-      <WritePostSheet open={writing} onClose={() => setWriting(false)} onPosted={() => setFresh((n) => n + 1)} />
-
-      <FindTravellers />
+      {/* Anyone can read the Feed; writing, following and filtering need an account. */}
+      {user ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setWriting(true)}
+            className="card mx-auto flex w-full max-w-2xl items-center gap-3 p-4 text-left transition-colors hover:bg-raised"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-soft text-brand" aria-hidden="true">
+              <PenLine size={18} strokeWidth={1.9} />
+            </span>
+            <span className="text-[15px] text-muted">Share a story or tip from your travels…</span>
+          </button>
+          <WritePostSheet open={writing} onClose={() => setWriting(false)} onPosted={() => setFresh((n) => n + 1)} />
+          <FindTravellers />
+        </>
+      ) : (
+        <section className="card mx-auto flex w-full max-w-2xl flex-col items-start gap-3 p-4 sm:flex-row sm:items-center">
+          <p className="flex-1 text-[15px] text-muted">
+            <b className="text-ink">Travelling somewhere?</b> Join Safar to plan trips with your people and share
+            your own stories.
+          </p>
+          <ButtonLink href="/signup" size="sm">
+            Join Safar
+          </ButtonLink>
+        </section>
+      )}
 
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
-        <SegmentedControl
-          label="Whose posts to show"
-          value={scope}
-          onChange={setScope}
-          options={[
-            { value: "everyone", label: "Everyone", icon: <Users {...ICON} /> },
-            { value: "following", label: "Following" },
-          ]}
-        />
+        {user ? (
+          <SegmentedControl
+            label="Whose posts to show"
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: "everyone", label: "Everyone", icon: <Users {...ICON} /> },
+              { value: "following", label: "Following" },
+            ]}
+          />
+        ) : null}
 
         <div className="relative">
           <Search

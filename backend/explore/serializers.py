@@ -92,6 +92,9 @@ class TravelPostSerializer(serializers.ModelSerializer):
     liked = serializers.SerializerMethodField()
     trip_title = serializers.CharField(source="trip.title", read_only=True, default="")
     can_open_trip = serializers.SerializerMethodField()
+    # The trip's destination palette, so a shared story card matches it.
+    theme = serializers.SerializerMethodField()
+    trip_is_public = serializers.BooleanField(source="trip.is_public", read_only=True, default=False)
 
     class Meta:
         model = TravelPost
@@ -101,6 +104,8 @@ class TravelPostSerializer(serializers.ModelSerializer):
             "trip",
             "trip_title",
             "can_open_trip",
+            "trip_is_public",
+            "theme",
             "track",
             "caption",
             "place",
@@ -136,6 +141,11 @@ class TravelPostSerializer(serializers.ModelSerializer):
             and user.is_authenticated
             and obj.trip.members.filter(user=user).exists()
         )
+
+    def get_theme(self, obj) -> str:
+        from trips.regional_theme import DEFAULT_TRIP_THEME
+
+        return obj.trip.theme if obj.trip_id else DEFAULT_TRIP_THEME
 
     def get_liked(self, obj) -> bool:
         request = self.context.get("request")

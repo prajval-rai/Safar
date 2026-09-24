@@ -296,6 +296,9 @@ export interface TravelPost {
   trip: string | null;
   trip_title: string;
   can_open_trip: boolean;
+  trip_is_public: boolean;
+  /** The trip's destination palette — used for the shared story card. */
+  theme: ThemeId;
   track: string | null;
   caption: string;
   place: string;
@@ -538,4 +541,37 @@ export interface InvitePreview {
     title: string;
     stops: { title: string; category: ActivityCategory; place_name: string; start_time: string | null }[];
   }[];
+}
+
+/** GET /api/explore/posts/<id>/story/ — a shared post's public page. The trip
+ *  part is only there when that trip is public. */
+export interface PostStory {
+  post: TravelPost;
+  trip: {
+    title: string;
+    destination: string;
+    region: string;
+    summary: string;
+    cover_key: CoverKey;
+    cover_image: string;
+    theme: ThemeId;
+    start_date: string;
+    end_date: string;
+    duration_days: number;
+    trip_type: string;
+    member_count: number;
+    photos: { image: string; image_url: string; caption: string }[];
+    days: {
+      index: number;
+      date: string;
+      title: string;
+      stops: {
+        title: string;
+        category: ActivityCategory;
+        place_name: string;
+        start_time: string | null;
+        done: boolean;
+      }[];
+    }[];
+  } | null;
 }

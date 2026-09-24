@@ -16,9 +16,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.exceptions import InvalidToken
 
+from accounts.authentication import OptionalJWTAuthentication
 from accounts.serializers import UserMiniSerializer, UserSerializer
 from notifications.services import notify, notify_many
 from rewards.services import (
@@ -993,17 +992,6 @@ def join_trip(request):
             trip=trip,
         )
     return Response(TripDetailSerializer(trip, context={"request": request}).data)
-
-
-class OptionalJWTAuthentication(JWTAuthentication):
-    """For public pages: a valid token identifies you, but a stale or broken one
-    just means "signed out" instead of a 401 on a page anyone may see."""
-
-    def authenticate(self, request):
-        try:
-            return super().authenticate(request)
-        except InvalidToken:
-            return None
 
 
 class InvitePreviewThrottle(ScopedRateThrottle):
