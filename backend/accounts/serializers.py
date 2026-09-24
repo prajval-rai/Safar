@@ -40,6 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
             "bio",
             "avatar_emoji",
             "phone",
+            "upi_id",
             "xp",
             "level",
             "level_name",
@@ -56,6 +57,14 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_has_security_question(self, obj) -> bool:
         return bool(obj.security_question)
+
+    def validate_upi_id(self, value: str) -> str:
+        from trips.settle import is_valid_upi_id, normalise_upi_id
+
+        value = normalise_upi_id(value)
+        if value and not is_valid_upi_id(value):
+            raise serializers.ValidationError("That doesn't look like a UPI ID — it's usually like name@okaxis.")
+        return value
 
 
 class PublicUserSerializer(serializers.ModelSerializer):

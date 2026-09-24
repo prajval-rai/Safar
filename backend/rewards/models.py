@@ -70,3 +70,24 @@ class UserAchievement(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} unlocked {self.achievement}"
+
+
+class HeldXP(models.Model):
+    """Trip-completion XP kept back from a traveller who still owes money on
+    that trip. It isn't in their total until they've settled up; then it's
+    paid out as a normal XPTransaction and marked released."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="held_xp")
+    trip = models.ForeignKey("trips.Trip", on_delete=models.CASCADE, related_name="held_xp")
+    amount = models.PositiveIntegerField()
+    kind = models.CharField(max_length=20, default="trip")
+    reason = models.CharField(max_length=160)
+    created_at = models.DateTimeField(auto_now_add=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        state = "released" if self.released_at else "held"
+        return f"{self.user} {self.amount} XP {state} ({self.reason})"

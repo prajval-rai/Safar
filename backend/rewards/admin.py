@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Achievement, UserAchievement, XPTransaction
+from .models import Achievement, HeldXP, UserAchievement, XPTransaction
 
 
 @admin.register(Achievement)
@@ -15,3 +15,9 @@ class XPTransactionAdmin(admin.ModelAdmin):
 
 
 admin.site.register(UserAchievement)
+
+
+@admin.register(HeldXP)
+class HeldXPAdmin(admin.ModelAdmin):
+    list_display = ["user", "trip", "amount", "reason", "created_at", "released_at"]
+    list_filter = ["released_at"]

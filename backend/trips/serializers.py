@@ -10,6 +10,7 @@ from .models import (
     Day,
     Expense,
     Memory,
+    Settlement,
     Trip,
     TripExperience,
     TripMember,
@@ -166,6 +167,8 @@ class TripDetailSerializer(TripListSerializer):
     # What leaving would cost you right now (negative XP), or null when you
     # can't leave: you're the owner, or the trip is already finished.
     leave_penalty = serializers.SerializerMethodField()
+    # Completion XP held back from you until you've settled up on this trip.
+    my_held_xp = serializers.SerializerMethodField()
 
     class Meta(TripListSerializer.Meta):
         fields = TripListSerializer.Meta.fields + [
@@ -175,6 +178,7 @@ class TripDetailSerializer(TripListSerializer):
             "planned_xp",
             "my_role",
             "leave_penalty",
+            "my_held_xp",
             "created_at",
         ]
 
@@ -182,6 +186,11 @@ class TripDetailSerializer(TripListSerializer):
         user = self.context["request"].user
         member = next((m for m in obj.members.all() if m.user_id == user.id), None)
         return member.role if member else None
+
+    def get_my_held_xp(self, obj) -> int:
+        from rewards.services import held_xp_total
+
+        return held_xp_total(self.context["request"].user, obj)
 
     def get_leave_penalty(self, obj) -> int | None:
         from rewards.services import leave_penalty
@@ -358,3 +367,12 @@ class TripExperienceSerializer(serializers.ModelSerializer):
         if len(value) < 10:
             raise serializers.ValidationError("Write at least a line or two about the trip.")
         return value
+
+
+class SettlementSerializer(serializers.ModelSerializer):
+    from_user = UserMiniSerializer(read_only=True)
+    to_user = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = Settlement
+        fields = ["id", "from_user", "to_user", "amount", "method", "status", "created_at", "confirmed_at"]

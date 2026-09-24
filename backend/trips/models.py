@@ -310,6 +310,37 @@ class Expense(models.Model):
         return f"{self.title} ₹{self.amount}"
 
 
+class Settlement(models.Model):
+    """Money paid back between two travellers to settle a trip's expenses.
+
+    The payer says "I've paid" (pending) and the receiver confirms it; only
+    confirmed settlements move the balances. A receiver recording cash they
+    got is confirmed straight away."""
+
+    METHODS = [("upi", "UPI"), ("cash", "Cash")]
+    STATUSES = [("pending", "Waiting for confirmation"), ("confirmed", "Confirmed")]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="settlements")
+    from_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="settlements_paid"
+    )
+    to_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="settlements_received"
+    )
+    amount = models.PositiveIntegerField()
+    method = models.CharField(max_length=10, choices=METHODS, default="upi")
+    status = models.CharField(max_length=10, choices=STATUSES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.from_user} → {self.to_user} ₹{self.amount} ({self.status})"
+
+
 class ChecklistItem(models.Model):
     CATEGORY_CHOICES = [
         ("packing", "Packing"),

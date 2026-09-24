@@ -96,3 +96,11 @@ class SoundtrackTests(SafarTestCase):
         with apple([KESARIYA]):
             story = APIClient().get(f"/api/explore/posts/{self.post.id}/story/").data
         self.assertTrue(story["post"]["soundtrack"]["preview_url"].endswith(".m4a"))
+
+    def test_a_song_from_the_old_youtube_picker_switches_to_apple(self):
+        self.post.soundtrack = {"id": "yt:BddP6PYo2gs", "source": "youtube", "title": "Kesariya", "url": "x"}
+        self.post.save()
+        with apple([KESARIYA]):
+            story = APIClient().get(f"/api/explore/posts/{self.post.id}/story/").data
+        self.assertEqual(story["post"]["soundtrack"]["id"], "1635014240")
+        self.assertTrue(story["post"]["soundtrack"]["preview_url"])

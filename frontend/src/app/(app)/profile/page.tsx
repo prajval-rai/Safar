@@ -159,6 +159,7 @@ function EditProfileSheet({
     home_city: user.home_city,
     bio: user.bio,
     avatar_emoji: user.avatar_emoji,
+    upi_id: user.upi_id ?? "",
   });
   const [busy, setBusy] = useState(false);
   const { toast } = useCelebration();
@@ -198,6 +199,15 @@ function EditProfileSheet({
           value={form.home_city}
           onChange={(e) => setForm({ ...form, home_city: e.target.value })}
           placeholder="Pune"
+        />
+        <TextField
+          label="UPI ID (for settling up)"
+          hint="So trip-mates can pay you back in one tap. Only people on your trips can see it."
+          value={form.upi_id}
+          onChange={(e) => setForm({ ...form, upi_id: e.target.value })}
+          placeholder="name@okaxis"
+          autoCapitalize="none"
+          autoCorrect="off"
         />
         <TextAreaField
           label="One line about you"

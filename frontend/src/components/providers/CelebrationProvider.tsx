@@ -54,6 +54,7 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
 
       // Small, quiet reward for everyday actions.
       if (result.xp_awarded) push(`+${result.xp_awarded} XP 🎉`, "xp");
+      if (result.xp_held) push(`🔒 ${result.xp_held} XP held — settle up to unlock it`, "info");
 
       for (const badge of result.unlocked ?? []) {
         push(`${badge.icon} ${badge.title} unlocked`, "xp");

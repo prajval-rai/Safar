@@ -1,6 +1,6 @@
 """XP and achievement rules live here so every endpoint awards points the same way."""
 
-from django.db import transaction
+from django.db import models, transaction
 
 from .models import Achievement, UserAchievement, XPTransaction
 
@@ -101,6 +101,15 @@ XP_RULES = [
         ),
     },
     {
+        "icon": "🔒",
+        "title": "Settle up to unlock",
+        "detail": (
+            "If you still owe money on a trip when it finishes, its completion XP (and the "
+            "organiser bonus) is held — you'll get it the moment you've paid back what you owe "
+            "and it's confirmed. Stop and day XP isn't affected."
+        ),
+    },
+    {
         "icon": "📝",
         "title": "Write about the trip",
         "detail": f"+{EXPERIENCE_XP} XP for sharing your experience once a trip is finished.",
@@ -148,6 +157,38 @@ def award_xp(user, amount: int, reason: str, kind: str = "activity", trip=None):
     user.xp = max(0, user.xp + amount)
     user.save(update_fields=["xp"])
     return txn
+
+
+def hold_xp(user, amount: int, reason: str, kind: str = "trip", trip=None):
+    """Keep XP back instead of paying it (see HeldXP)."""
+    from .models import HeldXP
+
+    return HeldXP.objects.create(user=user, trip=trip, amount=amount, kind=kind, reason=reason)
+
+
+@transaction.atomic
+def release_held_xp(user, trip) -> int:
+    """Pay out everything held for `user` on `trip`. Returns the XP released."""
+    from django.utils import timezone
+
+    from .models import HeldXP
+
+    total = 0
+    for held in HeldXP.objects.select_for_update().filter(user=user, trip=trip, released_at=None):
+        award_xp(user, held.amount, held.reason, kind=held.kind, trip=trip)
+        held.released_at = timezone.now()
+        held.save(update_fields=["released_at"])
+        total += held.amount
+    return total
+
+
+def held_xp_total(user, trip) -> int:
+    from .models import HeldXP
+
+    return (
+        HeldXP.objects.filter(user=user, trip=trip, released_at=None).aggregate(t=models.Sum("amount"))["t"]
+        or 0
+    )
 
 
 def _stats(user) -> dict:

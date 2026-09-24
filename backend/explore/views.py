@@ -268,15 +268,21 @@ class TravelPostViewSet(viewsets.ModelViewSet):
         """Everything a shared post's page shows: the post itself and — only
         when its trip is public — the trip's photos and day-by-day plan."""
         post = self.get_object()
-        # Songs saved before previews were kept get their preview added on first view.
+        # Bring older soundtracks up to date on first view: Apple songs saved
+        # before previews were kept get their preview; songs from the removed
+        # YouTube picker switch to the same song on Apple (or are dropped).
         if post.soundtrack and not post.soundtrack.get("preview_url"):
-            from .music import MusicError, song
+            from .music import MusicError, search, song
 
             try:
-                post.soundtrack = song(post.soundtrack["id"])
+                if post.soundtrack.get("source") == "youtube":
+                    matches = search(post.soundtrack.get("title", ""), limit=1)
+                    post.soundtrack = matches[0] if matches else None
+                else:
+                    post.soundtrack = song(post.soundtrack["id"])
                 post.save(update_fields=["soundtrack"])
             except MusicError:
-                pass  # still shows the song and its Apple Music link, just without a preview
+                pass  # try again next time; the song's link still works meanwhile
         payload = {"post": TravelPostSerializer(post, context={"request": request}).data, "trip": None}
         trip = post.trip
         if trip and trip.is_public:

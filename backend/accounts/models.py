@@ -70,6 +70,9 @@ class User(AbstractUser):
     bio = models.CharField(max_length=240, blank=True)
     avatar_emoji = models.CharField(max_length=8, default="🧳")
     phone = models.CharField(max_length=20, blank=True)
+    # For settling up trip expenses (name@bank). Only ever shown to people on
+    # the same trip, never on a public profile.
+    upi_id = models.CharField(max_length=100, blank=True)
     xp = models.PositiveIntegerField(default=0)
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default="saffron")
     color_mode = models.CharField(

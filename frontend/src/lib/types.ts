@@ -42,6 +42,8 @@ export interface User extends UserMini {
   home_city: string;
   bio: string;
   phone: string;
+  /** For settling up (name@bank). Only on your own account; trip-mates see it via settle-up. */
+  upi_id: string;
   level_name: string;
   xp_into_level: number;
   xp_for_next_level: number;
@@ -162,6 +164,8 @@ export interface TripDetail extends Trip {
   my_role: "owner" | "admin" | "member" | null;
   /** XP leaving would cost you right now (negative), or null if you can't leave. */
   leave_penalty: number | null;
+  /** Completion XP held back from you until you've settled up on this trip. */
+  my_held_xp: number;
   created_at: string;
 }
 
@@ -292,6 +296,7 @@ export interface TrackDetail extends Track {
 
 /** A song picked from Apple Music as a trip's soundtrack. */
 export interface Song {
+  /** Apple Music's id for the song. */
   id: string;
   title: string;
   artist: string;
@@ -387,6 +392,8 @@ export interface XPResult {
   day_completed?: boolean;
   day_index?: number;
   trip_completed?: boolean;
+  /** Completion XP kept back because you still owe money on the trip. */
+  xp_held?: number;
   unlocked?: { title: string; icon: string }[];
   activity?: Activity;
 }
@@ -423,6 +430,9 @@ export type NotificationKind =
   | "activity_reminder"
   | "trip_cancelled"
   | "trip_completed"
+  | "settle_paid"
+  | "settle_confirmed"
+  | "xp_released"
   | "track_used"
   | "track_published"
   | "new_follower"
@@ -588,4 +598,33 @@ export interface PostStory {
       }[];
     }[];
   } | null;
+}
+
+export interface Settlement {
+  id: string;
+  from_user: UserMini;
+  to_user: UserMini;
+  amount: number;
+  method: "upi" | "cash";
+  status: "pending" | "confirmed";
+  created_at: string;
+  confirmed_at: string | null;
+}
+
+/** One suggested payment to square the trip up. */
+export interface SettleTransfer {
+  from_user: UserMini;
+  to_user: UserMini;
+  amount: number;
+  to_upi_id: string;
+  /** upi://pay… with payee and amount filled in; empty when they have no UPI ID. */
+  upi_link: string;
+  /** The payer has said "I've paid" and it's waiting for the receiver. */
+  pending: Settlement | null;
+}
+
+export interface SettlePayload {
+  transfers: SettleTransfer[];
+  settlements: Settlement[];
+  my_upi_id: string;
 }

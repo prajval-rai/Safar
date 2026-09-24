@@ -108,7 +108,7 @@ export function SongPicker({
           <p className="mt-2 text-sm text-muted">No songs found for “{query.trim()}”.</p>
         )
       ) : null}
-      <p className="mt-1.5 text-xs text-muted">Songs from Apple Music. It plays on your story&apos;s page.</p>
+      <p className="mt-1.5 text-xs text-muted">Songs from Apple Music — a 30-second preview plays on your story&apos;s page.</p>
     </div>
   );
 }

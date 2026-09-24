@@ -9,6 +9,7 @@ import { Avatar, Chip, ErrorNote, LoadingBlock, Progress } from "@/components/ui
 import { Button } from "@/components/ui/Button";
 import { SelectField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
+import { SettleUp } from "@/components/trip/SettleUp";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { ChatMessage, ChecklistItem, ExpenseReport, TripDetail } from "@/lib/types";
@@ -60,6 +61,8 @@ export function TripExpenses({ trip }: { trip: TripDetail }) {
               </ul>
             </section>
           ) : null}
+
+          <SettleUp trip={trip} hasExpenses={data.results.length > 0} onChanged={reload} />
 
           {data.results.length ? (
             <ul className="card divide-y divide-[var(--line)]">

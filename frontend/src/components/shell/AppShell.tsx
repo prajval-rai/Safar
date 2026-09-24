@@ -1,8 +1,11 @@
 "use client";
 
 import {
+  BadgeCheck,
   Bell,
+  IndianRupee,
   UserMinus,
+  Unlock,
   BellRing,
   Clock,
   Compass,
@@ -208,6 +211,9 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_cancelled: XCircle,
   trip_left: UserMinus,
   trip_completed: PartyPopper,
+  settle_paid: IndianRupee,
+  settle_confirmed: BadgeCheck,
+  xp_released: Unlock,
   track_used: Route,
   track_published: Rss,
   new_follower: UserPlus,
@@ -215,7 +221,11 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
 };
 
 function notificationHref(note: Notification): string | null {
-  if (note.trip_id) return `/trips/${note.trip_id}`;
+  if (note.trip_id) {
+    // Money notifications open the trip straight on its Money tab.
+    const money = note.kind === "settle_paid" || note.kind === "settle_confirmed";
+    return `/trips/${note.trip_id}${money ? "?tab=expenses" : ""}`;
+  }
   if (note.track_id) return `/explore/${note.track_id}`;
   if (note.kind === "new_follower" && note.actor) return `/u/${note.actor.username}`;
   return null;

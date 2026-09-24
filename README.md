@@ -231,7 +231,10 @@ Defined in one place, `backend/rewards/services.py`:
 | Add a memory | +1 |
 | Publish a track | +10 |
 | Unlock an achievement | 2–10 |
+| Leave a trip you joined | −2 before it starts, −3 once it's live |
 | Cancel a trip that's already live | −10 (organiser) |
+
+**Settle up to unlock:** if you still owe money on a trip when it finishes, its completion XP (and the organiser bonus) is held until you've paid back what you owe and it's confirmed; stop and day XP isn't affected.
 
 Every reward is between 1 and 10 XP. A stop's XP is set by the server from its category; clients can't set it. Levels get
 steeper: moving from level *L* to *L+1* costs `25 × L × (L+1)` XP — 50, 150, 300, 500… —

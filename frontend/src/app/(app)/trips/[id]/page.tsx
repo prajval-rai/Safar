@@ -19,7 +19,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { useTripTheme } from "@/lib/tripTheme";
-import type { TripDetail, User, XPResult } from "@/lib/types";
+import type { SettlePayload, TripDetail, TripStatus, User, XPResult } from "@/lib/types";
 import {
   PACE_LABELS,
   TRANSPORT_ICONS,
@@ -34,28 +34,55 @@ import {
   statusBadge,
 } from "@/lib/utils";
 
-/** Five everyday tabs. Everything else lives behind "More". */
-const MAIN_TABS = [
-  { id: "overview", label: "Overview", icon: "📋" },
-  { id: "itinerary", label: "Itinerary", icon: "🗓️" },
-  { id: "map", label: "Map", icon: "🗺️" },
-  { id: "people", label: "People", icon: "👥" },
-  { id: "memories", label: "Memories", icon: "📸" },
-] as const;
+/** Every section of a trip, always one tap away — nothing hidden in a menu. */
+const TABS = {
+  overview: { label: "Overview", icon: "📋" },
+  itinerary: { label: "Plan", icon: "🗓️" },
+  map: { label: "Map", icon: "🗺️" },
+  expenses: { label: "Money", icon: "💰" },
+  chat: { label: "Chat", icon: "💬" },
+  memories: { label: "Photos", icon: "📸" },
+  people: { label: "People", icon: "👥" },
+  checklist: { label: "Checklist", icon: "📝" },
+  settings: { label: "Settings", icon: "⚙️" },
+} as const;
 
-const MORE_TABS = [
-  { id: "expenses", label: "Expenses", icon: "👛" },
-  { id: "checklist", label: "Checklist", icon: "📝" },
-  { id: "chat", label: "Group chat", icon: "💬" },
-  { id: "settings", label: "Trip settings", icon: "⚙️" },
-] as const;
+type TabId = keyof typeof TABS;
 
-type TabId = (typeof MAIN_TABS)[number]["id"] | (typeof MORE_TABS)[number]["id"];
+/** What matters most comes first, and the first tab is where the trip opens:
+ *  the overview while planning, the plan once it's live, and the money once
+ *  it's over — settling up is the next thing to do. */
+const TAB_ORDER: Record<TripStatus, TabId[]> = {
+  planning: ["overview", "itinerary", "people", "checklist", "expenses", "chat", "map", "memories", "settings"],
+  active: ["itinerary", "map", "chat", "expenses", "memories", "overview", "people", "checklist", "settings"],
+  completed: ["expenses", "memories", "overview", "itinerary", "chat", "people", "map", "checklist", "settings"],
+  cancelled: ["overview", "itinerary", "people", "expenses", "chat", "map", "memories", "checklist", "settings"],
+};
+
+/** A finished solo trip has nobody to settle with, so it leads with the photos. */
+const SOLO_COMPLETED_ORDER: TabId[] = [
+  "memories",
+  "overview",
+  "itinerary",
+  "expenses",
+  "chat",
+  "people",
+  "map",
+  "checklist",
+  "settings",
+];
 
 export default function TripDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<TabId>("overview");
-  const [moreOpen, setMoreOpen] = useState(false);
+  // Null until someone picks a tab — until then the trip's phase decides.
+  // `?tab=` lets a link (or a notification) open a specific section. Read
+  // straight from the URL: the page only renders tabs once the trip has
+  // loaded in the browser, so there's no server render to disagree with.
+  const [picked, setPicked] = useState<TabId | null>(() => {
+    if (typeof window === "undefined") return null;
+    const fromUrl = new URLSearchParams(window.location.search).get("tab");
+    return fromUrl && fromUrl in TABS ? (fromUrl as TabId) : null;
+  });
   const { data: trip, loading, error, reload } = useApi<TripDetail>(`/api/trips/${id}/`);
   const { toast } = useCelebration();
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -71,7 +98,13 @@ export default function TripDetailPage() {
 
   const canEdit = trip.my_role === "owner" || trip.my_role === "admin";
   const badge = statusBadge(trip.status);
-  const activeMore = MORE_TABS.find((t) => t.id === tab);
+  const order =
+    trip.status === "completed" && trip.member_count < 2 ? SOLO_COMPLETED_ORDER : TAB_ORDER[trip.status];
+  const tab: TabId = picked ?? order[0];
+  const setTab = (next: TabId) => {
+    setPicked(next);
+    window.history.replaceState(null, "", `?tab=${next}`);
+  };
 
   async function lifecycle(action: "start" | "reopen", message: string) {
     setLifecycleBusy(true);
@@ -129,6 +162,8 @@ export default function TripDetailPage() {
         </div>
       ) : null}
 
+      {trip.status === "completed" ? <FinishedNextStep trip={trip} onGo={setTab} /> : null}
+
       {trip.status === "cancelled" ? (
         <div className="card flex flex-wrap items-center justify-between gap-3 border-danger/30 bg-danger-soft/50 p-4">
           <div className="min-w-0">
@@ -143,37 +178,31 @@ export default function TripDetailPage() {
         </div>
       ) : null}
 
-      {/* Tabs scroll sideways on phones instead of wrapping into a wall. */}
-      <div className="hide-scrollbar -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
-        {MAIN_TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            aria-current={tab === item.id ? "page" : undefined}
-            className={cn(
-              "flex min-h-[46px] shrink-0 items-center gap-1.5 border-b-2 px-3.5 text-sm font-semibold transition-colors",
-              tab === item.id
-                ? "border-brand text-brand"
-                : "border-transparent text-muted hover:text-ink",
-            )}
-          >
-            <span aria-hidden="true">{item.icon}</span>
-            {item.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => setMoreOpen(true)}
-          className={cn(
-            "flex min-h-[46px] shrink-0 items-center gap-1.5 border-b-2 px-3.5 text-sm font-semibold",
-            activeMore ? "border-brand text-brand" : "border-transparent text-muted hover:text-ink",
-          )}
-        >
-          <span aria-hidden="true">⋯</span>
-          {activeMore ? activeMore.label : "More"}
-        </button>
-      </div>
+      {/* Every section as a chip, most useful first for where the trip is.
+          They scroll sideways on phones instead of wrapping into a wall. */}
+      <nav aria-label="Trip sections" className="hide-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+        {order.map((tabId) => {
+          const item = TABS[tabId];
+          const current = tab === tabId;
+          return (
+            <button
+              key={tabId}
+              type="button"
+              onClick={() => setTab(tabId)}
+              aria-current={current ? "page" : undefined}
+              className={cn(
+                "flex min-h-[42px] shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold transition-colors",
+                current
+                  ? "border-brand bg-brand text-on-brand"
+                  : "border-line bg-surface text-ink hover:bg-raised",
+              )}
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
 
       <div className="animate-rise">
         {tab === "overview" ? <Overview trip={trip} canEdit={canEdit} onGo={setTab} onChanged={reload} /> : null}
@@ -191,27 +220,89 @@ export default function TripDetailPage() {
         {tab === "settings" ? <TripSettings trip={trip} onChanged={reload} canEdit={canEdit} /> : null}
       </div>
 
-      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="More">
-        <ul className="space-y-2">
-          {MORE_TABS.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setTab(item.id);
-                  setMoreOpen(false);
-                }}
-                className="flex min-h-[54px] w-full items-center gap-3 rounded-xl border border-line px-4 text-left text-[15px] font-semibold text-ink hover:bg-raised"
-              >
-                <span className="text-xl" aria-hidden="true">
-                  {item.icon}
-                </span>
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Sheet>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- after the trip */
+
+/** Once a trip is over, the next thing to do is square up — so that's what
+ *  the page leads with: pay what you owe, confirm what you got, or (when
+ *  everyone's even) head to the trip story. */
+function FinishedNextStep({ trip, onGo }: { trip: TripDetail; onGo: (tab: TabId) => void }) {
+  const { user } = useAuth();
+  const { data } = useApi<SettlePayload>(trip.member_count > 1 ? `/api/trips/${trip.id}/settle/` : null);
+  if (!user) return null;
+
+  const mine = data?.transfers ?? [];
+  const toConfirm = mine.find((t) => t.to_user.id === user.id && t.pending);
+  const iOwe = mine.filter((t) => t.from_user.id === user.id && !t.pending);
+  const waitingOn = mine.find((t) => t.from_user.id === user.id && t.pending);
+  const owedToMe = mine.filter((t) => t.to_user.id === user.id && !t.pending);
+
+  let title: string;
+  let line: string;
+  let action: React.ReactNode;
+  let tone = "border-brand/30 bg-brand-soft/40";
+
+  if (toConfirm) {
+    title = `Confirm ${rupees(toConfirm.pending!.amount)} from ${toConfirm.from_user.name}`;
+    line = "They say they've paid you. Check your UPI app, then confirm.";
+    action = (
+      <Button size="lg" icon="✅" onClick={() => onGo("expenses")}>
+        Review payment
+      </Button>
+    );
+  } else if (iOwe.length) {
+    const total = iOwe.reduce((sum, t) => sum + t.amount, 0);
+    title = `Settle up: you owe ${rupees(total)}`;
+    line = iOwe.map((t) => `${rupees(t.amount)} to ${t.to_user.name}`).join(" · ");
+    action = (
+      <Button size="lg" icon="💸" onClick={() => onGo("expenses")}>
+        Pay via UPI
+      </Button>
+    );
+  } else if (waitingOn) {
+    title = `Paid ${rupees(waitingOn.pending!.amount)} to ${waitingOn.to_user.name}`;
+    line = "Waiting for them to confirm it arrived.";
+    action = (
+      <Button size="lg" variant="secondary" onClick={() => onGo("expenses")}>
+        See money
+      </Button>
+    );
+  } else if (owedToMe.length) {
+    const total = owedToMe.reduce((sum, t) => sum + t.amount, 0);
+    title = `You're owed ${rupees(total)}`;
+    line = owedToMe.map((t) => `${t.from_user.name} · ${rupees(t.amount)}`).join(" · ");
+    action = (
+      <Button size="lg" variant="secondary" onClick={() => onGo("expenses")}>
+        See money
+      </Button>
+    );
+  } else {
+    tone = "border-success/30 bg-success-soft/50";
+    title = trip.member_count > 1 && data ? "All square ✓" : "Trip complete 🎉";
+    line = "Relive it — the route, the numbers and your photos.";
+    action = (
+      <ButtonLink href={`/trips/${trip.id}/complete`} size="lg" icon="🏆">
+        See trip story
+      </ButtonLink>
+    );
+  }
+
+  return (
+    <div className={cn("card flex flex-wrap items-center justify-between gap-3 p-4", tone)}>
+      <div className="min-w-0">
+        <p className="font-bold text-ink">{title}</p>
+        <p className="text-sm text-muted">{line}</p>
+        {trip.my_held_xp > 0 ? (
+          <p className="mt-1.5 text-sm font-semibold text-warn">
+            <span aria-hidden="true">🔒 </span>
+            {trip.my_held_xp} XP waiting — it unlocks once you&apos;ve settled up and it&apos;s confirmed.
+          </p>
+        ) : null}
+      </div>
+      {action}
     </div>
   );
 }

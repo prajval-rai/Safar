@@ -36,6 +36,7 @@ from rewards.services import (
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
 from .geo import distance_from_stop
+from .settle import award_or_hold, release_if_settled, suggested_transfers, take_back, upi_link
 from .regional_theme import DEFAULT_TRIP_THEME
 from .models import (
     Activity,
@@ -44,6 +45,7 @@ from .models import (
     Day,
     Expense,
     Memory,
+    Settlement,
     Trip,
     TripExperience,
     TripMember,
@@ -55,6 +57,7 @@ from .serializers import (
     DaySerializer,
     ExpenseSerializer,
     MemorySerializer,
+    SettlementSerializer,
     TripCreateSerializer,
     TripDetailSerializer,
     TripExperienceSerializer,
@@ -71,15 +74,23 @@ def trip_expense_balances(trip) -> list[dict]:
     """Per-member paid/share/balance for a trip's logged expenses — reused
     by the expenses endpoint itself and by the trip-completed notification's
     summary. `user` is the raw model here, not yet serialised, since the two
-    callers want different shapes from it (an API response vs. plain text)."""
+    callers want different shapes from it (an API response vs. plain text).
+
+    Confirmed settlements count: paying someone back moves your balance up
+    by that much, and theirs down — so a settled group shows everyone even."""
     expenses = trip.expenses.select_related("paid_by")
     total = expenses.aggregate(total=Sum("amount"))["total"] or 0
     head_count = max(trip.members.count(), 1)
     share = round(total / head_count)
+    confirmed = trip.settlements.filter(status="confirmed")
     balances = []
     for member in trip.members.select_related("user"):
         paid = expenses.filter(paid_by=member.user).aggregate(total=Sum("amount"))["total"] or 0
-        balances.append({"user": member.user, "paid": paid, "share": share, "balance": paid - share})
+        sent = confirmed.filter(from_user=member.user).aggregate(total=Sum("amount"))["total"] or 0
+        received = confirmed.filter(to_user=member.user).aggregate(total=Sum("amount"))["total"] or 0
+        balances.append(
+            {"user": member.user, "paid": paid, "share": share, "balance": paid - share + sent - received}
+        )
     return balances
 
 
@@ -604,6 +615,7 @@ class TripViewSet(viewsets.ModelViewSet):
             serializer = ExpenseSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             serializer.save(trip=trip, paid_by=serializer.validated_data.get("paid_by", request.user))
+            release_if_settled(trip)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         expenses = trip.expenses.select_related("paid_by")
@@ -619,6 +631,142 @@ class TripViewSet(viewsets.ModelViewSet):
                 ],
             }
         )
+
+    @action(detail=True, methods=["get", "post"])
+    def settle(self, request, pk=None):
+        """GET: who should pay whom to square up, with UPI links, plus the
+        settlement history. POST: record a payment —
+          {to_user_id, amount, method}   the payer says "I've paid" (pending), or
+          {from_user_id, amount}         the receiver records cash they got (confirmed)."""
+        trip = self.get_object()
+        require_member(trip, request.user)
+        if request.method == "POST":
+            return self._record_settlement(trip, request)
+
+        pending = list(trip.settlements.filter(status="pending").select_related("from_user", "to_user"))
+        transfers = []
+        for t in suggested_transfers(trip_expense_balances(trip)):
+            payer, payee = t["from"], t["to"]
+            waiting = next(
+                (s for s in pending if s.from_user_id == payer.id and s.to_user_id == payee.id), None
+            )
+            transfers.append(
+                {
+                    "from_user": UserMiniSerializer(payer).data,
+                    "to_user": UserMiniSerializer(payee).data,
+                    "amount": t["amount"],
+                    # Only people on this trip ever see a member's UPI ID.
+                    "to_upi_id": payee.upi_id,
+                    "upi_link": (
+                        upi_link(payee.upi_id, payee.name, t["amount"], f"Safar: {trip.title}")
+                        if payee.upi_id
+                        else ""
+                    ),
+                    "pending": SettlementSerializer(waiting).data if waiting else None,
+                }
+            )
+        return Response(
+            {
+                "transfers": transfers,
+                "settlements": SettlementSerializer(
+                    trip.settlements.select_related("from_user", "to_user")[:50], many=True
+                ).data,
+                "my_upi_id": request.user.upi_id,
+            }
+        )
+
+    def _record_settlement(self, trip, request):
+        try:
+            amount = int(request.data.get("amount", 0))
+        except (TypeError, ValueError):
+            raise ValidationError({"amount": "Enter an amount in rupees."})
+        if not 1 <= amount <= 1_000_000:
+            raise ValidationError({"amount": "Enter an amount between ₹1 and ₹10,00,000."})
+        method = request.data.get("method", "upi")
+        if method not in ("upi", "cash"):
+            raise ValidationError({"method": "Pick UPI or cash."})
+
+        members = {m.user_id: m.user for m in trip.members.select_related("user")}
+
+        def member(key):
+            try:
+                user = members.get(int(request.data.get(key)))
+            except (TypeError, ValueError):
+                user = None
+            if not user or user.id == request.user.id:
+                raise ValidationError({key: "Pick someone else on this trip."})
+            return user
+
+        if request.data.get("from_user_id") is not None:
+            # The receiver records money they got — theirs to vouch for, so it counts now.
+            payer = member("from_user_id")
+            settlement = Settlement.objects.create(
+                trip=trip,
+                from_user=payer,
+                to_user=request.user,
+                amount=amount,
+                method=method,
+                status="confirmed",
+                confirmed_at=timezone.now(),
+            )
+            notify(
+                payer,
+                "settle_confirmed",
+                f"{request.user.name} marked ₹{amount} from you as received",
+                actor=request.user,
+                body=f"For {trip.title}. Your balance is updated.",
+                trip=trip,
+            )
+            release_if_settled(trip)
+        else:
+            payee = member("to_user_id")
+            settlement = Settlement.objects.create(
+                trip=trip, from_user=request.user, to_user=payee, amount=amount, method=method
+            )
+            notify(
+                payee,
+                "settle_paid",
+                f"{request.user.name} says they paid you ₹{amount}",
+                actor=request.user,
+                body=f"For {trip.title} — confirm it once it's in your account.",
+                trip=trip,
+            )
+        return Response(SettlementSerializer(settlement).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path=r"settlements/(?P<settlement_id>[^/.]+)/(?P<decision>confirm|decline)")
+    def decide_settlement(self, request, pk=None, settlement_id=None, decision=None):
+        """The receiver confirms a payment arrived — or says it didn't."""
+        trip = self.get_object()
+        require_member(trip, request.user)
+        settlement = get_object_or_404(Settlement, pk=settlement_id, trip=trip)
+        if settlement.to_user_id != request.user.id:
+            raise PermissionDenied("Only the person who was paid can confirm this.")
+        if settlement.status != "pending":
+            raise ValidationError({"detail": "This payment is already confirmed."})
+        if decision == "confirm":
+            settlement.status = "confirmed"
+            settlement.confirmed_at = timezone.now()
+            settlement.save(update_fields=["status", "confirmed_at"])
+            notify(
+                settlement.from_user,
+                "settle_confirmed",
+                f"{request.user.name} confirmed your ₹{settlement.amount}",
+                actor=request.user,
+                body=f"For {trip.title}. You're square on that one.",
+                trip=trip,
+            )
+            release_if_settled(trip)
+            return Response(SettlementSerializer(settlement).data)
+        notify(
+            settlement.from_user,
+            "settle_confirmed",
+            f"{request.user.name} hasn't received your ₹{settlement.amount}",
+            actor=request.user,
+            body=f"For {trip.title}. Check the payment went through, then mark it paid again.",
+            trip=trip,
+        )
+        settlement.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get", "post"])
     def checklist(self, request, pk=None):
@@ -810,22 +958,25 @@ class ActivityViewSet(viewsets.ModelViewSet):
             xp += DAY_COMPLETE_BONUS
 
         trip_completed = False
+        xp_held = 0
         remaining = Activity.objects.filter(day__trip=trip, status="planned").count()
         if remaining == 0 and trip.status != "completed":
             trip.status = "completed"
             trip.save(update_fields=["status"])
             trip_completed = True
-            award_everyone(trip, TRIP_COMPLETE_BONUS, f"Completed {trip.title}", "trip")
-            xp += TRIP_COMPLETE_BONUS
-            award_xp(
-                trip.created_by,
-                ORGANIZER_COMPLETE_BONUS,
-                f"Organised {trip.title} to completion",
-                kind="trip",
-                trip=trip,
+            # Completion XP waits for anyone who still owes money on the trip.
+            balances = trip_expense_balances(trip)
+            for member in members:
+                paid_now = award_or_hold(trip, member, TRIP_COMPLETE_BONUS, f"Completed {trip.title}", balances)
+                if member.id == request.user.id:
+                    xp += paid_now
+                    xp_held += TRIP_COMPLETE_BONUS - paid_now
+            paid_now = award_or_hold(
+                trip, trip.created_by, ORGANIZER_COMPLETE_BONUS, f"Organised {trip.title} to completion", balances
             )
             if trip.created_by_id == request.user.id:
-                xp += ORGANIZER_COMPLETE_BONUS
+                xp += paid_now
+                xp_held += ORGANIZER_COMPLETE_BONUS - paid_now
             notify_many(
                 members,
                 "trip_completed",
@@ -853,6 +1004,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                     "day_completed": day_completed,
                     "day_index": day.index,
                     "trip_completed": trip_completed,
+                    "xp_held": xp_held,
                     "unlocked": [{"title": a.title, "icon": a.icon} for a in unlocked],
                 },
             )
@@ -875,14 +1027,9 @@ class ActivityViewSet(viewsets.ModelViewSet):
         if day_was_complete:
             award_everyone(trip, -DAY_COMPLETE_BONUS, f"Day {day.index} reopened", "day")
         if trip_was_complete:
-            award_everyone(trip, -TRIP_COMPLETE_BONUS, f"{trip.title} reopened", "trip")
-            award_xp(
-                trip.created_by,
-                -ORGANIZER_COMPLETE_BONUS,
-                f"{trip.title} reopened",
-                kind="trip",
-                trip=trip,
-            )
+            for m in trip.members.select_related("user"):
+                take_back(trip, m.user, TRIP_COMPLETE_BONUS, f"{trip.title} reopened")
+            take_back(trip, trip.created_by, ORGANIZER_COMPLETE_BONUS, f"{trip.title} reopened")
 
         activity.status = "planned"
         activity.completed_at = None
@@ -972,6 +1119,24 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Expense.objects.filter(trip__members__user=self.request.user).distinct()
+
+    def _require_owner_or_organiser(self, expense):
+        # Balances decide who owes what (and whose XP is held), so only whoever
+        # paid, or an organiser, can change or remove an expense.
+        member = require_member(expense.trip, self.request.user)
+        if expense.paid_by_id != self.request.user.id and member.role not in ("owner", "admin"):
+            raise PermissionDenied("Only whoever paid, or an organiser, can change this expense.")
+
+    def perform_update(self, serializer):
+        self._require_owner_or_organiser(serializer.instance)
+        expense = serializer.save()
+        release_if_settled(expense.trip)
+
+    def perform_destroy(self, instance):
+        self._require_owner_or_organiser(instance)
+        trip = instance.trip
+        instance.delete()
+        release_if_settled(trip)
 
 
 class ChecklistItemViewSet(viewsets.ModelViewSet):
