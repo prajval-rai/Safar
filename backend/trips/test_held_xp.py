@@ -72,10 +72,32 @@ class HeldXPTests(SafarTestCase):
         # Only the stop and day XP come back off — not a bonus they never got.
         self.assertEqual(self.xp(self.friend), before - self.a3.xp_value - 5)
 
-    def test_only_the_payer_or_an_organiser_can_change_an_expense(self):
-        self.assertEqual(self.client_for(self.friend).delete(f"/api/expenses/{self.hotel.id}/").status_code, 403)
+    def test_only_an_organiser_can_change_or_remove_an_expense(self):
+        # Even the person who paid can't change it once it's in.
+        mine = Expense.objects.create(trip=self.trip, title="Cab", amount=300, paid_by=self.friend)
+        friend = self.client_for(self.friend)
+        self.assertEqual(friend.patch(f"/api/expenses/{mine.id}/", {"amount": 1}, format="json").status_code, 403)
+        self.assertEqual(friend.delete(f"/api/expenses/{self.hotel.id}/").status_code, 403)
         self.assertTrue(Expense.objects.filter(pk=self.hotel.pk).exists())
-        self.assertEqual(self.client_for(self.owner).delete(f"/api/expenses/{self.hotel.id}/").status_code, 204)
+
+        owner = self.client_for(self.owner)
+        edited = owner.patch(
+            f"/api/expenses/{mine.id}/", {"title": "Airport cab", "amount": 450}, format="json"
+        )
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual((edited.data["title"], edited.data["amount"]), ("Airport cab", 450))
+        self.assertEqual(
+            owner.patch(f"/api/expenses/{mine.id}/", {"paid_by_id": self.stranger.id}, format="json").status_code, 400
+        )
+        self.assertEqual(owner.delete(f"/api/expenses/{self.hotel.id}/").status_code, 204)
+
+    def test_an_expense_can_only_be_paid_by_someone_on_the_trip(self):
+        response = self.client_for(self.owner).post(
+            f"/api/trips/{self.trip.id}/expenses/",
+            {"title": "Fuel", "amount": 500, "paid_by_id": self.stranger.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_nothing_is_held_when_nobody_owes(self):
         self.hotel.delete()

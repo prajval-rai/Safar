@@ -12,7 +12,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { SettleUp } from "@/components/trip/SettleUp";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { ChatMessage, ExpenseReport, TripDetail } from "@/lib/types";
+import type { ChatMessage, Expense, ExpenseReport, TripDetail } from "@/lib/types";
 import { CATEGORY_LABELS, cn, rupees, shortDate } from "@/lib/utils";
 
 /* ---------------------------------------------------------------- money */
@@ -20,6 +20,9 @@ import { CATEGORY_LABELS, cn, rupees, shortDate } from "@/lib/utils";
 export function TripExpenses({ trip }: { trip: TripDetail }) {
   const { data, loading, error, reload } = useApi<ExpenseReport>(`/api/trips/${trip.id}/expenses/`);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Expense | null>(null);
+  // Anyone can add what they spent; only organisers can change it afterwards.
+  const organiser = trip.my_role === "owner" || trip.my_role === "admin";
 
   return (
     <div className="space-y-4">
@@ -75,6 +78,16 @@ export function TripExpenses({ trip }: { trip: TripDetail }) {
                     </p>
                   </div>
                   <span className="shrink-0 font-bold text-ink">{rupees(expense.amount)}</span>
+                  {organiser ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(expense)}
+                      className="tap flex shrink-0 items-center justify-center rounded-lg px-2 text-sm font-semibold text-brand hover:bg-raised"
+                      aria-label={`Edit ${expense.title}`}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -89,7 +102,7 @@ export function TripExpenses({ trip }: { trip: TripDetail }) {
         </>
       ) : null}
 
-      <AddExpenseSheet
+      <ExpenseSheet
         trip={trip}
         open={adding}
         onClose={() => setAdding(false)}
@@ -98,42 +111,96 @@ export function TripExpenses({ trip }: { trip: TripDetail }) {
           reload();
         }}
       />
+      {/* key: a fresh form for each expense being edited. */}
+      <ExpenseSheet
+        key={editing?.id ?? "none"}
+        trip={trip}
+        expense={editing}
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          reload();
+        }}
+      />
     </div>
   );
 }
 
-function AddExpenseSheet({
+/** Add an expense — or, given one, edit it (organisers only; the server
+ *  checks too). Editing also offers removing it. */
+function ExpenseSheet({
   trip,
+  expense = null,
   open,
   onClose,
   onSaved,
 }: {
   trip: TripDetail;
+  expense?: Expense | null;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { user } = useAuth();
-  const [form, setForm] = useState({ title: "", amount: "", category: "food", paid_by_id: "" });
+  const blank = { title: "", amount: "", category: "food", paid_by_id: "", spent_on: "" };
+  const [form, setForm] = useState(
+    expense
+      ? {
+          title: expense.title,
+          amount: String(expense.amount),
+          category: expense.category,
+          paid_by_id: String(expense.paid_by.id),
+          spent_on: expense.spent_on,
+        }
+      : blank,
+  );
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useCelebration();
 
   async function save() {
     setBusy(true);
     setError(null);
+    const body = {
+      title: form.title.trim(),
+      amount: Number(form.amount) || 0,
+      category: form.category,
+      paid_by_id: Number(form.paid_by_id) || user?.id,
+      ...(form.spent_on ? { spent_on: form.spent_on } : {}),
+    };
     try {
-      await api.post(`/api/trips/${trip.id}/expenses/`, {
-        title: form.title.trim(),
-        amount: Number(form.amount) || 0,
-        category: form.category,
-        paid_by_id: Number(form.paid_by_id) || user?.id,
-      });
-      toast("Added to the trip budget.");
-      setForm({ title: "", amount: "", category: "food", paid_by_id: "" });
+      if (expense) {
+        await api.patch(`/api/expenses/${expense.id}/`, body);
+        toast("Expense updated — balances recalculated.");
+      } else {
+        await api.post(`/api/trips/${trip.id}/expenses/`, body);
+        toast("Added to the trip budget.");
+        setForm(blank);
+      }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't add that.");
+      setError(err instanceof ApiError ? err.message : "Couldn't save that.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!expense) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true); // first tap arms it
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.del(`/api/expenses/${expense.id}/`);
+      toast("Expense removed — balances recalculated.");
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't remove that.");
+      setConfirmDelete(false);
     } finally {
       setBusy(false);
     }
@@ -143,12 +210,23 @@ function AddExpenseSheet({
     <Sheet
       open={open}
       onClose={onClose}
-      title="Add an expense"
-      description="Split equally across everyone on the trip."
+      title={expense ? "Edit expense" : "Add an expense"}
+      description={
+        expense
+          ? "Changes update everyone's balance and who owes whom."
+          : "Split equally across everyone on the trip."
+      }
       footer={
-        <Button fullWidth size="lg" onClick={save} disabled={busy || !form.title.trim() || !form.amount}>
-          {busy ? "Adding…" : "Add expense"}
-        </Button>
+        <div className="space-y-2">
+          <Button fullWidth size="lg" onClick={save} disabled={busy || !form.title.trim() || !form.amount}>
+            {busy ? "Saving…" : expense ? "Save changes" : "Add expense"}
+          </Button>
+          {expense ? (
+            <Button fullWidth variant="danger" onClick={remove} disabled={busy}>
+              {confirmDelete ? "Tap again to remove it" : "Remove this expense"}
+            </Button>
+          ) : null}
+        </div>
       }
     >
       <div className="space-y-4">
@@ -188,6 +266,14 @@ function AddExpenseSheet({
           onChange={(e) => setForm({ ...form, category: e.target.value })}
           options={Object.entries(CATEGORY_LABELS).map(([value, label]) => ({ value, label }))}
         />
+        {expense ? (
+          <TextField
+            label="Date"
+            type="date"
+            value={form.spent_on}
+            onChange={(e) => setForm({ ...form, spent_on: e.target.value })}
+          />
+        ) : null}
       </div>
     </Sheet>
   );

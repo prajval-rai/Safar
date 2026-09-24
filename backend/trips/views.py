@@ -630,7 +630,10 @@ class TripViewSet(viewsets.ModelViewSet):
         if request.method == "POST":
             serializer = ExpenseSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            serializer.save(trip=trip, paid_by=serializer.validated_data.get("paid_by", request.user))
+            payer = serializer.validated_data.get("paid_by", request.user)
+            if not trip.members.filter(user=payer).exists():
+                raise ValidationError({"paid_by_id": "That person isn't on this trip."})
+            serializer.save(trip=trip, paid_by=payer)
             release_if_settled(trip)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -1184,20 +1187,21 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Expense.objects.filter(trip__members__user=self.request.user).distinct()
 
-    def _require_owner_or_organiser(self, expense):
-        # Balances decide who owes what (and whose XP is held), so only whoever
-        # paid, or an organiser, can change or remove an expense.
-        member = require_member(expense.trip, self.request.user)
-        if expense.paid_by_id != self.request.user.id and member.role not in ("owner", "admin"):
-            raise PermissionDenied("Only whoever paid, or an organiser, can change this expense.")
+    def _require_organiser(self, expense):
+        # Balances decide who owes what (and whose XP is held), so once an
+        # expense is in, only an organiser can change or remove it.
+        require_organiser(expense.trip, self.request.user, "edit or remove expenses")
 
     def perform_update(self, serializer):
-        self._require_owner_or_organiser(serializer.instance)
+        self._require_organiser(serializer.instance)
+        payer = serializer.validated_data.get("paid_by")
+        if payer is not None and not serializer.instance.trip.members.filter(user=payer).exists():
+            raise ValidationError({"paid_by_id": "That person isn't on this trip."})
         expense = serializer.save()
         release_if_settled(expense.trip)
 
     def perform_destroy(self, instance):
-        self._require_owner_or_organiser(instance)
+        self._require_organiser(instance)
         trip = instance.trip
         instance.delete()
         release_if_settled(trip)
