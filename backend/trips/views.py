@@ -32,6 +32,7 @@ from rewards.services import (
     TRIP_CREATE_XP,
     award_xp,
     evaluate_achievements,
+    leave_penalty,
 )
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
@@ -356,6 +357,39 @@ class TripViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
             )
         return Response(TripMemberSerializer(trip.members.select_related("user"), many=True).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def leave(self, request, pk=None):
+        """Step off a trip you joined. Costs a little XP (see leave_penalty);
+        what you already earned on the trip stays yours. The owner can't
+        leave — they cancel or delete the trip instead."""
+        trip = self.get_object()
+        member = require_member(trip, request.user)
+        if member.role == "owner":
+            raise ValidationError(
+                {"detail": "You organise this trip, so you can't leave it — cancel or delete it instead."}
+            )
+        if trip.status == "completed":
+            raise ValidationError({"detail": "This trip is finished — it stays in your history."})
+
+        penalty = leave_penalty(trip)
+        member.delete()
+        # Stops they were looking after go back to "anyone on the trip".
+        Activity.objects.filter(day__trip=trip, assigned_to=request.user).update(assigned_to=None)
+        award_xp(request.user, penalty, f"Left {trip.title}", kind="bonus", trip=trip)
+
+        organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
+        notify_many(
+            organisers,
+            "trip_left",
+            f"{request.user.name} left {trip.title}",
+            actor=request.user,
+            body="They're no longer on the trip. Stops they were looking after are open again.",
+            trip=trip,
+        )
+        request.user.refresh_from_db()
+        return Response(xp_result(request.user, {"xp_penalty": penalty}))
 
     @action(detail=True, methods=["delete"], url_path="members/(?P<member_id>[^/.]+)")
     def remove_member(self, request, pk=None, member_id=None):

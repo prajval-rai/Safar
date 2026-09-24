@@ -163,6 +163,9 @@ class TripDetailSerializer(TripListSerializer):
     members = TripMemberSerializer(many=True, read_only=True)
     planned_xp = serializers.IntegerField(read_only=True)
     my_role = serializers.SerializerMethodField()
+    # What leaving would cost you right now (negative XP), or null when you
+    # can't leave: you're the owner, or the trip is already finished.
+    leave_penalty = serializers.SerializerMethodField()
 
     class Meta(TripListSerializer.Meta):
         fields = TripListSerializer.Meta.fields + [
@@ -171,6 +174,7 @@ class TripDetailSerializer(TripListSerializer):
             "members",
             "planned_xp",
             "my_role",
+            "leave_penalty",
             "created_at",
         ]
 
@@ -178,6 +182,14 @@ class TripDetailSerializer(TripListSerializer):
         user = self.context["request"].user
         member = next((m for m in obj.members.all() if m.user_id == user.id), None)
         return member.role if member else None
+
+    def get_leave_penalty(self, obj) -> int | None:
+        from rewards.services import leave_penalty
+
+        role = self.get_my_role(obj)
+        if role in (None, "owner") or obj.status == "completed":
+            return None
+        return leave_penalty(obj)
 
 
 class TripCreateSerializer(serializers.ModelSerializer):

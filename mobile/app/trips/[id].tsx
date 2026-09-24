@@ -172,7 +172,7 @@ export default function TripDetailScreen() {
         {tab === 'people' ? <People trip={trip} /> : null}
       </View>
 
-      <MoreSheet visible={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MoreSheet trip={trip} visible={moreOpen} onClose={() => setMoreOpen(false)} />
     </ScrollView>
   );
 }
@@ -545,8 +545,43 @@ function People({ trip }: { trip: TripDetail }) {
 
 /* -------------------------------------------------------------------- more */
 
-function MoreSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function MoreSheet({ trip, visible, onClose }: { trip: TripDetail; visible: boolean; onClose: () => void }) {
   const colors = Colors[useColorScheme()];
+  const { user, refreshUser } = useAuth();
+
+  // Spell out exactly what leaving means — including the XP — before doing it.
+  function confirmLeave() {
+    if (trip.leave_penalty === null) return;
+    const cost = Math.abs(trip.leave_penalty);
+    const xpNow = user?.xp ?? 0;
+    const lines = [
+      cost
+        ? `−${cost} XP: ${trip.status === 'active' ? 'this trip is already under way' : "this trip hasn't started yet"}. Your total goes from ${xpNow} to ${Math.max(0, xpNow - cost)} XP.`
+        : 'Free, since this trip was cancelled.',
+      "• You'll lose access to the plan, chat, expenses and memories.",
+      '• XP you already earned on this trip stays yours.',
+      `• ${trip.created_by.name} will be told you left; stops you were looking after go back to the group.`,
+      "• You can rejoin with the invite code, but the XP isn't given back.",
+    ];
+    onClose();
+    Alert.alert(`Leave ${trip.title}?`, lines.join('\n\n'), [
+      { text: 'Stay on the trip', style: 'cancel' },
+      {
+        text: cost ? `Leave (−${cost} XP)` : 'Leave',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api(`/api/trips/${trip.id}/leave/`, { method: 'POST', body: {} });
+            await refreshUser();
+            router.replace('/(tabs)/trips');
+          } catch (e) {
+            Alert.alert("Couldn't leave the trip", e instanceof ApiError ? e.message : 'Try again.');
+          }
+        },
+      },
+    ]);
+  }
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
@@ -566,6 +601,15 @@ function MoreSheet({ visible, onClose }: { visible: boolean; onClose: () => void
               <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 'auto' }}>Web only</Text>
             </Pressable>
           ))}
+          {trip.leave_penalty !== null ? (
+            <Pressable onPress={confirmLeave} style={[styles.moreItem, { borderColor: colors.border }]}>
+              <Text style={{ fontSize: 18 }}>🚪</Text>
+              <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 14 }}>Leave trip</Text>
+              {trip.leave_penalty ? (
+                <Text style={{ color: colors.danger, fontSize: 11, marginLeft: 'auto' }}>{trip.leave_penalty} XP</Text>
+              ) : null}
+            </Pressable>
+          ) : null}
         </Pressable>
       </Pressable>
     </Modal>

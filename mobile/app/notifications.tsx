@@ -15,6 +15,7 @@ type IconName = keyof typeof Ionicons.glyphMap;
 const KIND_ICONS: Record<NotificationKind, IconName> = {
   trip_member_added: 'map-outline',
   trip_joined: 'person-add-outline',
+  trip_left: 'person-remove-outline',
   trip_started: 'play-circle-outline',
   trip_reminder: 'alarm-outline',
   activity_reminder: 'time-outline',

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { TripCover } from "@/components/art/TripCover";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Itinerary } from "@/components/trip/Itinerary";
 import { TripChat, TripChecklist, TripExpenses } from "@/components/trip/TripExtras";
@@ -18,7 +19,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { useTripTheme } from "@/lib/tripTheme";
-import type { TripDetail, XPResult } from "@/lib/types";
+import type { TripDetail, User, XPResult } from "@/lib/types";
 import {
   PACE_LABELS,
   TRANSPORT_ICONS,
@@ -435,10 +436,13 @@ function TripSettings({
 
   if (!canEdit) {
     return (
-      <div className="card p-6 text-center">
-        <p className="text-sm text-muted">
-          Only the organiser and co-planners can change trip settings.
-        </p>
+      <div className="space-y-4">
+        <div className="card p-6 text-center">
+          <p className="text-sm text-muted">
+            Only the organiser and co-planners can change trip settings.
+          </p>
+        </div>
+        <LeaveTripSection trip={trip} />
       </div>
     );
   }
@@ -580,7 +584,7 @@ function TripSettings({
       <section className="card space-y-3 p-4">
         <h2 className="text-sm font-bold text-muted">Share this journey</h2>
         <p className="text-sm text-muted">
-          Turn your journey into a track others can follow. Worth +150 XP.
+          Turn your journey into a track others can follow. Worth +10 XP.
         </p>
         <Button variant="accent" fullWidth icon="🧭" onClick={publishTrack} disabled={busy}>
           Publish as a track
@@ -602,6 +606,8 @@ function TripSettings({
           </Button>
         </section>
       ) : null}
+
+      <LeaveTripSection trip={trip} />
 
       {trip.my_role === "owner" ? (
         <section className="card space-y-3 border-danger/25 p-4">
@@ -664,5 +670,94 @@ function TripSettings({
         </p>
       </Sheet>
     </div>
+  );
+}
+
+/** "Leave trip" for anyone who joined (not the owner). The pop-up spells out
+ *  exactly what happens — including the XP it costs — before anything does. */
+function LeaveTripSection({ trip }: { trip: TripDetail }) {
+  const router = useRouter();
+  const { user, setUser } = useAuth();
+  const { toast } = useCelebration();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (trip.leave_penalty === null) return null;
+  const cost = Math.abs(trip.leave_penalty);
+  const live = trip.status === "active";
+  const xpNow = user?.xp ?? 0;
+
+  async function leave() {
+    setBusy(true);
+    try {
+      const result = await api.post<{ user: User; xp_penalty: number }>(`/api/trips/${trip.id}/leave/`);
+      setUser(result.user);
+      toast(result.xp_penalty ? `You left ${trip.title} · ${result.xp_penalty} XP` : `You left ${trip.title}.`);
+      router.push("/trips");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't leave the trip.", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <section className="card space-y-3 border-danger/25 p-4">
+        <h2 className="text-sm font-bold text-danger">Leave this trip</h2>
+        <p className="text-sm text-muted">
+          Can&apos;t make it any more? You can step off the trip.
+          {cost ? ` It costs ${cost} XP.` : " It's free, since this trip was cancelled."}
+        </p>
+        <Button variant="danger" fullWidth icon="🚪" onClick={() => setOpen(true)}>
+          Leave trip
+        </Button>
+      </section>
+
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Leave ${trip.title}?`}
+        description="Here's what happens if you leave."
+        footer={
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth onClick={() => setOpen(false)}>
+              Stay on the trip
+            </Button>
+            <Button variant="danger" fullWidth onClick={leave} disabled={busy}>
+              {busy ? "Leaving…" : cost ? `Leave (−${cost} XP)` : "Leave"}
+            </Button>
+          </div>
+        }
+      >
+        {cost ? (
+          <div className="rounded-2xl bg-danger-soft p-4 text-center">
+            <p className="text-3xl font-extrabold text-danger">−{cost} XP</p>
+            <p className="mt-1 text-sm text-danger">
+              {live ? "This trip is already under way." : "This trip hasn't started yet."} Your total goes from{" "}
+              <b>{xpNow}</b> to <b>{Math.max(0, xpNow - cost)}</b> XP.
+            </p>
+          </div>
+        ) : null}
+        <ul className="mt-4 space-y-2.5 text-sm text-ink">
+          <li className="flex gap-2.5">
+            <span aria-hidden="true">🔒</span>
+            You&apos;ll lose access to the plan, group chat, expenses and memories.
+          </li>
+          <li className="flex gap-2.5">
+            <span aria-hidden="true">✅</span>
+            XP you&apos;ve already earned on this trip stays yours.
+          </li>
+          <li className="flex gap-2.5">
+            <span aria-hidden="true">📣</span>
+            The organiser, {trip.created_by.name}, will be told you left, and any stops you were looking
+            after go back to the group.
+          </li>
+          <li className="flex gap-2.5">
+            <span aria-hidden="true">🎟️</span>
+            You can rejoin later with the invite code, but the XP isn&apos;t given back.
+          </li>
+        </ul>
+      </Sheet>
+    </>
   );
 }

@@ -22,6 +22,19 @@ ORGANIZER_COMPLETE_BONUS = 10
 # being completed) costs the organiser XP. Cancelling one still in planning
 # is free — changing your mind before anyone's set off isn't a penalty.
 CANCEL_PENALTY = -10
+# A traveller who leaves a trip they joined: a small cost, a bit more once the
+# trip is under way and the group is counting on them. Leaving a cancelled
+# trip is free — there's nothing left to let anyone down on.
+LEAVE_PENALTY_PLANNING = -2
+LEAVE_PENALTY_LIVE = -3
+
+
+def leave_penalty(trip) -> int:
+    if trip.status == "active":
+        return LEAVE_PENALTY_LIVE
+    if trip.status == "planning":
+        return LEAVE_PENALTY_PLANNING
+    return 0
 
 # What a stop is worth, by the kind of stop. Effortful, out-of-the-way things
 # are worth more than eating or resting. Set on the server, never by the client.
@@ -103,6 +116,14 @@ XP_RULES = [
         "detail": (
             "Each level costs more than the last: level 2 needs 50 XP, level 3 another 150, "
             "level 4 another 300, and so on."
+        ),
+    },
+    {
+        "icon": "🚪",
+        "title": "Leave a trip you joined",
+        "detail": (
+            f"{LEAVE_PENALTY_PLANNING} XP if you leave before it starts, {LEAVE_PENALTY_LIVE} XP once it's "
+            "live. XP you already earned on the trip is kept."
         ),
     },
     {

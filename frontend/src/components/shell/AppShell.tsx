@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  UserMinus,
   BellRing,
   Clock,
   Compass,
@@ -204,6 +205,7 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_reminder: BellRing,
   activity_reminder: Clock,
   trip_cancelled: XCircle,
+  trip_left: UserMinus,
   trip_completed: PartyPopper,
   track_used: Route,
   track_published: Rss,

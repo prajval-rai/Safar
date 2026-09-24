@@ -160,6 +160,8 @@ export interface TripDetail extends Trip {
   members: TripMember[];
   planned_xp: number;
   my_role: "owner" | "admin" | "member" | null;
+  /** XP leaving would cost you right now (negative), or null if you can't leave. */
+  leave_penalty: number | null;
   created_at: string;
 }
 
@@ -398,6 +400,7 @@ export interface Paginated<T> {
 export type NotificationKind =
   | "trip_member_added"
   | "trip_joined"
+  | "trip_left"
   | "trip_started"
   | "trip_reminder"
   | "activity_reminder"
