@@ -14,7 +14,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
-import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
+import { checkInStop, completeStop, isPinned } from "@/lib/geo";
 import { OfflineQueuedError } from "@/lib/offlineQueue";
 import { categoryFor, usePlaceSearch } from "@/lib/places";
 import type { Activity, Day, PickedPlace, TripDetail, TripMember, XPResult } from "@/lib/types";
@@ -342,15 +342,10 @@ function ActivityRow({
           </button>
 
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            {!done && canCompleteStop(activity, myId, canEdit) ? (
+            {!done && canEdit ? (
               <Button size="sm" onClick={complete} disabled={busy} icon="✓">
                 Mark as completed
               </Button>
-            ) : null}
-            {!done && !canCompleteStop(activity, myId, canEdit) ? (
-              <span className="text-xs font-semibold text-muted">
-                Assigned to {activity.assigned_to?.name}
-              </span>
             ) : null}
             <Button size="sm" variant="ghost" onClick={onOpen}>
               Details
@@ -508,9 +503,11 @@ function ActivityDetailSheet({
       description={`${CATEGORY_LABELS[activity.category]} · ${timeWindow(activity)}`}
       footer={
         done ? (
-          <Button variant="secondary" fullWidth onClick={() => act(() => api.post<XPResult>(`/api/activities/${activity.id}/undo/`), "Marked as not done.")} disabled={busy}>
-            Mark as not done
-          </Button>
+          canEdit ? (
+            <Button variant="secondary" fullWidth onClick={() => act(() => api.post<XPResult>(`/api/activities/${activity.id}/undo/`), "Marked as not done.")} disabled={busy}>
+              Mark as not done
+            </Button>
+          ) : null
         ) : (
           <div className="flex gap-2">
             <Button
@@ -521,14 +518,16 @@ function ActivityDetailSheet({
             >
               {activity.checked_in_at ? "Checked in" : "Check in"}
             </Button>
-            <Button
-              fullWidth
-              onClick={() => act(() => completeStop(activity))}
-              disabled={busy || !canCompleteStop(activity, myId, canEdit)}
-              icon="✓"
-            >
-              Mark as completed
-            </Button>
+            {canEdit ? (
+              <Button
+                fullWidth
+                onClick={() => act(() => completeStop(activity))}
+                disabled={busy}
+                icon="✓"
+              >
+                Mark as completed
+              </Button>
+            ) : null}
           </div>
         )
       }
@@ -541,7 +540,8 @@ function ActivityDetailSheet({
         {!done && isPinned(activity) ? (
           <p className="rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
             <span aria-hidden="true">📍</span> This stop is pinned on the map. Be within 1 km of it to
-            check in or mark it complete — we&apos;ll ask for your location.
+            check in or mark it complete — we&apos;ll ask for your location. The organiser marks it
+            done for everyone on the trip.
           </p>
         ) : null}
 
@@ -581,11 +581,7 @@ function ActivityDetailSheet({
         {done && activity.completed_by ? (
           <p className="text-sm text-muted">
             <span aria-hidden="true">✓</span> Completed by {activity.completed_by.name}
-            {activity.verified_by_location
-              ? " — location confirmed on the spot"
-              : isPinned(activity)
-                ? " — marked by the organiser"
-                : ""}
+            {activity.verified_by_location ? " — location confirmed on the spot" : ""}
           </p>
         ) : null}
 
@@ -631,7 +627,7 @@ function ActivityDetailSheet({
 
               <SelectField
                 label="Assigned to"
-                hint="Only this person (or an organiser) can complete the stop."
+                hint="Who's looking after this stop. Only an organiser can mark it done."
                 value={String(activity.assigned_to?.id ?? "")}
                 disabled={busy || done}
                 onChange={(e) => assign(e.target.value)}
@@ -643,19 +639,6 @@ function ActivityDetailSheet({
                   })),
                 ]}
               />
-              {!done && isPinned(activity) ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  fullWidth
-                  disabled={busy}
-                  onClick={() =>
-                    act(() => completeStop(activity, { override: true }), "Marked complete.")
-                  }
-                >
-                  Mark complete without location (organiser)
-                </Button>
-              ) : null}
               <TextField
                 label="Visit time"
                 type="time"
@@ -727,8 +710,6 @@ function AddActivitySheet({
     category: "sightseeing",
     end_time: "",
     cost: "",
-    requires_photo: false,
-    requires_checkin: false,
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -761,8 +742,6 @@ function AddActivitySheet({
         description: form.description.trim(),
         category: advanced.category,
         cost: Number(advanced.cost) || 0,
-        requires_photo: advanced.requires_photo,
-        requires_checkin: advanced.requires_checkin,
       });
       toast("Added to your plan.");
       setForm({ title: "", place_name: "", start_time: "", description: "" });
@@ -880,18 +859,6 @@ function AddActivitySheet({
               value={advanced.cost}
               onChange={(e) => setAdvanced({ ...advanced, cost: e.target.value })}
             />
-            <div className="space-y-2">
-              <Toggle
-                label="Need a photo before marking done"
-                checked={advanced.requires_photo}
-                onChange={(v) => setAdvanced({ ...advanced, requires_photo: v })}
-              />
-              <Toggle
-                label="Need to check in at the place"
-                checked={advanced.requires_checkin}
-                onChange={(v) => setAdvanced({ ...advanced, requires_checkin: v })}
-              />
-            </div>
           </div>
         ) : null}
       </div>
@@ -931,27 +898,5 @@ function SuggestedPlaces({ trip, onPick }: { trip: TripDetail; onPick: (place: P
             ))}
       </div>
     </div>
-  );
-}
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex min-h-[44px] cursor-pointer items-center gap-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-5 w-5 rounded border-line accent-[var(--brand)]"
-      />
-      <span className="text-sm text-ink">{label}</span>
-    </label>
   );
 }

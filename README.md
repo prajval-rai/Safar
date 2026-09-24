@@ -65,6 +65,8 @@ data in it straight away.
 
 **After**
 - Trip completion screen with the route, the numbers and your crew
+- Home asks "How was <trip>?" with the XP you earned on it, and everyone's write-ups
+  show on the trip story
 - Publish the trip as a **track** others can copy into their own trips
 - Write a travel post
 
@@ -77,17 +79,19 @@ data in it straight away.
 
 ## Completing stops, assignment and the travel map
 
+**Organisers complete stops for the group.** Only the trip owner or a co-planner can mark
+a stop complete, and it's then done for everyone on the trip: every member earns its XP
+(and the day and trip bonuses when those finish). Travellers can still check in themselves.
+
 **The 1 km rule.** A stop with a pin on the map can only be checked in at, or marked
-complete, by someone whose phone is within 1 km of it. The app asks the browser for
-the traveller's location and the server does the distance check
+complete, from within 1 km of it — there is no override and it isn't configurable. The app
+asks for the device's location and the server does the distance check
 (`backend/trips/geo.py`); a stop with no pin has nothing to measure and just completes.
 
-- **Organiser override.** The trip owner and co-planners can mark a stop complete from
-  anywhere ("Mark complete without location"). That completion is recorded as *not*
-  location-verified, so it doesn't count towards "places I've been".
-- **Assignment.** An organiser can assign a stop to a member. Once assigned, only that
-  person (or an organiser) can complete it.
-- **Undo** is limited to whoever completed the stop, or an organiser.
+- **Assignment.** An organiser can assign a stop to a member to show who's looking after
+  it. It doesn't change who can complete it.
+- **Undo** is organiser-only and takes the XP back from everyone, including any day or trip
+  bonus the stop had triggered.
 - Browsers only share location on `https://` pages or `localhost`, so testing on a phone
   needs a secure address (for example a tunnel), not a plain `http://192.168…` link.
 - The coordinates come from the traveller's own device, so a determined person could fake
@@ -199,7 +203,8 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 | `POST /api/trips/{id}/generate-plan/` | Fill a day (or all of them) with a suggested plan |
 | `GET /api/trips/{id}/live/` | NOW / NEXT / TODAY / group, for Live Trip mode |
 | `GET /api/trips/{id}/summary/` | The trip completion screen |
-| `POST /api/trips/{id}/start/`, `/complete/` | Trip status |
+| `POST /api/trips/{id}/start/`, `/cancel/`, `/reopen/` | Trip status |
+| `GET/POST /api/trips/{id}/experience/` | Your write-up of a finished trip |
 | `GET/POST /api/trips/{id}/expenses/`, `/checklist/`, `/memories/`, `/chat/`, `/members/` | The advanced sections |
 | `POST /api/trips/join/` | Join with an invite code |
 | `POST /api/activities/{id}/complete/`, `/undo/`, `/checkin/`, `/move/` | Activity actions |
@@ -217,15 +222,19 @@ Defined in one place, `backend/rewards/services.py`:
 
 | Action | XP |
 | --- | --- |
-| Complete an activity | the activity's own value (usually 20–80) |
-| Finish every activity in a day | +100 |
-| Finish the trip | +500 |
-| Check in at a place | +10 |
-| Add a memory | +15 |
-| Publish a track | +150 |
+| Plan a trip | +2 (organiser) |
+| Complete a stop (everyone on the trip) | 1–5 by category: adventure 5, sightseeing/nature 4, event/travel 3, food/shopping 2, stay/rest 1 |
+| Finish every stop in a day (everyone) | +5 |
+| Finish the trip (everyone) | +15, and +10 more for the organiser |
+| Write about a finished trip | +3 |
+| Check in at a place | +1 |
+| Add a memory | +1 |
+| Publish a track | +10 |
+| Cancel a trip that's already live | −10 (organiser) |
 
-Levels use a widening curve: moving from level *L* to *L+1* costs `375 × L` XP, so
-level 8 → 9 is 3,000 XP.
+A stop's XP is set by the server from its category; clients can't set it. Levels get
+steeper: moving from level *L* to *L+1* costs `25 × L × (L+1)` XP — 50, 150, 300, 500… —
+so level 3 takes about three trips and level 8 about 4,200 XP.
 
 ---
 

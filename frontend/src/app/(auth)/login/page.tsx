@@ -10,6 +10,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { ApiError, login } from "@/lib/api";
+import { returnPath } from "@/lib/returnPath";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function LoginPage() {
     setError(null);
     try {
       setUser(await login(username.trim(), password));
-      router.replace("/");
+      router.replace(returnPath());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't sign you in just now.");
       setBusy(false);
@@ -102,7 +103,7 @@ export default function LoginPage() {
           <GoogleSignInButton
             onSignedIn={(signedInUser) => {
               setUser(signedInUser);
-              router.replace("/");
+              router.replace(returnPath());
             }}
             onError={(message) => setError(message)}
           />

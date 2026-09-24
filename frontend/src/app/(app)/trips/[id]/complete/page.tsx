@@ -132,6 +132,27 @@ export default function TripCompletePage() {
           </section>
         ) : null}
 
+        {data.experiences.length ? (
+          <section className="mt-6" aria-labelledby="experiences-heading">
+            <h2 id="experiences-heading" className="mb-3 text-lg font-bold text-ink">
+              How it went
+            </h2>
+            <ul className="space-y-3">
+              {data.experiences.map((entry) => (
+                <li key={entry.id} className="card p-4">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar user={entry.user} size="sm" />
+                    <span className="text-sm font-semibold text-ink">{entry.user.name}</span>
+                  </div>
+                  <p className="mt-2 text-[15px] leading-relaxed whitespace-pre-line text-ink">
+                    {entry.text}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         {data.total_spend > 0 ? (
           <section className="card mt-6 p-4">
             <h2 className="text-sm font-bold text-muted">What it cost</h2>

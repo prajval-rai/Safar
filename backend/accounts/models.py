@@ -2,8 +2,11 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-# XP needed to move from level L to L + 1. Level 8 -> 9 costs 3000 XP.
-LEVEL_STEP = 375
+# XP needed to move from level L to L + 1 is LEVEL_STEP * L * (L + 1), so each
+# level costs more than the one before: 50, 150, 300, 500, 750... A whole trip
+# is worth roughly 50–100 XP, so the early levels come quickly and the later
+# titles take many trips.
+LEVEL_STEP = 25
 
 # Fixed catalog a traveller picks one from when setting up account recovery —
 # not free text, so there's always a consistent label to show back to them.
@@ -40,16 +43,17 @@ THEME_CHOICES = [
 ]
 
 
+def level_floor(level: int) -> int:
+    """Cumulative XP to reach level L: the sum of LEVEL_STEP * k * (k + 1) for
+    k below L, which is LEVEL_STEP * (L - 1) * L * (L + 1) / 3."""
+    return LEVEL_STEP * (level - 1) * level * (level + 1) // 3
+
+
 def level_from_xp(xp: int) -> int:
-    """Cumulative XP to reach level L is LEVEL_STEP * (L - 1) * L / 2."""
     level = 1
-    while xp >= LEVEL_STEP * level * (level + 1) // 2:
+    while xp >= level_floor(level + 1):
         level += 1
     return level
-
-
-def level_floor(level: int) -> int:
-    return LEVEL_STEP * (level - 1) * level // 2
 
 
 def level_title(level: int) -> str:
@@ -120,7 +124,7 @@ class User(AbstractUser):
 
     @property
     def xp_for_next_level(self) -> int:
-        return LEVEL_STEP * self.level
+        return LEVEL_STEP * self.level * (self.level + 1)
 
     @property
     def level_progress(self) -> int:

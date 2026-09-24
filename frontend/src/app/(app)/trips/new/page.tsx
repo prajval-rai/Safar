@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { InviteCardSheet } from "@/components/trip/InviteCardSheet";
 
 import { DestinationPicker } from "@/components/maps/DestinationPicker";
 import { InterestPicker } from "@/components/maps/DiscoverPlaces";
@@ -790,26 +791,7 @@ function StepItinerary({
 /* ---------------------------------------------------------------- step 6 */
 
 function StepInvite({ trip }: { trip: TripDetail }) {
-  const { toast } = useCelebration();
-
-  const shareText = `Join my trip "${trip.title}" on Safar. Invite code: ${trip.join_code}`;
-
-  async function share() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: trip.title, text: shareText });
-        return;
-      } catch {
-        /* the traveller dismissed the share sheet — nothing to do */
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(shareText);
-      toast("Invite copied — paste it in your group.");
-    } catch {
-      toast("Copy the code above and share it.", "error");
-    }
-  }
+  const [cardOpen, setCardOpen] = useState(false);
 
   return (
     <section>
@@ -818,10 +800,11 @@ function StepInvite({ trip }: { trip: TripDetail }) {
       <div className="card flex flex-col items-center gap-2 p-6 text-center">
         <p className="text-sm font-semibold text-muted">Invite code</p>
         <p className="text-3xl font-extrabold tracking-[0.35em] text-brand">{trip.join_code}</p>
-        <Button variant="secondary" icon="🔗" onClick={share} className="mt-2">
-          Share invite
+        <Button icon="🎟️" onClick={() => setCardOpen(true)} className="mt-2">
+          Share invitation card
         </Button>
       </div>
+      <InviteCardSheet trip={trip} open={cardOpen} onClose={() => setCardOpen(false)} />
 
       {trip.members.length > 1 ? (
         <div className="mt-5">

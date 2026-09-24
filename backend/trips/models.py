@@ -175,22 +175,19 @@ class TripMember(models.Model):
 
     @property
     def xp_earned(self) -> int:
+        """Everything this person earned on this trip — stops, day and trip
+        bonuses, memories, check-ins — straight from their XP ledger."""
         return (
-            Activity.objects.filter(day__trip=self.trip, completed_by=self.user).aggregate(
-                total=models.Sum("xp_value")
+            self.user.xp_transactions.filter(trip=self.trip).aggregate(
+                total=models.Sum("amount")
             )["total"]
             or 0
         )
 
     @property
     def progress_percent(self) -> int:
-        total = Activity.objects.filter(day__trip=self.trip).count()
-        if not total:
-            return 0
-        done = Activity.objects.filter(
-            day__trip=self.trip, status="completed", completed_by=self.user
-        ).count()
-        return round(done / total * 100)
+        # A stop the organiser completes is done for the whole group.
+        return self.trip.progress_percent
 
 
 class Day(models.Model):
@@ -235,9 +232,8 @@ class Activity(models.Model):
     description = models.TextField(blank=True)
     notes = models.TextField(blank=True)
     cost = models.PositiveIntegerField(default=0)
-    xp_value = models.PositiveIntegerField(default=20)
-    requires_photo = models.BooleanField(default=False)
-    requires_checkin = models.BooleanField(default=False)
+    # Set from the category on save (see rewards.services.stop_xp), never by the client.
+    xp_value = models.PositiveIntegerField(default=2)
     booking_url = models.URLField(blank=True)
     order = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=12, choices=ACTIVITY_STATUS, default="planned")
@@ -274,6 +270,17 @@ class Activity(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def save(self, *args, **kwargs):
+        from rewards.services import stop_xp
+
+        # A finished stop keeps the value it paid out, so undo takes back exactly that.
+        if self.status != "completed":
+            self.xp_value = stop_xp(self.category)
+            fields = kwargs.get("update_fields")
+            if fields is not None and "xp_value" not in fields:
+                kwargs["update_fields"] = [*fields, "xp_value"]
+        super().save(*args, **kwargs)
 
     @property
     def trip_id_value(self):
@@ -366,3 +373,34 @@ class ChatMessage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user}: {self.text[:30]}"
+
+
+class TripExperience(models.Model):
+    """What a traveller wrote about a trip once it was over — one per person per
+    trip. A row with `skipped` set means they said "not now" to the prompt, so
+    Home stops asking about that trip."""
+
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="experiences")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trip_experiences"
+    )
+    text = models.TextField(max_length=4000, blank=True)
+    skipped = models.BooleanField(default=False)
+    # The write-up is also shared to the Feed as a travel post; editing it
+    # updates that same post.
+    post = models.OneToOneField(
+        "explore.TravelPost",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="experience",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("trip", "user")
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user} on {self.trip}"

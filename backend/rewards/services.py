@@ -4,20 +4,42 @@ from django.db import transaction
 
 from .models import Achievement, UserAchievement, XPTransaction
 
-DAY_COMPLETE_BONUS = 100
-TRIP_COMPLETE_BONUS = 500
-CHECKIN_XP = 10
-MEMORY_XP = 15
-TRACK_PUBLISH_XP = 150
-TRIP_CREATE_XP = 20
+# XP is deliberately scarce: one full trip is worth well under a single
+# level, so a high level actually says something about how much you travel.
+DAY_COMPLETE_BONUS = 5
+TRIP_COMPLETE_BONUS = 15
+CHECKIN_XP = 1
+MEMORY_XP = 1
+EXPERIENCE_XP = 3
+TRACK_PUBLISH_XP = 10
+TRIP_CREATE_XP = 2
 # The organiser earns this on top of TRIP_COMPLETE_BONUS once their trip is
-# fully done — a reward for the initiative of planning it, not just for
-# whoever happened to tap the last stop.
-ORGANIZER_COMPLETE_BONUS = 250
+# fully done — a reward for the initiative of planning it and for being the
+# one who ticks every stop off for the group.
+ORGANIZER_COMPLETE_BONUS = 10
 # Cancelling a trip that's already under way (people are on it, stops are
 # being completed) costs the organiser XP. Cancelling one still in planning
 # is free — changing your mind before anyone's set off isn't a penalty.
-CANCEL_PENALTY = -75
+CANCEL_PENALTY = -10
+
+# What a stop is worth, by the kind of stop. Effortful, out-of-the-way things
+# are worth more than eating or resting. Set on the server, never by the client.
+CATEGORY_XP = {
+    "adventure": 5,
+    "sightseeing": 4,
+    "nature": 4,
+    "event": 3,
+    "travel": 3,
+    "shopping": 2,
+    "food": 2,
+    "stay": 1,
+    "rest": 1,
+}
+
+
+def stop_xp(category: str) -> int:
+    return CATEGORY_XP.get(category, 2)
+
 
 # The rulebook behind every number above, in the order they'd apply across a
 # trip's life — powers the "How XP works" info tag on the Rewards screen, so
@@ -26,17 +48,20 @@ XP_RULES = [
     {
         "icon": "🧭",
         "title": "Plan a trip",
-        "detail": f"+{TRIP_CREATE_XP} XP for starting a new trip as its organiser — initiative counts.",
+        "detail": f"+{TRIP_CREATE_XP} XP for starting a new trip as its organiser.",
     },
     {
         "icon": "📍",
         "title": "Complete a stop",
-        "detail": "Whatever that activity is worth (usually 10–40 XP) for marking it done.",
+        "detail": (
+            "1–5 XP for everyone on the trip when the organiser marks a stop done at the place. "
+            "Adventures and sightseeing are worth the most; meals and rest the least."
+        ),
     },
     {
         "icon": "🌅",
         "title": "Finish a full day",
-        "detail": f"+{DAY_COMPLETE_BONUS} XP bonus once every stop planned for that day is done.",
+        "detail": f"+{DAY_COMPLETE_BONUS} XP each once every stop planned for that day is done.",
     },
     {
         "icon": "📸",
@@ -51,21 +76,33 @@ XP_RULES = [
     {
         "icon": "🏁",
         "title": "Complete the whole trip",
-        "detail": f"+{TRIP_COMPLETE_BONUS} XP bonus for whoever completes the trip's very last stop.",
+        "detail": f"+{TRIP_COMPLETE_BONUS} XP for everyone on the trip once its last stop is done.",
     },
     {
         "icon": "👑",
         "title": "Organise it to the end",
         "detail": (
             f"+{ORGANIZER_COMPLETE_BONUS} XP extra for the trip's organiser once the whole trip "
-            "is completed — on top of the usual completion bonus, even if someone else tapped "
-            "the last stop."
+            "is completed."
         ),
+    },
+    {
+        "icon": "📝",
+        "title": "Write about the trip",
+        "detail": f"+{EXPERIENCE_XP} XP for sharing your experience once a trip is finished.",
     },
     {
         "icon": "✍️",
         "title": "Publish a track",
         "detail": f"+{TRACK_PUBLISH_XP} XP for turning a finished trip into a track others can follow.",
+    },
+    {
+        "icon": "📈",
+        "title": "Levels get harder",
+        "detail": (
+            "Each level costs more than the last: level 2 needs 50 XP, level 3 another 150, "
+            "level 4 another 300, and so on."
+        ),
     },
     {
         "icon": "⚠️",
@@ -97,12 +134,14 @@ def _stats(user) -> dict:
     from trips.models import Activity, Memory, Trip
 
     finished = Trip.objects.filter(members__user=user, status="completed").distinct()
+    # The organiser completes a stop for the whole group, so a stop counts for
+    # everyone on the trip, not just whoever tapped it.
+    done = Activity.objects.filter(day__trip__members__user=user, status="completed").distinct()
     return {
         "trips_completed": finished.count(),
-        "activities_completed": Activity.objects.filter(completed_by=user).count(),
+        "activities_completed": done.count(),
         "photos_uploaded": Memory.objects.filter(user=user).count(),
-        "places_visited": Activity.objects.filter(completed_by=user)
-        .exclude(place_name="")
+        "places_visited": done.exclude(place_name="")
         .values("place_name")
         .distinct()
         .count(),
@@ -114,9 +153,7 @@ def _stats(user) -> dict:
         .distinct()
         .count(),
         # Stops where the traveller's phone was really within 1 km.
-        "places_verified": Activity.objects.filter(
-            completed_by=user, verified_by_location=True
-        ).count(),
+        "places_verified": done.filter(verified_by_location=True).count(),
         # Different destinations covered by finished trips that have a map area.
         "areas_covered": finished.filter(latitude__isnull=False)
         .values("destination")
@@ -184,19 +221,20 @@ def achievement_progress(user) -> list[dict]:
 
 
 DEFAULT_ACHIEVEMENTS = [
-    ("first-steps", "First Steps", "Complete your first activity", "👣", 50, "activities_completed", 1),
-    ("first-journey", "First Journey", "Complete your first trip", "🎒", 200, "trips_completed", 1),
-    ("shutterbug", "Shutterbug", "Upload 10 travel photos", "📸", 150, "photos_uploaded", 10),
-    ("explorer", "Explorer", "Visit 5 different places", "🗺️", 150, "places_visited", 5),
-    ("pathfinder", "Pathfinder", "Visit 25 different places", "🧭", 400, "places_visited", 25),
-    ("storyteller", "Storyteller", "Publish your first track", "✍️", 200, "tracks_published", 1),
-    ("weekend-regular", "Weekend Regular", "Complete 3 trips", "🚗", 350, "trips_completed", 3),
-    ("state-hopper", "State Hopper", "Travel across 3 regions", "🛤️", 300, "states_visited", 3),
-    ("five-k-club", "5K Club", "Earn 5,000 XP", "⭐", 500, "xp_total", 5000),
-    ("busy-boots", "Busy Boots", "Complete 50 activities", "🥾", 400, "activities_completed", 50),
-    ("been-there", "Been There", "Complete 5 stops by actually being there", "📍", 200, "places_verified", 5),
-    ("area-explorer", "Area Explorer", "Finish trips in 3 different areas", "🗺️", 300, "areas_covered", 3),
-    ("local-hero", "Local Hero", "Get 5 followers", "🤝", 200, "followers", 5),
+    ("first-steps", "First Steps", "Complete your first activity", "👣", 5, "activities_completed", 1),
+    ("first-journey", "First Journey", "Complete your first trip", "🎒", 20, "trips_completed", 1),
+    ("shutterbug", "Shutterbug", "Upload 10 travel photos", "📸", 10, "photos_uploaded", 10),
+    ("explorer", "Explorer", "Visit 5 different places", "🗺️", 10, "places_visited", 5),
+    ("pathfinder", "Pathfinder", "Visit 25 different places", "🧭", 30, "places_visited", 25),
+    ("storyteller", "Storyteller", "Publish your first track", "✍️", 15, "tracks_published", 1),
+    ("weekend-regular", "Weekend Regular", "Complete 3 trips", "🚗", 25, "trips_completed", 3),
+    ("state-hopper", "State Hopper", "Travel across 3 regions", "🛤️", 25, "states_visited", 3),
+    # Code kept from when this was 5,000 XP so existing unlocks still match.
+    ("five-k-club", "500 Club", "Earn 500 XP", "⭐", 25, "xp_total", 500),
+    ("busy-boots", "Busy Boots", "Complete 50 activities", "🥾", 30, "activities_completed", 50),
+    ("been-there", "Been There", "Complete 5 stops by actually being there", "📍", 15, "places_verified", 5),
+    ("area-explorer", "Area Explorer", "Finish trips in 3 different areas", "🗺️", 25, "areas_covered", 3),
+    ("local-hero", "Local Hero", "Get 5 followers", "🤝", 15, "followers", 5),
 ]
 
 

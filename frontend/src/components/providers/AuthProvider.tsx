@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { clearReturnPath, rememberReturnPath, returnPath } from "@/lib/returnPath";
 
 import { api, tokens } from "@/lib/api";
 import type { User } from "@/lib/types";
@@ -59,9 +60,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Send signed-out travellers to the login screen, but never trap them there.
   useEffect(() => {
     if (loading) return;
-    if (!user && !isPublic) router.replace("/login");
-    if (user && isPublic) router.replace("/");
-  }, [user, loading, isPublic, router]);
+    if (!user && !isPublic) {
+      // An invite link (or any deep link) opened while signed out should
+      // land back there once they've signed in, not on Home.
+      if (pathname !== "/") rememberReturnPath(pathname);
+      router.replace("/login");
+    }
+    if (user && isPublic) router.replace(returnPath());
+    if (user && !isPublic && pathname === returnPath()) clearReturnPath();
+  }, [user, loading, isPublic, pathname, router]);
 
   const signOut = useCallback(() => {
     tokens.clear();

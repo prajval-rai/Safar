@@ -75,7 +75,7 @@ class TrackStop(models.Model):
     start_time = models.TimeField(null=True, blank=True)
     description = models.TextField(blank=True)
     cost = models.PositiveIntegerField(default=0)
-    xp_value = models.PositiveIntegerField(default=20)
+    xp_value = models.PositiveIntegerField(default=2)
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

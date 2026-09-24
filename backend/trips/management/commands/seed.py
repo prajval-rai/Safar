@@ -253,8 +253,11 @@ class Command(BaseCommand):
                 created_activities.append(Activity.objects.create(day=day, order=order, **stop))
 
         cutoff = int(len(created_activities) * complete_ratio)
+        # Only organisers (the owner and the co-planner) complete stops, and
+        # each one counts for the whole group.
+        organisers = everyone[:2]
         for activity in created_activities[:cutoff]:
-            doer = random.choice(everyone)
+            doer = random.choice(organisers)
             activity.status = "completed"
             activity.completed_by = doer
             activity.completed_at = timezone_for(activity)
@@ -263,11 +266,13 @@ class Command(BaseCommand):
             activity.verified_by_location = activity.latitude is not None
             activity.completed_distance_m = 120 if activity.latitude is not None else None
             activity.save()
-            award_xp(doer, activity.xp_value, f"Completed {activity.title}", "activity", trip)
+            for member in everyone:
+                award_xp(member, activity.xp_value, f"Completed {activity.title}", "activity", trip)
 
         for day in trip.days.all():
             if day.is_complete:
-                award_xp(owner, DAY_COMPLETE_BONUS, f"Finished day {day.index}", "day", trip)
+                for member in everyone:
+                    award_xp(member, DAY_COMPLETE_BONUS, f"Finished day {day.index}", "day", trip)
 
         if complete_ratio >= 1.0:
             trip.status = "completed"

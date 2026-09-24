@@ -35,12 +35,10 @@ export function isPinned(activity: Pick<Activity, 'latitude' | 'longitude'>): bo
   return activity.latitude != null && activity.longitude != null;
 }
 
-export async function completeStop(
-  activity: Pick<Activity, 'id' | 'latitude' | 'longitude'>,
-  options: { override?: boolean } = {},
-): Promise<XPResult> {
+/** Organisers only: completes the stop for the whole group. A pinned stop
+ *  always needs the organiser to be within 1 km of it. */
+export async function completeStop(activity: Pick<Activity, 'id' | 'latitude' | 'longitude'>): Promise<XPResult> {
   const path = `/api/activities/${activity.id}/complete/`;
-  if (options.override) return api<XPResult>(path, { method: 'POST', body: { override: true } });
   if (!isPinned(activity)) return api<XPResult>(path, { method: 'POST', body: {} });
   return api<XPResult>(path, { method: 'POST', body: await getPosition() });
 }
@@ -49,12 +47,4 @@ export async function checkInStop(activity: Pick<Activity, 'id' | 'latitude' | '
   const path = `/api/activities/${activity.id}/checkin/`;
   if (!isPinned(activity)) return api<XPResult>(path, { method: 'POST', body: {} });
   return api<XPResult>(path, { method: 'POST', body: await getPosition() });
-}
-
-export function canCompleteStop(
-  activity: Pick<Activity, 'assigned_to'>,
-  myId: number | undefined,
-  isOrganiser: boolean,
-): boolean {
-  return !activity.assigned_to || activity.assigned_to.id === myId || isOrganiser;
 }

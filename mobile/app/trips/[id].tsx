@@ -32,7 +32,7 @@ import {
   TRANSPORT_LABELS,
   TRIP_TYPE_LABELS,
 } from '@/lib/format';
-import { canCompleteStop, checkInStop, completeStop, isPinned } from '@/lib/geo';
+import { checkInStop, completeStop, isPinned } from '@/lib/geo';
 import type { Activity, Day, TripDetail } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
@@ -445,13 +445,12 @@ function ActivityCard({
 }) {
   const colors = Colors[useColorScheme()];
   const [busy, setBusy] = useState(false);
-  const canComplete = canCompleteStop(activity, myId, canEdit);
   const pinned = isPinned(activity);
 
-  async function mark(override = false) {
+  async function mark() {
     setBusy(true);
     try {
-      await completeStop(activity, { override });
+      await completeStop(activity);
       onChanged();
     } catch (e) {
       Alert.alert('Couldn\'t mark that done', e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Try again.');
@@ -493,27 +492,24 @@ function ActivityCard({
             ✓ Completed{activity.verified_by_location ? ' · confirmed by location' : ''}
           </Text>
         </View>
-      ) : !canComplete ? (
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>
-          Assigned to {activity.assigned_to?.name}
-        </Text>
       ) : (
         <View style={styles.activityActions}>
-          {activity.requires_checkin && !activity.checked_in_at ? (
+          {pinned && !activity.checked_in_at ? (
             <Pressable onPress={checkIn} disabled={busy} style={[styles.smallButton, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}>
               <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>📍 Check in</Text>
             </Pressable>
           ) : null}
-          <Pressable onPress={() => mark(false)} disabled={busy} style={[styles.completeButton, { backgroundColor: colors.tint, opacity: busy ? 0.6 : 1 }]}>
-            {busy ? <ActivityIndicator size="small" color={colors.onBrand} /> : (
-              <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 12 }}>Mark complete</Text>
-            )}
-          </Pressable>
-          {pinned && canEdit ? (
-            <Pressable onPress={() => mark(true)} disabled={busy} style={[styles.smallButton, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}>
-              <Text style={{ color: colors.muted, fontWeight: '600', fontSize: 11 }}>Without location</Text>
+          {canEdit ? (
+            <Pressable onPress={mark} disabled={busy} style={[styles.completeButton, { backgroundColor: colors.tint, opacity: busy ? 0.6 : 1 }]}>
+              {busy ? <ActivityIndicator size="small" color={colors.onBrand} /> : (
+                <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 12 }}>Mark complete</Text>
+              )}
             </Pressable>
-          ) : null}
+          ) : (
+            <Text style={{ color: colors.muted, fontSize: 12, alignSelf: 'center' }}>
+              The organiser marks this done for everyone.
+            </Text>
+          )}
         </View>
       )}
     </View>

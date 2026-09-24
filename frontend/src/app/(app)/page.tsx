@@ -11,11 +11,11 @@ import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { TripCard, TripTile } from "@/components/trip/TripCard";
 import { Chip, ErrorNote, LoadingBlock, Progress, SectionHeader, StatTile } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { TextField } from "@/components/ui/Field";
+import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { HomePayload, Trip, TripDetail } from "@/lib/types";
+import type { HomePayload, Trip, TripDetail, XPResult } from "@/lib/types";
 import { dateRange } from "@/lib/utils";
 
 export default function HomePage() {
@@ -42,6 +42,15 @@ export default function HomePage() {
       </header>
 
       {data.live_trip ? <LiveTripBanner trip={data.live_trip} /> : null}
+
+      {data.experience_prompt ? (
+        <ExperiencePrompt
+          key={data.experience_prompt.trip.id}
+          trip={data.experience_prompt.trip}
+          xpEarned={data.experience_prompt.xp_earned}
+          onDone={reload}
+        />
+      ) : null}
 
       {/* Two primary actions, nothing else competing. */}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -160,6 +169,105 @@ function LiveTripBanner({ trip }: { trip: Trip }) {
         </div>
       </div>
     </section>
+  );
+}
+
+/** Once a trip is over, a small pop-up floats in asking how it went. Tapping it
+ *  opens a sheet to write about the trip — or skip, which means we never ask
+ *  about that trip again. */
+function ExperiencePrompt({
+  trip,
+  xpEarned,
+  onDone,
+}: {
+  trip: Trip;
+  xpEarned: number;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { celebrate, toast } = useCelebration();
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      celebrate(
+        await api.post<XPResult>(`/api/trips/${trip.id}/experience/`, { text: text.trim() }),
+      );
+      setOpen(false);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save that.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function skip() {
+    setBusy(true);
+    try {
+      await api.post(`/api/trips/${trip.id}/experience/skip/`, {});
+      setOpen(false);
+      onDone();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't skip that.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="animate-rise fixed right-4 bottom-24 left-4 z-40 flex items-center gap-3 rounded-2xl border border-brand/40 bg-surface p-3 text-left shadow-xl sm:right-8 sm:bottom-8 sm:left-auto sm:w-96"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xl" aria-hidden="true">
+            📝
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-bold text-ink">How was {trip.title}?</span>
+            <span className="block text-xs text-muted">
+              You earned <b className="text-brand">+{xpEarned} XP</b>. Tap to share your experience.
+            </span>
+          </span>
+          <span className="text-muted" aria-hidden="true">›</span>
+        </button>
+      ) : null}
+
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`How was ${trip.title}?`}
+        description={`${trip.destination} · ${dateRange(trip.start_date, trip.end_date)} · +${xpEarned} XP earned`}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={skip} disabled={busy}>
+              Skip
+            </Button>
+            <Button fullWidth onClick={save} disabled={busy || text.trim().length < 10} icon="📝">
+              {busy ? "Saving…" : "Share my experience"}
+            </Button>
+          </div>
+        }
+      >
+        <TextAreaField
+          label="Your experience"
+          hint="The best moment, what you'd skip, tips for whoever goes next. Skip and we won't ask about this trip again."
+          data-autofocus
+          value={text}
+          error={error ?? undefined}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={4000}
+          rows={6}
+        />
+      </Sheet>
+    </>
   );
 }
 

@@ -88,8 +88,6 @@ export interface Activity {
   notes: string;
   cost: number;
   xp_value: number;
-  requires_photo: boolean;
-  requires_checkin: boolean;
   order: number;
   status: ActivityStatus;
   completed_at: string | null;
@@ -145,6 +143,8 @@ export interface HomeData {
   live_trip: Trip | null;
   upcoming: Trip[];
   past: Trip[];
+  /** The latest finished trip you haven't written about yet. */
+  experience_prompt: { trip: Trip; xp_earned: number } | null;
   counts: { trips: number; completed: number; places: number };
 }
 

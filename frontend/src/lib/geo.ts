@@ -56,19 +56,17 @@ export function isPinned(activity: Pick<Activity, "latitude" | "longitude">): bo
 }
 
 /**
- * Completes a stop. Pinned stops need the traveller to be within 1 km, so we
- * send where they are; the organiser can pass `override` to complete from
- * anywhere. The GPS reading itself doesn't need signal — only saving it
+ * Completes a stop for the whole group (organisers only). Pinned stops need
+ * the organiser to be within 1 km, so we send where they are — there's no
+ * way to complete a pinned stop from anywhere else. The GPS reading itself doesn't need signal — only saving it
  * does — so with no connection this saves locally and finishes the moment
  * connectivity returns (see lib/offlineQueue), instead of just failing.
  */
 export async function completeStop(
   activity: Pick<Activity, "id" | "latitude" | "longitude" | "title">,
-  options: { override?: boolean } = {},
 ): Promise<XPResult> {
   const path = `/api/activities/${activity.id}/complete/`;
   const label = `Complete "${activity.title}"`;
-  if (options.override) return postOrQueue<XPResult>(path, { override: true }, label);
   if (!isPinned(activity)) return postOrQueue<XPResult>(path, {}, label);
   return postOrQueue<XPResult>(path, await getPosition(), label);
 }
@@ -85,11 +83,3 @@ export async function checkInStop(
   return postOrQueue<XPResult>(path, await getPosition(), label);
 }
 
-/** Whether this person may complete the stop, before we even ask the server. */
-export function canCompleteStop(
-  activity: Pick<Activity, "assigned_to">,
-  myId: number | undefined,
-  isOrganiser: boolean,
-): boolean {
-  return !activity.assigned_to || activity.assigned_to.id === myId || isOrganiser;
-}

@@ -86,8 +86,6 @@ export interface Activity {
   notes: string;
   cost: number;
   xp_value: number;
-  requires_photo: boolean;
-  requires_checkin: boolean;
   booking_url: string;
   order: number;
   status: ActivityStatus;
@@ -188,6 +186,7 @@ export interface TripSummary {
   route: string[];
   leaderboard: { user: UserMini; xp: number; progress: number }[];
   memories: Memory[];
+  experiences: TripExperience[];
 }
 
 export interface Memory {
@@ -348,7 +347,18 @@ export interface HomePayload {
   live_trip: Trip | null;
   upcoming: Trip[];
   past: Trip[];
+  /** The latest finished trip you haven't written about yet. */
+  experience_prompt: { trip: Trip; xp_earned: number } | null;
   counts: { trips: number; completed: number; places: number };
+}
+
+export interface TripExperience {
+  id: number;
+  trip: string;
+  user: UserMini;
+  text: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** Everything an XP-earning action sends back, so the UI can celebrate correctly. */

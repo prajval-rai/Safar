@@ -11,6 +11,7 @@ from .models import (
     Expense,
     Memory,
     Trip,
+    TripExperience,
     TripMember,
 )
 
@@ -51,8 +52,6 @@ class ActivitySerializer(serializers.ModelSerializer):
             "notes",
             "cost",
             "xp_value",
-            "requires_photo",
-            "requires_checkin",
             "booking_url",
             "order",
             "status",
@@ -64,6 +63,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "memory_count",
         ]
         read_only_fields = [
+            "xp_value",
             "status",
             "completed_at",
             "completed_by",
@@ -331,3 +331,18 @@ class LiveTripSerializer(serializers.Serializer):
     total_today = serializers.IntegerField()
     members = TripMemberSerializer(many=True)
     my_trip_xp = serializers.IntegerField()
+
+
+class TripExperienceSerializer(serializers.ModelSerializer):
+    user = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = TripExperience
+        fields = ["id", "trip", "user", "text", "created_at", "updated_at"]
+        read_only_fields = ["trip"]
+
+    def validate_text(self, value):
+        value = value.strip()
+        if len(value) < 10:
+            raise serializers.ValidationError("Write at least a line or two about the trip.")
+        return value

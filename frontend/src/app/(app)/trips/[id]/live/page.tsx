@@ -8,7 +8,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Avatar, Chip, ErrorNote, LoadingBlock, Progress } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { canCompleteStop, checkInStop, completeStop, isPinned } from "@/lib/geo";
+import { checkInStop, completeStop, isPinned } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
 import { OfflineQueuedError } from "@/lib/offlineQueue";
 import { useTripTheme } from "@/lib/tripTheme";
@@ -207,7 +207,6 @@ function NowCard({
   const [busy, setBusy] = useState(false);
   const { celebrate, toast } = useCelebration();
   const pinned = isPinned(activity);
-  const allowed = canCompleteStop(activity, myId, isOrganiser);
 
   async function run(action: () => Promise<Parameters<typeof celebrate>[0]>) {
     setBusy(true);
@@ -256,15 +255,18 @@ function NowCard({
         </p>
       ) : null}
 
-      {pinned && allowed ? (
+      {pinned ? (
         <p className="mt-3 rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
-          <span aria-hidden="true">📍</span> Be within 1 km of this spot to check in or complete it.
+          <span aria-hidden="true">📍</span>{" "}
+          {isOrganiser
+            ? "Be within 1 km of this spot to complete it — it counts for everyone on the trip."
+            : "Be within 1 km of this spot to check in."}
         </p>
       ) : null}
 
       {/* Big, well-spaced targets — these get tapped one-handed, outdoors. */}
       <div className="mt-5 space-y-2">
-        {allowed ? (
+        {isOrganiser ? (
           <Button
             size="lg"
             fullWidth
@@ -276,7 +278,7 @@ function NowCard({
           </Button>
         ) : (
           <p className="rounded-xl bg-raised px-4 py-3.5 text-center text-sm font-semibold text-muted">
-            This stop is assigned to {activity.assigned_to?.name}.
+            The organiser marks this done for everyone.
           </p>
         )}
         <div className="grid grid-cols-2 gap-2">
@@ -299,16 +301,6 @@ function NowCard({
           </Button>
         </div>
 
-        {isOrganiser && pinned ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => run(() => completeStop(activity, { override: true }))}
-            className="tap w-full rounded-xl px-3 text-sm font-semibold text-muted underline-offset-2 hover:text-ink hover:underline disabled:opacity-60"
-          >
-            Organiser: mark complete without location
-          </button>
-        ) : null}
       </div>
     </section>
   );

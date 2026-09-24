@@ -9,6 +9,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { SelectField, TextField } from "@/components/ui/Field";
 import { ApiError, signup } from "@/lib/api";
+import { returnPath } from "@/lib/returnPath";
 import { useApi } from "@/lib/hooks";
 import type { SecurityQuestion } from "@/lib/types";
 
@@ -45,7 +46,7 @@ export default function SignupPage() {
         avatar_emoji: avatar,
       });
       setUser(user);
-      router.replace("/");
+      router.replace(returnPath());
     } catch (err) {
       setErrors(
         err instanceof ApiError
@@ -171,7 +172,7 @@ export default function SignupPage() {
         <GoogleSignInButton
           onSignedIn={(user) => {
             setUser(user);
-            router.replace("/");
+            router.replace(returnPath());
           }}
           onError={(message) => setErrors({ detail: message })}
         />

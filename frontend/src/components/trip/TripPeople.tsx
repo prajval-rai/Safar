@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { InviteCardSheet } from "@/components/trip/InviteCardSheet";
 
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Avatar, Chip, Progress } from "@/components/ui/Bits";
@@ -23,6 +24,7 @@ export function TripPeople({
   canEdit: boolean;
 }) {
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [cardOpen, setCardOpen] = useState(false);
   const [removing, setRemoving] = useState<TripMember | null>(null);
   const [busy, setBusy] = useState(false);
   const { toast } = useCelebration();
@@ -44,24 +46,6 @@ export function TripPeople({
 
   const removable = (m: TripMember) => canEdit && m.role !== "owner";
 
-  async function share() {
-    const text = `Join my trip "${trip.title}" on Safar. Invite code: ${trip.join_code}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: trip.title, text });
-        return;
-      } catch {
-        /* dismissed */
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      toast("Invite copied — paste it in your group.");
-    } catch {
-      toast("Share this code: " + trip.join_code);
-    }
-  }
-
   return (
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
@@ -70,7 +54,7 @@ export function TripPeople({
           <p className="text-xl font-extrabold tracking-[0.3em] text-brand">{trip.join_code}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" icon="🔗" onClick={share}>
+          <Button variant="secondary" size="sm" icon="🔗" onClick={() => setCardOpen(true)}>
             Share
           </Button>
           {canEdit ? (
@@ -190,6 +174,7 @@ export function TripPeople({
         </p>
       </Sheet>
 
+      <InviteCardSheet trip={trip} open={cardOpen} onClose={() => setCardOpen(false)} />
       <InviteSheet
         trip={trip}
         open={inviteOpen}
