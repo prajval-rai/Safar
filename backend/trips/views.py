@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from django.db import transaction
-from django.db.models import Prefetch, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -786,16 +786,50 @@ class TripViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def checklist(self, request, pk=None):
+        """Items with no one assigned are shared by the whole group; the rest
+        belong to one person. Members see the shared items and their own;
+        organisers see everyone's. POST adds an item:
+          assigned_to_id = me (default for members) / anyone (organisers only)
+          assigned_to_id = null  → shared with the group
+          for_everyone = true    → organisers only: a copy for each person"""
         trip = self.get_object()
-        require_member(trip, request.user)
+        member = require_member(trip, request.user)
+        organiser = member.role in ("owner", "admin")
+
         if request.method == "POST":
             serializer = ChecklistItemSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            serializer.save(trip=trip)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(
-            ChecklistItemSerializer(trip.checklist.select_related("assigned_to"), many=True).data
-        )
+            if str(request.data.get("for_everyone", "")).lower() in ("1", "true"):
+                if not organiser:
+                    raise PermissionDenied("Only an organiser can add something for everyone.")
+                items = [
+                    ChecklistItem.objects.create(
+                        trip=trip,
+                        title=serializer.validated_data["title"],
+                        category=serializer.validated_data.get("category", "packing"),
+                        assigned_to=m.user,
+                    )
+                    for m in trip.members.select_related("user")
+                ]
+                return Response(
+                    ChecklistItemSerializer(items, many=True).data, status=status.HTTP_201_CREATED
+                )
+            if "assigned_to" in serializer.validated_data:
+                assignee = serializer.validated_data["assigned_to"]
+            else:
+                assignee = request.user  # your own list unless you say otherwise
+            if assignee is not None:
+                if not trip.members.filter(user=assignee).exists():
+                    raise ValidationError({"assigned_to_id": "That person isn't on this trip."})
+                if assignee != request.user and not organiser:
+                    raise PermissionDenied("Only an organiser can add to someone else's checklist.")
+            item = serializer.save(trip=trip, assigned_to=assignee)
+            return Response(ChecklistItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+        items = trip.checklist.select_related("assigned_to")
+        if not organiser:
+            items = items.filter(Q(assigned_to=None) | Q(assigned_to=request.user))
+        return Response(ChecklistItemSerializer(items, many=True).data)
 
     @action(detail=True, methods=["get", "post"])
     def memories(self, request, pk=None):
@@ -1170,11 +1204,46 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
 
 class ChecklistItemViewSet(viewsets.ModelViewSet):
+    """Ticking, editing and removing single checklist items. Shared items
+    (no one assigned) are anyone's to tick; a personal item is its owner's;
+    organisers can do anything, including moving an item to someone else."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = ChecklistItemSerializer
 
     def get_queryset(self):
-        return ChecklistItem.objects.filter(trip__members__user=self.request.user).distinct()
+        user = self.request.user
+        organising = TripMember.objects.filter(user=user, role__in=["owner", "admin"]).values("trip")
+        return (
+            ChecklistItem.objects.filter(trip__members__user=user)
+            .filter(Q(assigned_to=None) | Q(assigned_to=user) | Q(trip__in=organising))
+            .select_related("assigned_to")
+            .distinct()
+        )
+
+    def _is_organiser(self, item) -> bool:
+        return item.trip.members.filter(user=self.request.user, role__in=["owner", "admin"]).exists()
+
+    def perform_update(self, serializer):
+        item = serializer.instance
+        if not self._is_organiser(item):
+            if item.assigned_to_id not in (None, self.request.user.id):
+                raise PermissionDenied("That's on someone else's checklist.")
+            if "assigned_to" in serializer.validated_data and serializer.validated_data["assigned_to"] not in (
+                None,
+                self.request.user,
+            ):
+                raise PermissionDenied("Only an organiser can move an item to someone else.")
+        assignee = serializer.validated_data.get("assigned_to")
+        if assignee is not None and not item.trip.members.filter(user=assignee).exists():
+            raise ValidationError({"assigned_to_id": "That person isn't on this trip."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        # Members can remove their own items; shared and others' are for organisers.
+        if not self._is_organiser(instance) and instance.assigned_to_id != self.request.user.id:
+            raise PermissionDenied("Only an organiser can remove that.")
+        instance.delete()
 
 
 @api_view(["POST"])

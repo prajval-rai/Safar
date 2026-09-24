@@ -5,14 +5,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "@/components/art/Motif";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
-import { Avatar, Chip, ErrorNote, LoadingBlock, Progress } from "@/components/ui/Bits";
+import { Avatar, Chip, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { SelectField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { SettleUp } from "@/components/trip/SettleUp";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { ChatMessage, ChecklistItem, ExpenseReport, TripDetail } from "@/lib/types";
+import type { ChatMessage, ExpenseReport, TripDetail } from "@/lib/types";
 import { CATEGORY_LABELS, cn, rupees, shortDate } from "@/lib/utils";
 
 /* ---------------------------------------------------------------- money */
@@ -190,113 +190,6 @@ function AddExpenseSheet({
         />
       </div>
     </Sheet>
-  );
-}
-
-/* ------------------------------------------------------------ checklist */
-
-export function TripChecklist({ trip }: { trip: TripDetail }) {
-  const { data, loading, error, reload, set } = useApi<ChecklistItem[]>(
-    `/api/trips/${trip.id}/checklist/`,
-  );
-  const [title, setTitle] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const items = data ?? [];
-  const done = items.filter((item) => item.is_done).length;
-
-  async function toggle(item: ChecklistItem) {
-    // Optimistic — ticking a box should feel instant.
-    set(items.map((row) => (row.id === item.id ? { ...row, is_done: !row.is_done } : row)));
-    try {
-      await api.patch(`/api/checklist/${item.id}/`, { is_done: !item.is_done });
-    } catch {
-      reload();
-    }
-  }
-
-  async function add(event: React.FormEvent) {
-    event.preventDefault();
-    if (!title.trim()) return;
-    setBusy(true);
-    try {
-      await api.post(`/api/trips/${trip.id}/checklist/`, { title: title.trim() });
-      setTitle("");
-      reload();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {loading && !data ? <LoadingBlock /> : null}
-      {error && !data ? <ErrorNote message={error} onRetry={reload} /> : null}
-
-      {items.length ? (
-        <div className="card p-4">
-          <Progress
-            value={(done / items.length) * 100}
-            label={`${done} of ${items.length} sorted`}
-            tone={done === items.length ? "success" : "brand"}
-          />
-        </div>
-      ) : null}
-
-      <form onSubmit={add} className="flex gap-2">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add something to remember"
-          aria-label="Add a checklist item"
-          className="min-h-[46px] flex-1 rounded-xl border border-line bg-surface px-3.5 text-[15px] text-ink placeholder:text-muted/70 focus:border-brand focus:outline-none"
-        />
-        <Button type="submit" disabled={busy || !title.trim()}>
-          Add
-        </Button>
-      </form>
-
-      {items.length ? (
-        <ul className="card divide-y divide-[var(--line)]">
-          {items.map((item) => (
-            <li key={item.id}>
-              <label className="flex min-h-[52px] cursor-pointer items-center gap-3 p-3.5">
-                <input
-                  type="checkbox"
-                  checked={item.is_done}
-                  onChange={() => toggle(item)}
-                  className="h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
-                />
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={cn(
-                      "block text-[15px]",
-                      item.is_done ? "text-muted line-through" : "text-ink",
-                    )}
-                  >
-                    {item.title}
-                  </span>
-                  {item.assigned_to ? (
-                    <span className="block text-xs text-muted">{item.assigned_to.name}</span>
-                  ) : null}
-                </span>
-                {item.is_done ? (
-                  <Chip tone="success">
-                    <span aria-hidden="true">✓</span> Done
-                  </Chip>
-                ) : null}
-              </label>
-            </li>
-          ))}
-        </ul>
-      ) : !loading ? (
-        <EmptyState
-          emoji="📝"
-          title="Nothing on the list yet."
-          line="Tickets, chargers, ID proofs — add whatever you don't want to forget."
-        />
-      ) : null}
-    </div>
   );
 }
 
