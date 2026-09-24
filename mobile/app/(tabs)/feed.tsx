@@ -149,7 +149,7 @@ function PostCard({ post }: { post: TravelPost }) {
         </View>
       </View>
 
-      <Text style={{ color: colors.text, fontSize: 15, lineHeight: 21, marginTop: 10 }}>{post.caption}</Text>
+      <ExpandableCaption text={post.caption} colors={colors} />
 
       <View style={styles.postFooter}>
         <Pressable onPress={toggleLike} style={styles.likeButton} hitSlop={8}>
@@ -346,6 +346,36 @@ function WritePostModal({ visible, onClose, onPosted }: { visible: boolean; onCl
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+const CAPTION_LINES = 5;
+
+/** Long captions clamped to a few lines with "Read more", so one long story
+ *  doesn't take over the feed. The first layout pass measures the full text;
+ *  the toggle only appears when it runs past the limit. */
+function ExpandableCaption({ text, colors }: { text: string; colors: (typeof Colors)['light'] }) {
+  const [tooLong, setTooLong] = useState<boolean | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const clamp = tooLong && !expanded ? CAPTION_LINES : undefined;
+
+  return (
+    <View style={{ marginTop: 10 }}>
+      <Text
+        style={{ color: colors.text, fontSize: 15, lineHeight: 21 }}
+        numberOfLines={clamp}
+        onTextLayout={(e) => {
+          if (tooLong === null) setTooLong(e.nativeEvent.lines.length > CAPTION_LINES);
+        }}
+      >
+        {text}
+      </Text>
+      {tooLong ? (
+        <Pressable onPress={() => setExpanded((v) => !v)} hitSlop={8} style={{ marginTop: 4, alignSelf: 'flex-start' }}>
+          <Text style={{ color: colors.tint, fontSize: 14, fontWeight: '700' }}>{expanded ? 'Show less' : 'Read more'}</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 

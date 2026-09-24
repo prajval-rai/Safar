@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/art/Motif";
 import { TripCover } from "@/components/art/TripCover";
 import { Avatar, Chip, ErrorNote, Skeleton } from "@/components/ui/Bits";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { api, rows } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { Paginated, Track, TravelPost } from "@/lib/types";
@@ -118,7 +119,7 @@ export function PostCard({ post }: { post: TravelPost }) {
         <Chip tone="brand">Level {post.author.level}</Chip>
       </div>
 
-      <p className="mt-3 text-[15px] leading-relaxed text-ink">{post.caption}</p>
+      <ExpandableText text={post.caption} className="mt-3 text-[15px] leading-relaxed text-ink" />
 
       <div className="mt-3 flex items-center gap-2">
         <button
