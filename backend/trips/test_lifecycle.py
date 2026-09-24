@@ -100,3 +100,24 @@ class LifecycleTests(SafarTestCase):
         member = TripMember.objects.get(trip=self.trip, user=self.friend)
         self.assertEqual(client.delete(f"/api/trips/{self.trip.id}/members/{member.id}/").status_code, 204)
         self.assertEqual(client.post(f"/api/trips/{self.trip.id}/members/", {"username": "stranger"}, format="json").status_code, 201)
+
+
+class ChatTests(SafarTestCase):
+    def test_first_load_is_the_latest_messages_and_after_returns_only_new_ones(self):
+        from trips.models import ChatMessage
+
+        for i in range(205):
+            ChatMessage.objects.create(trip=self.trip, user=self.owner, text=f"m{i}")
+        client = self.client_for(self.friend)
+
+        first = client.get(f"/api/trips/{self.trip.id}/chat/").data
+        self.assertEqual(len(first), 200)
+        self.assertEqual(first[-1]["text"], "m204")
+
+        sent = client.post(f"/api/trips/{self.trip.id}/chat/", {"text": "hi"}, format="json").data
+        new = client.get(f"/api/trips/{self.trip.id}/chat/?after={first[-1]['id']}").data
+        self.assertEqual([m["id"] for m in new], [sent["id"]])
+        self.assertEqual(client.get(f"/api/trips/{self.trip.id}/chat/?after={sent['id']}").data, [])
+
+    def test_strangers_cannot_read_the_chat(self):
+        self.assertEqual(self.client_for(self.stranger).get(f"/api/trips/{self.trip.id}/chat/").status_code, 404)

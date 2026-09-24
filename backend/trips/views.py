@@ -616,9 +616,18 @@ class TripViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             serializer.save(trip=trip, user=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(
-            ChatMessageSerializer(trip.messages.select_related("user")[:200], many=True).data
-        )
+        messages = trip.messages.select_related("user")
+        # The chat polls with ?after=<last id it has> to fetch only what's new.
+        after = request.query_params.get("after")
+        if after:
+            try:
+                messages = messages.filter(id__gt=int(after))
+            except ValueError:
+                raise ValidationError({"after": "Must be a message id."})
+            return Response(ChatMessageSerializer(messages[:200], many=True).data)
+        # First load: the latest 200, oldest first.
+        latest = list(messages.order_by("-created_at", "-id")[:200])[::-1]
+        return Response(ChatMessageSerializer(latest, many=True).data)
 
 
 class DayViewSet(viewsets.GenericViewSet):

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/art/Motif";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -299,25 +299,101 @@ export function TripChecklist({ trip }: { trip: TripDetail }) {
 
 /* ----------------------------------------------------------------- chat */
 
+/** How often an open chat checks for new messages. */
+const CHAT_POLL_MS = 4000;
+
 export function TripChat({ trip }: { trip: TripDetail }) {
   const { user } = useAuth();
-  const { data, loading, error, reload } = useApi<ChatMessage[]>(`/api/trips/${trip.id}/chat/`);
+  const [messages, setMessages] = useState<ChatMessage[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Only follow new messages down if the reader was already at the bottom —
+  // never yank them away from older messages they're scrolled up reading.
+  const stickToBottom = useRef(true);
+  const lastId = useRef<number | null>(null);
+
+  const merge = useCallback((incoming: ChatMessage[]) => {
+    if (!incoming.length) return;
+    setMessages((current) => {
+      const seen = new Set((current ?? []).map((m) => m.id));
+      const merged = [...(current ?? []), ...incoming.filter((m) => !seen.has(m.id))];
+      lastId.current = merged.length ? merged[merged.length - 1].id : lastId.current;
+      return merged;
+    });
+  }, []);
+
+  const load = useCallback(
+    () =>
+      api.get<ChatMessage[]>(`/api/trips/${trip.id}/chat/`).then(
+        (fresh) => {
+          lastId.current = fresh.length ? fresh[fresh.length - 1].id : null;
+          setMessages(fresh);
+          setError(null);
+        },
+        (err) => setError(err instanceof ApiError ? err.message : "Couldn't load the chat."),
+      ),
+    [trip.id],
+  );
+
+  // First load, then keep checking for new messages while the chat is on
+  // screen. Polling pauses when the tab is hidden and catches up on return.
+  useEffect(() => {
+    let active = true;
+    // Subscribing to an external source: state is only set once the request resolves.
+    const initial = window.setTimeout(() => void load(), 0);
+
+    async function poll() {
+      if (document.hidden || lastId.current === null) {
+        if (lastId.current === null && !document.hidden) await load();
+        return;
+      }
+      try {
+        const fresh = await api.get<ChatMessage[]>(
+          `/api/trips/${trip.id}/chat/?after=${lastId.current}`,
+        );
+        if (active) merge(fresh);
+      } catch {
+        /* a missed poll just waits for the next one */
+      }
+    }
+
+    const timer = window.setInterval(poll, CHAT_POLL_MS);
+    const onVisible = () => {
+      if (!document.hidden) void poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [trip.id, load, merge]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [data]);
+    const list = listRef.current;
+    if (list && stickToBottom.current) list.scrollTop = list.scrollHeight;
+  }, [messages]);
+
+  function onScroll() {
+    const list = listRef.current;
+    if (!list) return;
+    stickToBottom.current = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  }
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
     if (!text.trim()) return;
     setBusy(true);
     try {
-      await api.post(`/api/trips/${trip.id}/chat/`, { text: text.trim() });
+      const sent = await api.post<ChatMessage>(`/api/trips/${trip.id}/chat/`, { text: text.trim() });
       setText("");
-      reload();
+      stickToBottom.current = true;
+      merge([sent]);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't send that.");
     } finally {
       setBusy(false);
     }
@@ -325,12 +401,12 @@ export function TripChat({ trip }: { trip: TripDetail }) {
 
   return (
     <div className="space-y-3">
-      {loading && !data ? <LoadingBlock /> : null}
-      {error && !data ? <ErrorNote message={error} onRetry={reload} /> : null}
+      {messages === null && !error ? <LoadingBlock /> : null}
+      {error && messages === null ? <ErrorNote message={error} onRetry={load} /> : null}
 
-      <div className="card max-h-[52vh] space-y-3 overflow-y-auto p-4">
-        {data?.length ? (
-          data.map((message) => {
+      <div ref={listRef} onScroll={onScroll} className="card max-h-[52vh] space-y-3 overflow-y-auto p-4">
+        {messages?.length ? (
+          messages.map((message) => {
             const mine = message.user.id === user?.id;
             return (
               <div key={message.id} className={cn("flex gap-2", mine && "flex-row-reverse")}>
@@ -344,18 +420,22 @@ export function TripChat({ trip }: { trip: TripDetail }) {
                   {!mine ? (
                     <p className="text-xs font-semibold opacity-80">{message.user.name}</p>
                   ) : null}
-                  <p className="text-sm">{message.text}</p>
+                  <p className="text-sm whitespace-pre-line">{message.text}</p>
                 </div>
               </div>
             );
           })
-        ) : (
+        ) : messages ? (
           <p className="py-6 text-center text-sm text-muted">
             No messages yet. Say hello to your group.
           </p>
-        )}
-        <div ref={endRef} />
+        ) : null}
       </div>
+      {error && messages !== null ? (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      ) : null}
 
       <form onSubmit={send} className="flex gap-2">
         <input
