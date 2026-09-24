@@ -136,10 +136,11 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
-    # Only the forgot-password endpoints use this scope (see accounts.views.
-    # ResetAttemptThrottle) — they're unauthenticated by nature, so this is
-    # what actually stops someone from machine-guessing usernames or answers.
-    "DEFAULT_THROTTLE_RATES": {"password_reset": "10/hour"},
+    # Scoped limits for the unauthenticated endpoints, which is what actually
+    # stops machine-guessing: forgot-password (usernames/answers, see
+    # accounts.views.ResetAttemptThrottle) and the public invite preview
+    # (invite codes, see trips.views.InvitePreviewThrottle).
+    "DEFAULT_THROTTLE_RATES": {"password_reset": "10/hour", "invite_preview": "60/hour"},
 }
 
 SIMPLE_JWT = {

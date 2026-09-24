@@ -43,6 +43,7 @@ urlpatterns = [
     path("api/catalog/", trips_views.catalog, name="catalog"),
     path("api/catalog/defaults/", trips_views.destination_defaults, name="destination_defaults"),
     path("api/trips/join/", trips_views.join_trip, name="join_trip"),
+    path("api/trips/invite/<str:code>/", trips_views.invite_preview, name="invite_preview"),
     path("api/rewards/me/", rewards_views.my_rewards, name="my_rewards"),
     path("api/rewards/leaderboard/", rewards_views.leaderboard, name="leaderboard"),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),

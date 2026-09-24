@@ -505,3 +505,34 @@ export interface TravelMapData {
   needs_coords: { trip_id: string; destination: string; region: string }[];
   areas_covered: number;
 }
+
+/** GET /api/trips/invite/<code>/ — what an invite link shows before joining. */
+export interface InvitePreview {
+  code: string;
+  trip_id: string | null;
+  is_member: boolean;
+  can_join: boolean;
+  title: string;
+  destination: string;
+  region: string;
+  summary: string;
+  cover_key: CoverKey;
+  cover_image: string;
+  theme: ThemeId;
+  status: TripStatus;
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  trip_type: string;
+  pace: string;
+  transport: string;
+  budget_per_person: number;
+  organiser: UserMini;
+  members: { name: string; avatar_emoji: string; role: "owner" | "admin" | "member" }[];
+  days: {
+    index: number;
+    date: string;
+    title: string;
+    stops: { title: string; category: ActivityCategory; place_name: string; start_time: string | null }[];
+  }[];
+}

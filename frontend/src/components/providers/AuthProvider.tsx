@@ -19,6 +19,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_ROUTES = ["/login", "/signup", "/forgot-password"];
+// Open to everyone, signed in or not — e.g. an invite link someone opens
+// before they have an account.
+const OPEN_ROUTE_PREFIXES = ["/join/"];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -27,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const isPublic = PUBLIC_ROUTES.includes(pathname);
+  const isOpen = OPEN_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   const fetchMe = useCallback(
     () =>
@@ -60,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Send signed-out travellers to the login screen, but never trap them there.
   useEffect(() => {
     if (loading) return;
-    if (!user && !isPublic) {
+    if (!user && !isPublic && !isOpen) {
       // An invite link (or any deep link) opened while signed out should
       // land back there once they've signed in, not on Home.
       if (pathname !== "/") rememberReturnPath(pathname);
@@ -68,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (user && isPublic) router.replace(returnPath());
     if (user && !isPublic && pathname === returnPath()) clearReturnPath();
-  }, [user, loading, isPublic, pathname, router]);
+  }, [user, loading, isPublic, isOpen, pathname, router]);
 
   const signOut = useCallback(() => {
     tokens.clear();

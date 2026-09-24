@@ -5,10 +5,19 @@ from django.db.models import Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action,
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken
 
 from accounts.serializers import UserMiniSerializer, UserSerializer
 from notifications.services import notify, notify_many
@@ -935,6 +944,9 @@ def join_trip(request):
     trip = Trip.objects.filter(join_code=code).first()
     if not trip:
         raise ValidationError({"code": "That invite code didn't match any trip."})
+    already = trip.members.filter(user=request.user).exists()
+    if not already and trip.status in ("completed", "cancelled"):
+        raise ValidationError({"code": f"This trip is {trip.status}, so it can't be joined any more."})
     _, created = TripMember.objects.get_or_create(trip=trip, user=request.user)
     if created:
         organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
@@ -947,6 +959,85 @@ def join_trip(request):
             trip=trip,
         )
     return Response(TripDetailSerializer(trip, context={"request": request}).data)
+
+
+class OptionalJWTAuthentication(JWTAuthentication):
+    """For public pages: a valid token identifies you, but a stale or broken one
+    just means "signed out" instead of a 401 on a page anyone may see."""
+
+    def authenticate(self, request):
+        try:
+            return super().authenticate(request)
+        except InvalidToken:
+            return None
+
+
+class InvitePreviewThrottle(ScopedRateThrottle):
+    """The invite preview is public, so cap how fast anyone can try codes."""
+
+    scope = "invite_preview"
+
+
+@api_view(["GET"])
+@authentication_classes([OptionalJWTAuthentication])
+@permission_classes([AllowAny])
+@throttle_classes([InvitePreviewThrottle])
+def invite_preview(request, code):
+    """What someone sees when they open an invite link, before deciding to
+    join — signed in or not. Only what an invitation should show: no chat,
+    expenses, exact pins or join code."""
+    trip = Trip.objects.filter(join_code=code.strip().upper()).select_related("created_by").first()
+    if not trip:
+        return Response({"detail": "That invite link doesn't match any trip."}, status=status.HTTP_404_NOT_FOUND)
+
+    members = list(trip.members.select_related("user"))
+    is_member = request.user.is_authenticated and any(m.user_id == request.user.id for m in members)
+    days = [
+        {
+            "index": day.index,
+            "date": day.date,
+            "title": day.title,
+            "stops": [
+                {
+                    "title": a.title,
+                    "category": a.category,
+                    "place_name": a.place_name,
+                    "start_time": a.start_time,
+                }
+                for a in day.activities.all()
+            ],
+        }
+        for day in trip.days.prefetch_related("activities")
+    ]
+    return Response(
+        {
+            "code": trip.join_code,
+            # Only members need the id, to open the trip.
+            "trip_id": str(trip.id) if is_member else None,
+            "is_member": is_member,
+            "can_join": trip.status in ("planning", "active"),
+            "title": trip.title,
+            "destination": trip.destination,
+            "region": trip.region,
+            "summary": trip.summary,
+            "cover_key": trip.cover_key,
+            "cover_image": trip.cover_image,
+            "theme": trip.theme,
+            "status": trip.status,
+            "start_date": trip.start_date,
+            "end_date": trip.end_date,
+            "duration_days": trip.duration_days,
+            "trip_type": trip.trip_type,
+            "pace": trip.pace,
+            "transport": trip.transport,
+            "budget_per_person": trip.budget_per_person,
+            "organiser": UserMiniSerializer(trip.created_by).data,
+            "members": [
+                {"name": m.user.name, "avatar_emoji": m.user.avatar_emoji, "role": m.role} for m in members
+            ],
+            "days": days,
+        }
+    )
 
 
 def current_trip(mine, today):
