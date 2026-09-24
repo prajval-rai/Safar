@@ -47,6 +47,7 @@ urlpatterns = [
     path("api/rewards/me/", rewards_views.my_rewards, name="my_rewards"),
     path("api/rewards/leaderboard/", rewards_views.leaderboard, name="leaderboard"),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
+    path("api/music/search/", explore_views.music_search, name="music_search"),
     path("api/notifications/", notifications_views.notification_list, name="notification_list"),
     path("api/notifications/unread-count/", notifications_views.unread_count, name="notification_unread_count"),
     path("api/notifications/read-all/", notifications_views.mark_all_read, name="notification_read_all"),

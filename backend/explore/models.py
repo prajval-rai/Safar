@@ -121,6 +121,9 @@ class TravelPost(models.Model):
         Track, null=True, blank=True, on_delete=models.SET_NULL, related_name="posts"
     )
     caption = models.TextField()
+    # The trip's soundtrack: a song picked from Apple Music (see explore.music),
+    # stored as {id, title, artist, album, image, url, embed_url}.
+    soundtrack = models.JSONField(null=True, blank=True)
     place = models.CharField(max_length=120, blank=True)
     cover_key = models.CharField(max_length=40, default="mountain")
     image_url = models.URLField(blank=True)

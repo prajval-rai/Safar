@@ -6,6 +6,23 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _load_dotenv(path: Path) -> None:
+    """Read KEY=VALUE lines from backend/.env for local development. Real
+    environment variables (e.g. set on Railway) always win. The file is
+    git-ignored — secrets never go in source."""
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_dotenv(BASE_DIR / ".env")
+
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-not-for-production-safar-key")
@@ -140,7 +157,12 @@ REST_FRAMEWORK = {
     # stops machine-guessing: forgot-password (usernames/answers, see
     # accounts.views.ResetAttemptThrottle) and the public invite preview
     # (invite codes, see trips.views.InvitePreviewThrottle).
-    "DEFAULT_THROTTLE_RATES": {"password_reset": "10/hour", "invite_preview": "60/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "password_reset": "10/hour",
+        "invite_preview": "60/hour",
+        # Song search for trip soundtracks — generous, but stops runaway loops.
+        "music_search": "300/hour",
+    },
 }
 
 SIMPLE_JWT = {

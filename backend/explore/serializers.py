@@ -95,6 +95,9 @@ class TravelPostSerializer(serializers.ModelSerializer):
     # The trip's destination palette, so a shared story card matches it.
     theme = serializers.SerializerMethodField()
     trip_is_public = serializers.BooleanField(source="trip.is_public", read_only=True, default=False)
+    soundtrack = serializers.JSONField(read_only=True)
+    # Write-only: an Apple Music song id to attach, or "" to remove the song.
+    song_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = TravelPost
@@ -111,11 +114,18 @@ class TravelPostSerializer(serializers.ModelSerializer):
             "place",
             "cover_key",
             "image_url",
+            "soundtrack",
+            "song_id",
             "likes_count",
             "liked",
             "created_at",
         ]
         read_only_fields = ["author", "track", "created_at"]
+
+    def validate(self, attrs):
+        if "song_id" in attrs:
+            attrs["soundtrack"] = soundtrack_for(attrs.pop("song_id"))
+        return attrs
 
     def validate_trip(self, trip):
         request = self.context.get("request")
@@ -151,3 +161,16 @@ class TravelPostSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = request.user if request else None
         return bool(user and user.is_authenticated and obj.likes.filter(user=user).exists())
+
+
+def soundtrack_for(song_id: str) -> dict | None:
+    """Turn a song id from the client into the song's details, looked up from
+    Apple Music — so a soundtrack can't be spoofed. Blank clears it."""
+    from .music import MusicError, song
+
+    if not song_id:
+        return None
+    try:
+        return song(song_id)
+    except MusicError as exc:
+        raise serializers.ValidationError({"song_id": str(exc)}) from exc

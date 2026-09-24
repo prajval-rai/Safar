@@ -3,10 +3,11 @@ from datetime import datetime, timedelta
 from django.db import transaction
 from django.db.models import Count
 from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from accounts.authentication import OptionalJWTAuthentication
 from accounts.serializers import UserSerializer
@@ -252,6 +253,11 @@ class TravelPostViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
+    def perform_update(self, serializer):
+        if serializer.instance.author != self.request.user:
+            raise PermissionDenied("You can only edit your own posts.")
+        serializer.save()
+
     def perform_destroy(self, instance):
         if instance.author != self.request.user:
             raise PermissionDenied("You can only delete your own posts.")
@@ -262,6 +268,15 @@ class TravelPostViewSet(viewsets.ModelViewSet):
         """Everything a shared post's page shows: the post itself and — only
         when its trip is public — the trip's photos and day-by-day plan."""
         post = self.get_object()
+        # Songs saved before previews were kept get their preview added on first view.
+        if post.soundtrack and not post.soundtrack.get("preview_url"):
+            from .music import MusicError, song
+
+            try:
+                post.soundtrack = song(post.soundtrack["id"])
+                post.save(update_fields=["soundtrack"])
+            except MusicError:
+                pass  # still shows the song and its Apple Music link, just without a preview
         payload = {"post": TravelPostSerializer(post, context={"request": request}).data, "trip": None}
         trip = post.trip
         if trip and trip.is_public:
@@ -316,3 +331,20 @@ class TravelPostViewSet(viewsets.ModelViewSet):
             PostLike.objects.create(post=post, user=request.user)
             liked = True
         return Response({"liked": liked, "likes_count": post.likes.count()})
+
+
+class MusicSearchThrottle(ScopedRateThrottle):
+    scope = "music_search"
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([MusicSearchThrottle])
+def music_search(request):
+    """Songs matching ?q=, for picking a trip's soundtrack."""
+    from .music import MusicError, search
+
+    try:
+        return Response(search(request.query_params.get("q", "")))
+    except MusicError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

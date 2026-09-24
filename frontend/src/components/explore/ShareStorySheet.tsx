@@ -123,6 +123,13 @@ export function ShareStorySheet({
       <p className="mt-3 text-center text-xs text-muted">
         On Instagram: post the image, then add a <b className="text-ink">link sticker</b> with the copied link so
         people can tap straight through.
+        {post.soundtrack ? (
+          <>
+            {" "}
+            For music, add <b className="text-ink">{post.soundtrack.title}</b> with Instagram&apos;s{" "}
+            <b className="text-ink">Music</b> sticker.
+          </>
+        ) : null}
       </p>
     </Sheet>
   );

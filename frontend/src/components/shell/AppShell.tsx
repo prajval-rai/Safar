@@ -51,9 +51,10 @@ const NAV: NavItem[] = [
   { href: "/trips", label: "My Trips", Icon: MapIcon, match: (p) => p.startsWith("/trips"), mobile: true },
   { href: "/explore", label: "Explore", Icon: Compass, match: (p) => p.startsWith("/explore"), mobile: true },
   { href: "/tracks", label: "Tracks", Icon: Route, match: (p) => p.startsWith("/tracks"), mobile: false },
-  { href: "/feed", label: "Feed", Icon: MessageSquare, match: (p) => p.startsWith("/feed"), mobile: false },
+  { href: "/feed", label: "Feed", Icon: MessageSquare, match: (p) => p.startsWith("/feed"), mobile: true },
   { href: "/rewards", label: "Rewards", Icon: Trophy, match: (p) => p.startsWith("/rewards"), mobile: true },
-  { href: "/profile", label: "Profile", Icon: UserIcon, match: (p) => p.startsWith("/profile"), mobile: true },
+  // On phones the profile is the avatar in the top bar, which frees this tab for Feed.
+  { href: "/profile", label: "Profile", Icon: UserIcon, match: (p) => p.startsWith("/profile"), mobile: false },
 ];
 
 /**

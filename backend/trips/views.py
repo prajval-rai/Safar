@@ -156,9 +156,13 @@ def award_everyone(trip, amount, reason, kind):
     return users
 
 
-def share_experience_to_feed(experience):
+_KEEP = object()
+
+
+def share_experience_to_feed(experience, soundtrack=_KEEP):
     """A trip write-up is also a Feed post — create it the first time, keep it
-    in step on every edit. If the author deleted the post, a new edit shares it again."""
+    in step on every edit. If the author deleted the post, a new edit shares it
+    again. `soundtrack` is left as it was unless a song (or None) is passed."""
     from explore.models import TravelPost
 
     trip = experience.trip
@@ -168,6 +172,8 @@ def share_experience_to_feed(experience):
         "cover_key": trip.cover_key,
         "image_url": trip.cover_image,
     }
+    if soundtrack is not _KEEP:
+        fields["soundtrack"] = soundtrack
     if experience.post_id:
         TravelPost.objects.filter(pk=experience.post_id).update(**fields)
         return
@@ -496,8 +502,14 @@ class TripViewSet(viewsets.ModelViewSet):
         first = mine is None or mine.skipped
         serializer = TripExperienceSerializer(mine, data=request.data)
         serializer.is_valid(raise_exception=True)
+        # An optional song for the story; checked against Apple before anything is saved.
+        song = _KEEP
+        if "song_id" in request.data:
+            from explore.serializers import soundtrack_for
+
+            song = soundtrack_for(str(request.data.get("song_id") or ""))
         experience = serializer.save(trip=trip, user=request.user, skipped=False)
-        share_experience_to_feed(experience)
+        share_experience_to_feed(experience, soundtrack=song)
         awarded = 0
         if first:
             awarded = EXPERIENCE_XP

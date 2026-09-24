@@ -13,9 +13,10 @@ import { Chip, ErrorNote, LoadingBlock, Progress, SectionHeader, StatTile } from
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
+import { SongPicker } from "@/components/explore/SongPicker";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { HomePayload, Trip, TripDetail, XPResult } from "@/lib/types";
+import type { HomePayload, Song, Trip, TripDetail, XPResult } from "@/lib/types";
 import { dateRange } from "@/lib/utils";
 
 export default function HomePage() {
@@ -186,6 +187,7 @@ function ExperiencePrompt({
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [song, setSong] = useState<Song | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { celebrate, toast } = useCelebration();
@@ -195,7 +197,10 @@ function ExperiencePrompt({
     setError(null);
     try {
       celebrate(
-        await api.post<XPResult>(`/api/trips/${trip.id}/experience/`, { text: text.trim() }),
+        await api.post<XPResult>(`/api/trips/${trip.id}/experience/`, {
+          text: text.trim(),
+          ...(song ? { song_id: song.id } : {}),
+        }),
       );
       setOpen(false);
       onDone();
@@ -266,6 +271,9 @@ function ExperiencePrompt({
           maxLength={4000}
           rows={6}
         />
+        <div className="mt-4">
+          <SongPicker value={song} onChange={setSong} />
+        </div>
       </Sheet>
     </>
   );

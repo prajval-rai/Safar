@@ -98,8 +98,8 @@ export async function renderStoryCard(post: TravelPost, link: string): Promise<B
   ctx.fillStyle = p.ink;
   ctx.font = `500 44px ${FONT}`;
   const textW = cardW - 112;
-  // Ends well above the button so the fade never runs into it.
-  const maxLines = 8;
+  // Ends well above the button (and the song line) so the fade never runs into them.
+  const maxLines = post.soundtrack ? 7 : 8;
   const all = wrap(ctx, post.caption.replace(/\s+/g, " ").trim(), textW, 999);
   const lines = all.slice(0, maxLines);
   const truncated = all.length > maxLines;
@@ -117,6 +117,13 @@ export async function renderStoryCard(post: TravelPost, link: string): Promise<B
     fade.addColorStop(1, p.surface);
     ctx.fillStyle = fade;
     ctx.fillRect(cardX + 20, textBottom - 180, cardW - 40, 190);
+  }
+
+  // The trip's soundtrack, so people can add the same song on Instagram.
+  if (post.soundtrack) {
+    ctx.fillStyle = p.brand;
+    ctx.font = `700 30px ${FONT}`;
+    ctx.fillText(fit(ctx, `♫  ${post.soundtrack.title} · ${post.soundtrack.artist}`, cardW - 112), cardX + 56, cardY + cardH - 176);
   }
 
   // "Read the full story" button

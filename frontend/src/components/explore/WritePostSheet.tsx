@@ -6,9 +6,11 @@ import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Button } from "@/components/ui/Button";
 import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
+
+import { SongPicker } from "./SongPicker";
 import { api, ApiError, rows } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { Paginated, TravelPost, Trip } from "@/lib/types";
+import type { Paginated, Song, TravelPost, Trip } from "@/lib/types";
 
 const MAX = 1000;
 
@@ -26,6 +28,7 @@ export function WritePostSheet({
   const [caption, setCaption] = useState("");
   const [place, setPlace] = useState("");
   const [trip, setTrip] = useState("");
+  const [song, setSong] = useState<Song | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,11 +44,13 @@ export function WritePostSheet({
         caption: caption.trim(),
         place: place.trim(),
         ...(trip ? { trip } : {}),
+        ...(song ? { song_id: song.id } : {}),
       });
       toast("Posted to the feed.");
       setCaption("");
       setPlace("");
       setTrip("");
+      setSong(null);
       onPosted();
       onClose();
     } catch (err) {
@@ -96,6 +101,7 @@ export function WritePostSheet({
             ]}
           />
         ) : null}
+        <SongPicker value={song} onChange={setSong} />
         {error ? (
           <p className="text-sm font-semibold text-danger" role="alert">
             {error}

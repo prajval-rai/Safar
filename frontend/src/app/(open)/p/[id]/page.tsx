@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 
 import { TripCover } from "@/components/art/TripCover";
 import { PostCard } from "@/components/explore/Cards";
+import { SoundtrackPlayer } from "@/components/explore/SoundtrackPlayer";
 import { Chip, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { API_BASE } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
@@ -79,6 +80,22 @@ export default function StoryPage() {
               );
             })}
           </ul>
+        </section>
+      ) : null}
+
+      {/* The story's soundtrack plays as background music — straight away when
+          the browser allows it, otherwise from the visitor's first tap. */}
+      {post.soundtrack ? (
+        <section aria-label="Soundtrack">
+          <SoundtrackPlayer
+            song={post.soundtrack}
+            variant="full"
+            autoPlay
+            gate={{
+              heading: trip?.title || post.place || "A travel story",
+              line: `A story by ${post.author.name}`,
+            }}
+          />
         </section>
       ) : null}
 

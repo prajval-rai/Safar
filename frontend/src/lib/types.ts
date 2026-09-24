@@ -290,6 +290,19 @@ export interface TrackDetail extends Track {
   total_xp: number;
 }
 
+/** A song picked from Apple Music as a trip's soundtrack. */
+export interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  image: string;
+  url: string;
+  embed_url: string;
+  /** Apple's ~30-second preview clip; missing on songs saved before previews were kept. */
+  preview_url?: string;
+}
+
 export interface TravelPost {
   id: string;
   author: UserMini;
@@ -304,6 +317,7 @@ export interface TravelPost {
   place: string;
   cover_key: CoverKey;
   image_url: string;
+  soundtrack: Song | null;
   likes_count: number;
   liked: boolean;
   created_at: string;

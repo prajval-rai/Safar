@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Heart, MapPin, Share2 } from "lucide-react";
+import { ExternalLink, Heart, MapPin, Music, Share2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -8,12 +8,16 @@ import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/art/Motif";
 import { TripCover } from "@/components/art/TripCover";
 import { ShareStorySheet } from "@/components/explore/ShareStorySheet";
+import { SongPicker } from "@/components/explore/SongPicker";
+import { SoundtrackPlayer } from "@/components/explore/SoundtrackPlayer";
+import { Button } from "@/components/ui/Button";
+import { Sheet } from "@/components/ui/Sheet";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Avatar, Chip, ErrorNote, Skeleton } from "@/components/ui/Bits";
 import { ExpandableText } from "@/components/ui/ExpandableText";
 import { api, rows } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { Paginated, Track, TravelPost } from "@/lib/types";
+import type { Paginated, Song, Track, TravelPost } from "@/lib/types";
 import { rememberReturnPath } from "@/lib/returnPath";
 import { formatNumber, rupees } from "@/lib/utils";
 
@@ -84,7 +88,10 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
   const [liked, setLiked] = useState(post.liked);
   const [likes, setLikes] = useState(post.likes_count);
   const [sharing, setSharing] = useState(false);
+  const [soundtrack, setSoundtrack] = useState<Song | null>(post.soundtrack);
+  const [pickingSong, setPickingSong] = useState(false);
   const { user } = useAuth();
+  const mine = user?.id === post.author.id;
   const router = useRouter();
   const pathname = usePathname();
 
@@ -139,6 +146,18 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
         <ExpandableText text={post.caption} className="mt-3 text-[15px] leading-relaxed text-ink" />
       )}
 
+      {/* The full story page has the big player; cards get a tap-to-play chip. */}
+      {soundtrack && !full ? <SoundtrackPlayer song={soundtrack} /> : null}
+      {mine ? (
+        <button
+          type="button"
+          onClick={() => setPickingSong(true)}
+          className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-brand hover:underline"
+        >
+          <Music size={13} aria-hidden="true" /> {soundtrack ? "Change song" : "Add a song"}
+        </button>
+      ) : null}
+
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
@@ -184,8 +203,69 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
           </button>
         </span>
       </div>
-      <ShareStorySheet post={post} open={sharing} onClose={() => setSharing(false)} />
+      <ShareStorySheet post={{ ...post, soundtrack }} open={sharing} onClose={() => setSharing(false)} />
+      {mine ? (
+        <SongSheet
+          postId={post.id}
+          open={pickingSong}
+          current={soundtrack}
+          onClose={() => setPickingSong(false)}
+          onSaved={(song) => {
+            setSoundtrack(song);
+            setPickingSong(false);
+          }}
+        />
+      ) : null}
     </article>
+  );
+}
+
+/** The author picks (or removes) their post's soundtrack. */
+function SongSheet({
+  postId,
+  open,
+  current,
+  onClose,
+  onSaved,
+}: {
+  postId: string;
+  open: boolean;
+  current: Song | null;
+  onClose: () => void;
+  onSaved: (song: Song | null) => void;
+}) {
+  const [song, setSong] = useState<Song | null>(current);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.patch<TravelPost>(`/api/explore/posts/${postId}/`, { song_id: song?.id ?? "" });
+      onSaved(updated.soundtrack);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the song.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Your story's soundtrack"
+      description="It plays on the story's page, and you can add the same song on Instagram."
+      footer={
+        <Button fullWidth size="lg" onClick={save} disabled={busy || song?.id === current?.id}>
+          {busy ? "Saving…" : song ? "Save song" : "Remove song"}
+        </Button>
+      }
+    >
+      <SongPicker value={song} onChange={setSong} />
+      {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
+    </Sheet>
   );
 }
 
