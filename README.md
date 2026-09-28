@@ -212,7 +212,12 @@ server's disk (fine locally, wiped on each deploy on Railway/Render).
    | `GS_BUCKET_NAME` | `safarplan` |
    | `GS_CREDENTIALS_JSON` | the whole key file's JSON, on one line (hosted) |
    | `GOOGLE_APPLICATION_CREDENTIALS` | path to the key file (local dev, instead of the above) |
-   | `GS_STATIC=1` | optional — also serve admin CSS/JS from the bucket (`collectstatic` uploads them) |
+   | `GS_STATIC=0` | optional — keep admin CSS/JS on the app instead of the bucket's `static/` |
+
+Run `python manage.py check_storage` to see where files are going; it does a
+real upload to the bucket and names the fix if something's wrong (it also runs
+on every Railway deploy — look for "Storage check" in the deploy logs). For
+local development put the same variables in `backend/.env`.
 
 Photos already on the server's disk aren't copied over automatically — upload
 the `backend/media/` folder to `gs://safarplan/media/` once if you want them.

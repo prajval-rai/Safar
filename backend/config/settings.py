@@ -145,25 +145,56 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # --- Google Cloud Storage -------------------------------------------------------
-# Set GS_BUCKET_NAME (e.g. "safarplan") and every upload — trip photos, reward
-# pictures — goes to that bucket under media/ instead of the server's disk,
-# which a host like Railway wipes on each deploy. Credentials, in order:
-#   GS_CREDENTIALS_JSON   the service-account key file's JSON, pasted as one env var
+# Set GS_BUCKET_NAME (e.g. "safarplan") and files go to that bucket instead of
+# the server's disk, which a host like Railway wipes on each deploy:
+#   media/   every upload — trip photos, reward pictures
+#   static/  admin CSS/JS, uploaded by `collectstatic` (GS_STATIC=0 keeps
+#            these on the app via WhiteNoise instead)
+# Credentials, in order:
+#   GS_CREDENTIALS_JSON   the service-account key — its JSON pasted in, the
+#                         same JSON base64-encoded, or a path to the key file
 #   GOOGLE_APPLICATION_CREDENTIALS   a path to that key file (local dev)
 #   otherwise the machine's own Google identity (Cloud Run, GCE)
-# Set GS_STATIC=1 to serve static files (admin CSS/JS) from the bucket too;
-# otherwise WhiteNoise keeps serving them from the app.
-GS_BUCKET_NAME = os.environ.get("GS_BUCKET_NAME", "")
+# `python manage.py check_storage` says where files are going and tries a
+# real upload; start.sh runs it on every deploy so the logs show it.
+GS_BUCKET_NAME = os.environ.get("GS_BUCKET_NAME", "").strip()
+
+
+def _gcs_credentials(raw: str):
+    """The service-account key from GS_CREDENTIALS_JSON, whichever way it was
+    pasted in. Raises ValueError with a readable reason when it's unusable."""
+    import base64
+    import binascii
+    import json
+
+    from google.oauth2 import service_account
+
+    raw = raw.strip()
+    if not raw.startswith("{"):
+        if Path(raw).is_file():
+            raw = Path(raw).read_text(encoding="utf-8")
+        else:
+            try:
+                raw = base64.b64decode(raw, validate=True).decode("utf-8")
+            except (binascii.Error, UnicodeDecodeError):
+                raise ValueError(
+                    "GS_CREDENTIALS_JSON isn't JSON, base64 JSON, or a path to a key file."
+                ) from None
+    try:
+        # strict=False: hosts sometimes turn the key's "\n"s into real line breaks.
+        info = json.loads(raw, strict=False)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"GS_CREDENTIALS_JSON isn't valid JSON ({exc.msg}).") from None
+    if info.get("type") != "service_account":
+        raise ValueError("GS_CREDENTIALS_JSON must be a service-account key (\"type\": \"service_account\").")
+    return service_account.Credentials.from_service_account_info(info)
+
+
 if GS_BUCKET_NAME:
     GS_PROJECT_ID = os.environ.get("GS_PROJECT_ID") or None
-    if os.environ.get("GS_CREDENTIALS_JSON"):
-        import json
-
-        from google.oauth2 import service_account
-
-        GS_CREDENTIALS = service_account.Credentials.from_service_account_info(
-            json.loads(os.environ["GS_CREDENTIALS_JSON"])
-        )
+    if os.environ.get("GS_CREDENTIALS_JSON", "").strip():
+        GS_CREDENTIALS = _gcs_credentials(os.environ["GS_CREDENTIALS_JSON"])
+        GS_PROJECT_ID = GS_PROJECT_ID or GS_CREDENTIALS.project_id
     # Public, permanent links (the bucket grants allUsers "Storage Object
     # Viewer") — photos are shown in the Feed and cached by browsers, so
     # expiring signed URLs would break them. Set GS_SIGNED_URLS=1 to keep the
@@ -177,10 +208,12 @@ if GS_BUCKET_NAME:
         "OPTIONS": {"location": "media"},
     }
     MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/media/"
-    if os.environ.get("GS_STATIC") == "1":
+    if os.environ.get("GS_STATIC", "1") != "0":
         STORAGES["staticfiles"] = {
             "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-            "OPTIONS": {"location": "static"},
+            # Static files keep their names between deploys, so they're only
+            # cached for an hour — a year would pin old admin CSS in browsers.
+            "OPTIONS": {"location": "static", "object_parameters": {"cache_control": "public, max-age=3600"}},
         }
         STATIC_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/static/"
 
