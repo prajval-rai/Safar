@@ -6,6 +6,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { RewardEditor } from "@/components/rewards/RewardEditor";
 import { RewardImage } from "@/components/rewards/RewardImage";
+import { RewardShareSheet } from "@/components/rewards/RewardShareSheet";
 import { Avatar, ErrorNote, LoadingBlock, SegmentedControl, StatTile } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { TextAreaField } from "@/components/ui/Field";
@@ -124,6 +125,7 @@ function RewardsPanel({
 }) {
   const { toast } = useCelebration();
   const [editing, setEditing] = useState<AdminReward | "new" | null>(null);
+  const [sharing, setSharing] = useState<AdminReward | null>(null);
 
   async function toggle(reward: AdminReward) {
     try {
@@ -198,7 +200,10 @@ function RewardsPanel({
                   ) : null}
                 </div>
 
-                <div className="mt-auto grid grid-cols-3 gap-2">
+                <Button fullWidth icon="📸" className="mt-auto" onClick={() => setSharing(reward)}>
+                  Share on Instagram
+                </Button>
+                <div className="grid grid-cols-3 gap-2">
                   <Button variant="secondary" size="sm" onClick={() => setEditing(reward)}>
                     Edit
                   </Button>
@@ -216,6 +221,8 @@ function RewardsPanel({
       ) : (
         <p className="card p-8 text-center text-sm text-muted">No rewards yet — add the first one.</p>
       )}
+
+      {sharing ? <RewardShareSheet offer={sharing} onClose={() => setSharing(null)} /> : null}
 
       {editing ? (
         <RewardEditor

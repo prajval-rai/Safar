@@ -59,7 +59,15 @@ def leaderboard(request):
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+class _VisibleByDefault(serializers.BooleanField):
+    """A form upload that leaves the box out means "use the default" (visible),
+    not "unticked" — DRF reads a missing checkbox in form data as False."""
+
+    default_empty_html = serializers.empty
+
+
 class RewardOfferSerializer(serializers.ModelSerializer):
+    is_active = _VisibleByDefault(default=True)
     claimed_count = serializers.SerializerMethodField()
     spots_left = serializers.SerializerMethodField()
     claimed_by_me = serializers.SerializerMethodField()
@@ -173,6 +181,23 @@ class RewardOfferViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._require_admin()
         instance.delete()
+
+    @action(detail=True, methods=["get"])
+    def image(self, request, pk=None):
+        """The reward's picture, served through the API. The share card draws it
+        onto a canvas, which a browser only allows for images the page's own
+        API hands over — a bucket link would need its own CORS setup."""
+        import mimetypes
+
+        from django.http import FileResponse, Http404
+
+        offer = self.get_object()
+        if not offer.image:
+            raise Http404("This reward has no picture.")
+        content_type = mimetypes.guess_type(offer.image.name)[0] or "application/octet-stream"
+        response = FileResponse(offer.image.open("rb"), content_type=content_type)
+        response["Cache-Control"] = "private, max-age=3600"
+        return response
 
     @action(detail=True, methods=["post"])
     def claim(self, request, pk=None):

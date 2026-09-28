@@ -69,6 +69,7 @@ class RewardCatalogTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         offer = RewardOffer.objects.get()
+        self.assertTrue(offer.is_active)
         self.assertEqual(offer.xp_required, Decimal("50.50"))
         self.assertEqual(offer.max_claims, 2)
         self.assertTrue(offer.image.name.startswith("rewards/"))
@@ -191,3 +192,18 @@ class RewardCatalogTests(TestCase):
         offer = self.make_offer(xp_required=2000)
         response = self.client_for(self.poor).post(f"/api/rewards/catalog/{offer.id}/claim/")
         self.assertIn("1,996.75 more XP", response.data["detail"])
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_reward_picture_is_served_through_the_api_for_share_cards(self):
+        self.client_for(self.staff).post(
+            "/api/rewards/catalog/",
+            {"title": "Diary", "xp_required": 5, "max_claims": 1, "image": self.png()},
+            format="multipart",
+        )
+        offer = RewardOffer.objects.get()
+        response = self.client_for(self.rich).get(f"/api/rewards/catalog/{offer.id}/image/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(b"".join(response.streaming_content)[1:4], b"PNG")
+        no_picture = self.make_offer(title="Plain")
+        self.assertEqual(self.client_for(self.rich).get(f"/api/rewards/catalog/{no_picture.id}/image/").status_code, 404)
