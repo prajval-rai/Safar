@@ -16,6 +16,8 @@ import {
   Map as MapIcon,
   MessageCircle,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   PartyPopper,
   PlayCircle,
   Rss,
@@ -28,7 +30,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 import { useAmbientTheme } from "@/lib/ambientTheme";
 import { Logo } from "@/components/brand/Logo";
@@ -89,6 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useServerMode();
   useOfflineSync();
   const ambient = useAmbientTheme();
+  const collapsed = useSidebarCollapsed();
 
   // Live Trip mode takes over the screen — no nav competing for attention.
   const focusMode = /^\/trips\/[^/]+\/(live|complete)$/.test(pathname);
@@ -102,8 +105,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-dvh lg:pl-[264px]">
-      <Sidebar pathname={pathname} />
+    <div className={cn("min-h-dvh transition-[padding] duration-200", collapsed ? "lg:pl-[84px]" : "lg:pl-[264px]")}>
+      <Sidebar pathname={pathname} collapsed={collapsed} />
       <div className="flex min-h-dvh flex-col">
         <TopBar pathname={pathname} ambient={ambient} />
         <main id="main" className="w-full flex-1 px-4 pt-6 pb-28 sm:px-8 lg:pb-12">
@@ -145,16 +148,61 @@ const ADMIN_NAV: NavItem = {
   mobile: false,
 };
 
-function Sidebar({ pathname }: { pathname: string }) {
+/* The laptop sidebar can fold down to an icon rail. The choice is a per-browser
+ * convenience, so it lives in localStorage, read through useSyncExternalStore
+ * so the server render (always expanded) and the browser never disagree. */
+const SIDEBAR_KEY = "safar.sidebar.collapsed";
+const sidebarListeners = new Set<() => void>();
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setSidebarCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Private mode or blocked storage — it just won't be remembered.
+  }
+  sidebarListeners.forEach((listener) => listener());
+}
+
+function useSidebarCollapsed(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      sidebarListeners.add(listener);
+      return () => sidebarListeners.delete(listener);
+    },
+    readSidebarCollapsed,
+    () => false,
+  );
+}
+
+function Sidebar({ pathname, collapsed }: { pathname: string; collapsed: boolean }) {
   const { user } = useAuth();
   const items = user?.is_staff ? [...NAV, ADMIN_NAV] : NAV;
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[264px] flex-col border-r border-line bg-surface lg:flex">
-      <div className="flex h-[86px] items-center border-b border-line px-6">
-        <BrandMark />
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex",
+        collapsed ? "w-[84px]" : "w-[264px]",
+      )}
+    >
+      <div className={cn("flex h-[86px] items-center border-b border-line", collapsed ? "justify-center px-2" : "px-6")}>
+        {collapsed ? (
+          <Link href="/" aria-label="Safar home">
+            <Logo className="h-9" />
+          </Link>
+        ) : (
+          <BrandMark />
+        )}
       </div>
 
-      <nav aria-label="Main" className="flex-1 space-y-1.5 overflow-y-auto p-3.5">
+      <nav aria-label="Main" className={cn("flex-1 space-y-1.5 overflow-y-auto", collapsed ? "p-2.5" : "p-3.5")}>
         {items.map(({ href, label, Icon, match }) => {
           const active = match(pathname);
           return (
@@ -162,23 +210,37 @@ function Sidebar({ pathname }: { pathname: string }) {
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
+              aria-label={collapsed ? label : undefined}
+              title={collapsed ? label : undefined}
               className={cn(
-                "flex min-h-[52px] items-center gap-3.5 rounded-2xl px-4 text-[15px] font-semibold transition-colors",
-                active
-                  ? "bg-brand text-on-brand"
-                  : "text-ink hover:bg-raised",
+                "flex min-h-[52px] items-center rounded-2xl text-[15px] font-semibold transition-colors",
+                collapsed ? "justify-center px-0" : "gap-3.5 px-4",
+                active ? "bg-brand text-on-brand" : "text-ink hover:bg-raised",
               )}
             >
               <Icon size={21} strokeWidth={1.9} aria-hidden="true" />
-              {label}
+              {collapsed ? null : label}
             </Link>
           );
         })}
       </nav>
 
-      <p className="flex items-center gap-2 border-t border-line px-6 py-4 text-xs text-muted">
-        Plan → Travel → Track → Earn
-      </p>
+      <div className={cn("flex items-center border-t border-line py-3", collapsed ? "justify-center px-2" : "gap-2 px-4")}>
+        {collapsed ? null : <p className="flex-1 text-xs text-muted">Plan → Travel → Track → Earn</p>}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="tap flex items-center justify-center rounded-xl text-muted hover:bg-raised hover:text-ink"
+        >
+          {collapsed ? (
+            <PanelLeftOpen size={20} strokeWidth={1.9} aria-hidden="true" />
+          ) : (
+            <PanelLeftClose size={20} strokeWidth={1.9} aria-hidden="true" />
+          )}
+        </button>
+      </div>
     </aside>
   );
 }

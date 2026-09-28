@@ -90,6 +90,11 @@ class User(AbstractUser):
     # signed in with Google — never reused for a different Google account,
     # unlike email, which someone could theoretically change on Google's end.
     google_sub = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    # Set when someone temporarily deletes (deactivates) their own account:
+    # is_active goes False and they vanish from search, profiles, the feed and
+    # the leaderboard. Signing in again brings everything back. An account an
+    # admin switched off has is_active False with this left empty, and stays off.
+    deactivated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

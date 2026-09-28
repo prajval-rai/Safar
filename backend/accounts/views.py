@@ -47,6 +47,58 @@ def me(request):
     return Response(UserSerializer(request.user).data)
 
 
+def _confirmed(request) -> bool:
+    """Both account deletions need the username typed back, so neither can
+    happen from a stray tap."""
+    typed = (request.data.get("confirm") or "").strip()
+    return typed.lower() == request.user.username.lower()
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def deactivate_account(request):
+    """Temporary delete: hide the account until its owner signs in again.
+    Their trips, photos and XP are kept; they just disappear from search,
+    profiles, the feed and the leaderboard."""
+    if not _confirmed(request):
+        return Response({"detail": "Type your username to confirm."}, status=status.HTTP_400_BAD_REQUEST)
+    from django.utils import timezone
+
+    user = request.user
+    user.is_active = False
+    user.deactivated_at = timezone.now()
+    user.save(update_fields=["is_active", "deactivated_at"])
+    return Response({"status": "deactivated"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    """Permanent delete: the account and everything that's only theirs (posts,
+    tracks, photos, XP, follows) is gone for good. Group trips they organised
+    aren't deleted with them — the next organiser takes over."""
+    if not _confirmed(request):
+        return Response({"detail": "Type your username to confirm."}, status=status.HTTP_400_BAD_REQUEST)
+    from django.db import transaction
+
+    from trips.models import Trip
+
+    user = request.user
+    with transaction.atomic():
+        for trip in Trip.objects.filter(created_by=user):
+            others = trip.members.exclude(user=user).select_related("user")
+            # A co-planner first, otherwise whoever joined earliest.
+            heir = others.filter(role="admin").order_by("joined_at").first() or others.order_by("joined_at").first()
+            if heir is None:
+                continue  # Nobody else on it — it goes with the account.
+            heir.role = "owner"
+            heir.save(update_fields=["role"])
+            trip.created_by = heir.user
+            trip.save(update_fields=["created_by"])
+        user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def search_users(request):

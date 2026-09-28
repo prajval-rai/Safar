@@ -73,7 +73,10 @@ export default function ProfilePage() {
           {user.email ? (
             <div className="flex justify-between gap-3">
               <dt className="text-muted">Email</dt>
-              <dd className="font-semibold text-ink">{user.email}</dd>
+              <dd className="text-right">
+                <span className="block font-semibold text-ink">{user.email}</span>
+                <span className="block text-xs text-muted">From your Google account — can&apos;t be changed</span>
+              </dd>
             </div>
           ) : null}
           <div className="flex justify-between gap-3">
@@ -97,6 +100,8 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      <DeleteAccountSection user={user} onDone={signOut} />
+
       <EditProfileSheet
         open={editing}
         user={user}
@@ -107,6 +112,137 @@ export default function ProfilePage() {
         }}
       />
     </div>
+  );
+}
+
+type DeleteKind = "deactivate" | "delete";
+
+const DELETE_COPY: Record<
+  DeleteKind,
+  { title: string; lines: string[]; button: string; busy: string; path: string; done: string }
+> = {
+  deactivate: {
+    title: "Temporarily delete your account",
+    lines: [
+      "Your profile, posts and tracks are hidden, and nobody can find or invite you.",
+      "Your trips, photos and XP are kept safe.",
+      "Sign in with Google again any time and everything comes back.",
+    ],
+    button: "Deactivate my account",
+    busy: "Deactivating…",
+    path: "/api/auth/deactivate/",
+    done: "Your account is switched off. Sign in again whenever you want it back.",
+  },
+  delete: {
+    title: "Permanently delete your account",
+    lines: [
+      "Your profile, XP, achievements, posts, tracks, photos and follows are deleted for good.",
+      "Group trips you organised stay for everyone else — a co-planner (or the next person on the trip) takes over. Trips with only you on them are deleted.",
+      "This can't be undone. Signing in with Google later starts a brand-new account.",
+    ],
+    button: "Delete my account forever",
+    busy: "Deleting…",
+    path: "/api/auth/delete/",
+    done: "Your account has been deleted.",
+  },
+};
+
+function DeleteAccountSection({ user, onDone }: { user: User; onDone: () => void }) {
+  const [kind, setKind] = useState<DeleteKind | null>(null);
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useCelebration();
+  const copy = kind ? DELETE_COPY[kind] : null;
+  const matches = typed.trim().toLowerCase() === user.username.toLowerCase();
+
+  function open(next: DeleteKind) {
+    setKind(next);
+    setTyped("");
+    setError(null);
+  }
+
+  async function confirm() {
+    if (!copy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(copy.path, { confirm: typed.trim() });
+      toast(copy.done);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card border-danger/30 p-5">
+      <h2 className="text-lg font-bold text-danger">Delete account</h2>
+      <div className="mt-3 space-y-3">
+        <div className="rounded-xl bg-raised p-3.5">
+          <p className="text-sm font-bold text-ink">Take a break</p>
+          <p className="mt-0.5 text-sm text-muted">
+            Hide your account for now. Sign in again any time to bring it back, just as it was.
+          </p>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={() => open("deactivate")}>
+            Temporarily delete
+          </Button>
+        </div>
+        <div className="rounded-xl bg-danger-soft/60 p-3.5">
+          <p className="text-sm font-bold text-danger">Delete forever</p>
+          <p className="mt-0.5 text-sm text-muted">
+            Remove your account and everything that&apos;s only yours. This can&apos;t be undone.
+          </p>
+          <Button variant="danger" size="sm" className="mt-3" onClick={() => open("delete")}>
+            Permanently delete
+          </Button>
+        </div>
+      </div>
+
+      <Sheet
+        open={kind !== null}
+        onClose={() => (busy ? undefined : setKind(null))}
+        title={copy?.title ?? ""}
+        footer={
+          copy ? (
+            <Button
+              fullWidth
+              size="lg"
+              variant={kind === "delete" ? "danger" : "primary"}
+              onClick={confirm}
+              disabled={busy || !matches}
+            >
+              {busy ? copy.busy : copy.button}
+            </Button>
+          ) : undefined
+        }
+      >
+        {copy ? (
+          <div className="space-y-4">
+            <ul className="space-y-2 text-sm text-ink">
+              {copy.lines.map((line) => (
+                <li key={line} className="flex gap-2">
+                  <span aria-hidden="true" className="text-muted">
+                    •
+                  </span>
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <TextField
+              label={`Type your username (${user.username}) to confirm`}
+              data-autofocus
+              value={typed}
+              error={error ?? undefined}
+              onChange={(e) => setTyped(e.target.value)}
+              autoCapitalize="none"
+              autoComplete="off"
+            />
+          </div>
+        ) : null}
+      </Sheet>
+    </section>
   );
 }
 

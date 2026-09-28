@@ -55,6 +55,19 @@ def _unique_username(base: str) -> str:
     return candidate
 
 
+def _reactivated(user: User) -> User:
+    """Signing in undoes a temporary delete. An account an admin switched off
+    (inactive, but never self-deactivated) stays locked."""
+    if user.is_active:
+        return user
+    if user.deactivated_at is None:
+        raise AuthenticationFailed("This account has been switched off. Contact support.")
+    user.is_active = True
+    user.deactivated_at = None
+    user.save(update_fields=["is_active", "deactivated_at"])
+    return user
+
+
 def get_or_create_google_user(claims: dict) -> tuple[User, bool]:
     """Matches an existing account by Google's account id first, then by
     email (so someone who registered normally can still add Google sign-in
@@ -65,13 +78,13 @@ def get_or_create_google_user(claims: dict) -> tuple[User, bool]:
 
     by_google = User.objects.filter(google_sub=sub).first()
     if by_google:
-        return by_google, False
+        return _reactivated(by_google), False
 
     by_email = User.objects.filter(email__iexact=email).first() if email else None
     if by_email:
         by_email.google_sub = sub
         by_email.save(update_fields=["google_sub"])
-        return by_email, False
+        return _reactivated(by_email), False
 
     username = _unique_username(email.split("@")[0] if email else claims.get("name", "traveller"))
     user = User(

@@ -27,7 +27,8 @@ class TrackViewSet(viewsets.ModelViewSet):
     search_fields = ["title", "destination", "region", "summary"]
 
     def get_queryset(self):
-        qs = Track.objects.filter(is_published=True).select_related("author")
+        # Deactivated accounts' tracks and posts are hidden until they come back.
+        qs = Track.objects.filter(is_published=True, author__is_active=True).select_related("author")
         mine = self.request.query_params.get("mine")
         saved = self.request.query_params.get("saved")
         if mine:
@@ -233,7 +234,7 @@ class TravelPostViewSet(viewsets.ModelViewSet):
     search_fields = ["caption", "place"]
 
     def get_queryset(self):
-        qs = TravelPost.objects.select_related("author", "trip")
+        qs = TravelPost.objects.filter(author__is_active=True).select_related("author", "trip")
         user = self.request.user
         # "Mine" and "Following" only mean something when you're signed in.
         if self.request.query_params.get("mine"):

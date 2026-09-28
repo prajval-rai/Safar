@@ -380,3 +380,60 @@ class WritePostTests(SocialTestCase):
             return (data["results"] if isinstance(data, dict) else data)[0]["can_open_trip"]
         self.assertTrue(flag(self.me))
         self.assertFalse(flag(self.ann))
+
+
+class AccountDeletionTests(SocialTestCase):
+    def test_email_cant_be_changed(self):
+        self.client_for(self.me).patch("/api/auth/me/", {"email": "someone.else@gmail.com"})
+        self.me.refresh_from_db()
+        self.assertEqual(self.me.email, "me@x.in")
+
+    def test_both_deletions_need_the_username_typed_back(self):
+        client = self.client_for(self.me)
+        self.assertEqual(client.post("/api/auth/deactivate/", {"confirm": "nope"}).status_code, 400)
+        self.assertEqual(client.post("/api/auth/delete/", {}).status_code, 400)
+        self.assertTrue(User.objects.filter(pk=self.me.pk, is_active=True).exists())
+
+    def test_temporary_delete_hides_you_until_you_sign_in_again(self):
+        from accounts.google_auth import get_or_create_google_user
+
+        TravelPost.objects.create(author=self.me, caption="Hidden while away")
+        self.assertEqual(self.client_for(self.me).post("/api/auth/deactivate/", {"confirm": "ME"}).status_code, 200)
+        self.me.refresh_from_db()
+        self.assertFalse(self.me.is_active)
+
+        viewer = self.client_for(self.ann)
+        self.assertEqual(viewer.get("/api/users/me/").status_code, 404)
+        self.assertEqual(viewer.get("/api/users/search/?q=me").data, [])
+        self.assertEqual(viewer.get("/api/explore/posts/").data["results"], [])
+        self.assertNotIn("me", [r["username"] for r in viewer.get("/api/rewards/leaderboard/").data])
+
+        user, created = get_or_create_google_user({"sub": "g-me", "email": "me@x.in"})
+        self.assertFalse(created)
+        self.assertEqual(user.pk, self.me.pk)
+        self.assertTrue(user.is_active)
+        self.assertIsNone(user.deactivated_at)
+
+    def test_an_account_an_admin_switched_off_stays_off(self):
+        from rest_framework.exceptions import AuthenticationFailed
+
+        from accounts.google_auth import get_or_create_google_user
+
+        self.me.is_active = False
+        self.me.save(update_fields=["is_active"])
+        with self.assertRaises(AuthenticationFailed):
+            get_or_create_google_user({"sub": "g-me", "email": "me@x.in"})
+
+    def test_permanent_delete_hands_group_trips_on_and_drops_solo_ones(self):
+        group = self.make_trip(self.me, title="Goa")
+        TripMember.objects.create(trip=group, user=self.bob, role="member")
+        TripMember.objects.create(trip=group, user=self.ann, role="admin")
+        solo = self.make_trip(self.me, title="Solo")
+
+        self.assertEqual(self.client_for(self.me).post("/api/auth/delete/", {"confirm": "me"}).status_code, 204)
+        self.assertFalse(User.objects.filter(username="me").exists())
+        self.assertFalse(Trip.objects.filter(pk=solo.pk).exists())
+        group.refresh_from_db()
+        self.assertEqual(group.created_by, self.ann)  # the co-planner takes over
+        self.assertEqual(group.members.get(user=self.ann).role, "owner")
+        self.assertEqual(group.members.count(), 2)

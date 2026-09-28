@@ -44,7 +44,7 @@ def leaderboard(request):
     from django.contrib.auth import get_user_model
 
     User = get_user_model()
-    top = User.objects.order_by("-xp")[:20]
+    top = User.objects.filter(is_active=True).order_by("-xp")[:20]
     rows = [
         {"rank": i + 1, **UserMiniSerializer(u).data, "is_me": u.pk == request.user.pk}
         for i, u in enumerate(top)

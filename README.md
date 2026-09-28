@@ -74,6 +74,12 @@ data in it straight away.
 - Profile with level, traveller tag (e.g. "Awara"), saved theme and push settings
 - Account menu on the avatar in the top-right corner: name, username, level and XP, change
   username, Rewards, *More* (the full profile page) and Log out
+- Email comes from Google and can't be changed (sign-in matches accounts by it)
+- **Delete account** (Profile): *temporarily* — hidden from search, profiles, the feed and the
+  leaderboard until you sign in again — or *permanently*, which deletes everything that's only
+  yours; group trips you organised pass to a co-planner or the next member. Both need your
+  username typed to confirm
+- Collapsible sidebar on laptops (remembered per browser)
 
 **Planning**
 - Six-step create-trip wizard (where → when → who → what kind → itinerary → invite)
@@ -309,7 +315,8 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 | Endpoint | What it does |
 | --- | --- |
 | `POST /api/auth/google/`, `POST /api/auth/token/refresh/` | Sign in with Google (creates the account the first time), refresh the session |
-| `GET/PATCH /api/auth/me/` | Profile, including saved theme |
+| `GET/PATCH /api/auth/me/` | Profile, including saved theme and username (email is read-only) |
+| `POST /api/auth/deactivate/`, `POST /api/auth/delete/` (`confirm`: your username) | Temporarily or permanently delete your account |
 | `GET /api/home/` | Everything the Home screen needs, in one request |
 | `GET/POST /api/trips/`, `GET/PATCH/DELETE /api/trips/{id}/` | Trips |
 | `POST /api/trips/{id}/generate-plan/` | Fill a day (or all of them) with a suggested plan |

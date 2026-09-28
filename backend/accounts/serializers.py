@@ -46,7 +46,10 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "is_staff",
         ]
-        read_only_fields = ["id", "xp", "date_joined", "is_staff"]
+        # Email is read-only: it comes from Google, and Google sign-in matches
+        # accounts by it — letting people set it would let them claim someone
+        # else's future sign-in.
+        read_only_fields = ["id", "email", "xp", "date_joined", "is_staff"]
 
     def validate_username(self, value: str) -> str:
         """Usernames are in profile links (/u/<username>), so keep them short,

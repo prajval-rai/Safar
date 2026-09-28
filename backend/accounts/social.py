@@ -20,7 +20,8 @@ DEFAULT_AREA_KM = 10.0
 
 
 def _target(username):
-    return get_object_or_404(User, username__iexact=username)
+    # A deactivated (temporarily deleted) account looks like no account at all.
+    return get_object_or_404(User, username__iexact=username, is_active=True)
 
 
 def visible_trips(viewer, target):
@@ -138,14 +139,14 @@ def follow_user(request, username):
 @permission_classes([IsAuthenticated])
 def user_followers(request, username):
     target = _target(username)
-    return Response(_people(request, User.objects.filter(follows_out__following=target)))
+    return Response(_people(request, User.objects.filter(follows_out__following=target, is_active=True)))
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def user_following(request, username):
     target = _target(username)
-    return Response(_people(request, User.objects.filter(follows_in__follower=target)))
+    return Response(_people(request, User.objects.filter(follows_in__follower=target, is_active=True)))
 
 
 @api_view(["GET"])
