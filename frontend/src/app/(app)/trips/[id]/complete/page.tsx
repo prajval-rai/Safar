@@ -11,7 +11,7 @@ import { Avatar, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
-import { API_BASE, ApiError, api } from "@/lib/api";
+import { ApiError, api, mediaSrc } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { useTripTheme } from "@/lib/tripTheme";
 import type { TripSummary, XPResult } from "@/lib/types";
@@ -172,7 +172,7 @@ export default function TripCompletePage() {
                   {memory.image || memory.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={memory.image ? `${API_BASE}${memory.image}` : memory.image_url}
+                      src={memory.image ? mediaSrc(memory.image) : memory.image_url}
                       alt={memory.caption || "Trip photo"}
                       loading="lazy"
                       decoding="async"

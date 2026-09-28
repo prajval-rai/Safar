@@ -122,6 +122,15 @@ class TravelPostSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["author", "track", "created_at"]
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # A trip post without a picture of its own (or one that only copied the
+        # trip's old cover) shows the trip's picture — its first gallery photo.
+        trip = obj.trip
+        if trip and (not obj.image_url or obj.image_url == trip.cover_image):
+            data["image_url"] = trip.display_cover(self.context.get("request")) or obj.image_url
+        return data
+
     def validate(self, attrs):
         if "song_id" in attrs:
             attrs["soundtrack"] = soundtrack_for(attrs.pop("song_id"))

@@ -8,6 +8,8 @@ import {
   Unlock,
   BellRing,
   Clock,
+  Gift,
+  ShieldCheck,
   Compass,
   Home,
   Map as MapIcon,
@@ -28,6 +30,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { useAmbientTheme } from "@/lib/ambientTheme";
+import { Logo } from "@/components/brand/Logo";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Avatar, ErrorNote, Skeleton } from "@/components/ui/Bits";
@@ -112,25 +115,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 /* ---------------------------------------------------------------- brand */
 
-function BrandMark() {
+function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="/" className="flex items-center gap-3" aria-label="Safar home">
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-lg font-extrabold text-on-brand">
-        S
-      </span>
-      <span className="leading-tight">
-        <span className="block text-[17px] font-bold text-ink">Safar</span>
-        <span className="block text-[10.5px] font-semibold tracking-[0.14em] text-muted">
-          PLAN · TRACK · EARN
+      <Logo className={compact ? "h-11" : "h-14"} />
+      {compact ? null : (
+        <span className="block text-[10.5px] leading-tight font-semibold tracking-[0.14em] text-muted">
+          PLAN ·<br />
+          TRACK ·<br />
+          EARN
         </span>
-      </span>
+      )}
     </Link>
   );
 }
 
 /* -------------------------------------------------------------- sidebar */
 
+/** Only admins see this — it's where rewards and their claims are managed. */
+const ADMIN_NAV: NavItem = {
+  href: "/manage",
+  label: "Admin",
+  Icon: ShieldCheck,
+  match: (p) => p.startsWith("/manage"),
+  mobile: false,
+};
+
 function Sidebar({ pathname }: { pathname: string }) {
+  const { user } = useAuth();
+  const items = user?.is_staff ? [...NAV, ADMIN_NAV] : NAV;
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[264px] flex-col border-r border-line bg-surface lg:flex">
       <div className="flex h-[86px] items-center border-b border-line px-6">
@@ -138,7 +151,7 @@ function Sidebar({ pathname }: { pathname: string }) {
       </div>
 
       <nav aria-label="Main" className="flex-1 space-y-1.5 overflow-y-auto p-3.5">
-        {NAV.map(({ href, label, Icon, match }) => {
+        {items.map(({ href, label, Icon, match }) => {
           const active = match(pathname);
           return (
             <Link
@@ -171,7 +184,7 @@ function Sidebar({ pathname }: { pathname: string }) {
 function titleFor(pathname: string): string {
   if (pathname === "/") return "Home";
   if (pathname === "/trips/new") return "Plan a Trip";
-  const hit = NAV.find((item) => item.href !== "/" && item.match(pathname));
+  const hit = [...NAV, ADMIN_NAV].find((item) => item.href !== "/" && item.match(pathname));
   return hit?.label ?? "Safar";
 }
 
@@ -220,6 +233,8 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   track_published: Rss,
   new_follower: UserPlus,
   achievement_unlocked: Trophy,
+  reward_claimed: Gift,
+  reward_update: Gift,
 };
 
 function notificationHref(note: Notification): string | null {
@@ -231,6 +246,8 @@ function notificationHref(note: Notification): string | null {
   }
   if (note.track_id) return `/explore/${note.track_id}`;
   if (note.kind === "new_follower" && note.actor) return `/u/${note.actor.username}`;
+  if (note.kind === "reward_claimed") return "/manage";
+  if (note.kind === "reward_update") return "/rewards";
   return null;
 }
 
@@ -294,7 +311,7 @@ function TopBar({
       >
         {/* Phones and tablets have no sidebar, so the brand moves up here. */}
         <div className="lg:hidden">
-          <BrandMark />
+          <BrandMark compact />
         </div>
         <p className="hidden text-base text-muted lg:block">{titleFor(pathname)}</p>
         {/* Only shown once it's actually tied to a trip — no badge for the

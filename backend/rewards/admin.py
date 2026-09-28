@@ -26,7 +26,7 @@ class HeldXPAdmin(admin.ModelAdmin):
 class RewardClaimInline(admin.TabularInline):
     model = RewardClaim
     extra = 0
-    readonly_fields = ["user", "created_at"]
+    readonly_fields = ["user", "created_at", "handled_by", "handled_at"]
 
 
 @admin.register(RewardOffer)
@@ -37,4 +37,4 @@ class RewardOfferAdmin(admin.ModelAdmin):
 
     @admin.display(description="Claimed")
     def claimed(self, obj):
-        return obj.claims.count()
+        return obj.taken

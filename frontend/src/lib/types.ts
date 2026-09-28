@@ -454,7 +454,9 @@ export type NotificationKind =
   | "track_used"
   | "track_published"
   | "new_follower"
-  | "achievement_unlocked";
+  | "achievement_unlocked"
+  | "reward_claimed"
+  | "reward_update";
 
 export interface Notification {
   id: string;
@@ -502,11 +504,45 @@ export interface RewardOffer {
   claimed_count: number;
   spots_left: number;
   claimed_by_me: boolean;
+  /** Where your claim stands, or null if you haven't claimed it. */
+  my_claim_status: ClaimStatus | null;
+  /** The admin's note on your claim — how to collect it, or why not. */
+  my_claim_note: string;
   /** Why you can't claim it right now, or "" when you can. */
   blocked_reason: string;
-  /** Who claimed it — only filled in for staff. */
-  claimants: (UserMini & { claimed_at: string })[];
   created_at: string;
+}
+
+export type ClaimStatus = "pending" | "delivered" | "rejected";
+
+/** A reward as the admin page sees it — with its claims counted by status. */
+export interface AdminReward extends RewardOffer {
+  pending_count: number;
+  delivered_count: number;
+  rejected_count: number;
+}
+
+export interface AdminClaim {
+  id: number;
+  reward: { id: number; title: string; xp_required: number; image: string | null };
+  user: UserMini;
+  status: ClaimStatus;
+  admin_note: string;
+  handled_by: UserMini | null;
+  handled_at: string | null;
+  created_at: string;
+}
+
+export interface AdminOverview {
+  stats: {
+    rewards: number;
+    active_rewards: number;
+    claims: number;
+    pending: number;
+    delivered: number;
+    rejected: number;
+  };
+  rewards: AdminReward[];
 }
 
 /** Someone in a followers / following list, or a search result. */

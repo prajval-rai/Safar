@@ -26,6 +26,8 @@ class Notification(models.Model):
         ("track_published", "Someone you follow published a track"),
         ("new_follower", "New follower"),
         ("achievement_unlocked", "Achievement unlocked"),
+        ("reward_claimed", "Someone claimed a reward (admins)"),
+        ("reward_update", "Your reward claim was handled"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -192,6 +192,37 @@ a real photo by setting `cover_image` to a URL.
 
 ---
 
+## Photo storage (Google Cloud Storage)
+
+Uploads (trip photos, reward pictures) go to the **`safarplan`** bucket when
+`GS_BUCKET_NAME` is set, under `media/`; without it they're saved on the
+server's disk (fine locally, wiped on each deploy on Railway/Render).
+
+1. **Service account:** Google Cloud Console → IAM → Service accounts → create
+   one, grant it **Storage Object Admin** on the `safarplan` bucket, and
+   download a JSON key.
+2. **Public read** (photos appear in the Feed): bucket → Permissions → Grant
+   access → principal `allUsers`, role **Storage Object Viewer**. Keep
+   "uniform bucket-level access" on. (Or set `GS_SIGNED_URLS=1` to keep the
+   bucket private and use expiring signed links instead.)
+3. **Backend env vars:**
+
+   | Variable | Value |
+   | --- | --- |
+   | `GS_BUCKET_NAME` | `safarplan` |
+   | `GS_CREDENTIALS_JSON` | the whole key file's JSON, on one line (hosted) |
+   | `GOOGLE_APPLICATION_CREDENTIALS` | path to the key file (local dev, instead of the above) |
+   | `GS_STATIC=1` | optional — also serve admin CSS/JS from the bucket (`collectstatic` uploads them) |
+
+Photos already on the server's disk aren't copied over automatically — upload
+the `backend/media/` folder to `gs://safarplan/media/` once if you want them.
+
+The first photo in a trip's gallery is that trip's picture everywhere — trip
+cards, the trip page, Home, the Feed, invite links and published tracks.
+Before anyone adds one, the cover picked while planning is used.
+
+---
+
 ## API
 
 All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <token>`.

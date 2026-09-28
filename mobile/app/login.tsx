@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -20,8 +20,15 @@ export default function LoginScreen() {
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.compass}>🧭</Text>
-      <Text style={[styles.brand, { color: colors.text }]}>Safar</Text>
+      {/* Dark-green wordmark, so it sits on a light plate in dark mode too. */}
+      <View style={styles.logoPlate}>
+        <Image
+          source={require('@/assets/images/safar-logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="Safar"
+        />
+      </View>
 
       <Text style={[styles.headline, { color: colors.text }]}>Ready for the journey?</Text>
       <Text style={[styles.subtitle, { color: colors.muted }]}>
@@ -48,8 +55,8 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingVertical: 40 },
-  compass: { fontSize: 30, textAlign: 'center' },
-  brand: { fontSize: 30, fontWeight: '800', textAlign: 'center', marginTop: 6, marginBottom: 22 },
+  logoPlate: { alignSelf: 'center', backgroundColor: '#ffffff', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 24 },
+  logo: { width: 180, height: 126 },
   headline: { fontSize: 22, fontWeight: '800' },
   subtitle: { fontSize: 13, marginTop: 4, marginBottom: 20 },
   errorBanner: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 13, fontWeight: '600', marginBottom: 12 },

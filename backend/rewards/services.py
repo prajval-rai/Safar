@@ -58,7 +58,7 @@ def as_xp(value) -> Decimal:
 
 def format_xp(value) -> str:
     """10.00 → "10", 0.50 → "0.5", 2.25 → "2.25" — for messages people read."""
-    text = f"{as_xp(value):f}"
+    text = f"{as_xp(value):,f}"
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 

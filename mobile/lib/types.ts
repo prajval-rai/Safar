@@ -296,7 +296,9 @@ export type NotificationKind =
   | "track_used"
   | "track_published"
   | "new_follower"
-  | "achievement_unlocked";
+  | "achievement_unlocked"
+  | "reward_claimed"
+  | "reward_update";
 
 export interface Notification {
   id: string;
@@ -367,6 +369,10 @@ export interface RewardOffer {
   claimed_count: number;
   spots_left: number;
   claimed_by_me: boolean;
+  /** Where your claim stands: waiting for an admin, handed over, or declined. */
+  my_claim_status: 'pending' | 'delivered' | 'rejected' | null;
+  /** The admin's note — how to collect it, or why not. */
+  my_claim_note: string;
   /** Why you can't claim it right now, or "" when you can. */
   blocked_reason: string;
   created_at: string;

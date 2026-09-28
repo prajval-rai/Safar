@@ -114,7 +114,7 @@ class RewardCatalogTests(TestCase):
         self.assertIn("All claimed", full.data["detail"])
         self.assertEqual(RewardClaim.objects.count(), 1)
 
-    def test_listing_shows_spots_left_and_only_staff_see_claimants(self):
+    def test_listing_shows_spots_left_and_hides_inactive_rewards(self):
         offer = self.make_offer(xp_required=10, max_claims=3)
         self.make_offer(title="Hidden", is_active=False)
         self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
@@ -122,10 +122,72 @@ class RewardCatalogTests(TestCase):
         mine = self.client_for(self.other).get("/api/rewards/catalog/").data
         self.assertEqual([r["title"] for r in mine], ["Free chai"])
         self.assertEqual(mine[0]["spots_left"], 2)
-        self.assertEqual(mine[0]["claimants"], [])
         self.assertEqual(mine[0]["blocked_reason"], "")
+        self.assertIsNone(mine[0]["my_claim_status"])
+        # ?all=1 only widens the list for admins.
+        self.assertEqual(len(self.client_for(self.other).get("/api/rewards/catalog/?all=1").data), 1)
+        self.assertEqual(len(self.client_for(self.staff).get("/api/rewards/catalog/?all=1").data), 2)
 
-        staff = self.client_for(self.staff).get("/api/rewards/catalog/").data
-        self.assertEqual(len(staff), 2)
-        chai = next(r for r in staff if r["title"] == "Free chai")
-        self.assertEqual([c["username"] for c in chai["claimants"]], ["rich"])
+    def test_admin_endpoints_are_admin_only(self):
+        client = self.client_for(self.rich)
+        self.assertEqual(client.get("/api/rewards/admin/overview/").status_code, 403)
+        self.assertEqual(client.get("/api/rewards/admin/claims/").status_code, 403)
+        offer = self.make_offer(xp_required=10)
+        client.post(f"/api/rewards/catalog/{offer.id}/claim/")
+        claim = RewardClaim.objects.get()
+        self.assertEqual(
+            client.patch(f"/api/rewards/admin/claims/{claim.id}/", {"status": "delivered"}, format="json").status_code,
+            403,
+        )
+
+    def test_admin_sees_every_claim_and_delivers_it(self):
+        from notifications.models import Notification
+
+        offer = self.make_offer(xp_required=10, max_claims=2)
+        self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        # Admins hear about new claims.
+        self.assertTrue(Notification.objects.filter(user=self.staff, kind="reward_claimed").exists())
+
+        admin = self.client_for(self.staff)
+        overview = admin.get("/api/rewards/admin/overview/").data
+        self.assertEqual(overview["stats"]["pending"], 1)
+        self.assertEqual(overview["rewards"][0]["pending_count"], 1)
+
+        claims = admin.get("/api/rewards/admin/claims/?status=pending").data
+        self.assertEqual([c["user"]["username"] for c in claims], ["rich"])
+        response = admin.patch(
+            f"/api/rewards/admin/claims/{claims[0]['id']}/",
+            {"status": "delivered", "admin_note": "Collect it at the front desk."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "delivered")
+        self.assertEqual(response.data["handled_by"]["username"], "staff")
+        self.assertTrue(Notification.objects.filter(user=self.rich, kind="reward_update").exists())
+
+        mine = self.client_for(self.rich).get("/api/rewards/catalog/").data[0]
+        self.assertEqual(mine["my_claim_status"], "delivered")
+        self.assertEqual(mine["my_claim_note"], "Collect it at the front desk.")
+
+    def test_rejecting_a_claim_frees_the_spot(self):
+        offer = self.make_offer(xp_required=10, max_claims=1)
+        self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        claim = RewardClaim.objects.get()
+        self.client_for(self.staff).patch(
+            f"/api/rewards/admin/claims/{claim.id}/", {"status": "rejected"}, format="json"
+        )
+        self.assertEqual(
+            self.client_for(self.other).post(f"/api/rewards/catalog/{offer.id}/claim/").status_code, 201
+        )
+        again = self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        self.assertEqual(again.data["detail"], "Your claim was declined.")
+        # The spot is taken again, so the rejected claim can't be revived.
+        revive = self.client_for(self.staff).patch(
+            f"/api/rewards/admin/claims/{claim.id}/", {"status": "pending"}, format="json"
+        )
+        self.assertEqual(revive.status_code, 400)
+
+    def test_big_xp_gaps_read_with_thousands_separators(self):
+        offer = self.make_offer(xp_required=2000)
+        response = self.client_for(self.poor).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        self.assertIn("1,996.75 more XP", response.data["detail"])

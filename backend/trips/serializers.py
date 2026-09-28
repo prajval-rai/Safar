@@ -160,6 +160,12 @@ class TripListSerializer(serializers.ModelSerializer):
     def get_activity_count(self, obj) -> int:
         return Activity.objects.filter(day__trip=obj).count()
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # The first gallery photo is the trip's picture, wherever it's shown.
+        data["cover_image"] = obj.display_cover(self.context.get("request"))
+        return data
+
 
 class TripDetailSerializer(TripListSerializer):
     days = DaySerializer(many=True, read_only=True)

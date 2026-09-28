@@ -117,12 +117,30 @@ class RewardOffer(models.Model):
     def __str__(self) -> str:
         return f"{self.title} ({self.xp_required} XP)"
 
+    @property
+    def taken(self) -> int:
+        """Spots used up — every claim except the ones an admin rejected."""
+        return self.claims.exclude(status="rejected").count()
+
 
 class RewardClaim(models.Model):
+    """Someone claiming a reward. An admin then hands it over (delivered) or
+    turns it down (rejected) from the admin page; a rejected claim frees its
+    spot for someone else."""
+
+    STATUSES = [("pending", "Waiting for admin"), ("delivered", "Delivered"), ("rejected", "Rejected")]
+
     reward = models.ForeignKey(RewardOffer, on_delete=models.CASCADE, related_name="claims")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reward_claims"
     )
+    status = models.CharField(max_length=12, choices=STATUSES, default="pending")
+    # Shown to the traveller — how to collect it, or why it was turned down.
+    admin_note = models.CharField(max_length=300, blank=True)
+    handled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    handled_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

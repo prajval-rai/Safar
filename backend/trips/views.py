@@ -244,7 +244,9 @@ def share_experience_to_feed(experience, soundtrack=_KEEP):
         "caption": experience.text,
         "place": trip.destination,
         "cover_key": trip.cover_key,
-        "image_url": trip.cover_image,
+        # No picture of its own: the post shows the trip's picture (its first
+        # gallery photo), worked out when the post is read — see TravelPostSerializer.
+        "image_url": "",
     }
     if soundtrack is not _KEEP:
         fields["soundtrack"] = soundtrack
@@ -1438,7 +1440,7 @@ def invite_preview(request, code):
             "region": trip.region,
             "summary": trip.summary,
             "cover_key": trip.cover_key,
-            "cover_image": trip.cover_image,
+            "cover_image": trip.display_cover(request),
             "theme": trip.theme,
             "status": trip.status,
             "start_date": trip.start_date,

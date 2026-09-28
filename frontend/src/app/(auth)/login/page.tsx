@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { JaliPattern } from "@/components/art/Motif";
+import { Logo } from "@/components/brand/Logo";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { GOOGLE_CLIENT_ID } from "@/lib/googleIdentity";
@@ -23,11 +24,9 @@ export default function LoginPage() {
         <div className="absolute inset-0 text-white/10" aria-hidden="true">
           <JaliPattern />
         </div>
-        <div className="relative max-w-lg text-center text-on-brand">
-          <span className="text-8xl" aria-hidden="true">
-            🧭
-          </span>
-          <h1 className="mt-6 text-7xl font-extrabold">Safar</h1>
+        <div className="relative flex max-w-lg flex-col items-center text-center text-on-brand">
+          <Logo className="h-56 rounded-3xl px-6 py-4 shadow-xl" />
+          <h1 className="sr-only-text">Safar</h1>
           <p className="mt-4 text-2xl opacity-90">
             Plan the trip, follow the plan, and keep the memories — all in one place.
           </p>
@@ -37,10 +36,8 @@ export default function LoginPage() {
       <main id="main" className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">
         <div className="w-full max-w-sm">
           <div className="mb-6 lg:hidden">
-            <span className="text-3xl" aria-hidden="true">
-              🧭
-            </span>
-            <h1 className="mt-2 text-3xl font-extrabold text-ink">Safar</h1>
+            <Logo className="h-24" />
+            <h1 className="sr-only-text">Safar</h1>
           </div>
 
           <h2 className="text-2xl font-bold text-ink">Ready for the journey?</h2>

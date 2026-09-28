@@ -7,7 +7,7 @@ import { TripCover } from "@/components/art/TripCover";
 import { PostCard } from "@/components/explore/Cards";
 import { SoundtrackPlayer } from "@/components/explore/SoundtrackPlayer";
 import { Chip, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
-import { API_BASE } from "@/lib/api";
+import { mediaSrc } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import { useTripTheme } from "@/lib/tripTheme";
 import type { PostStory } from "@/lib/types";
@@ -63,7 +63,7 @@ export default function StoryPage() {
           </h2>
           <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             {trip.photos.map((photo, i) => {
-              const src = photo.image ? `${API_BASE}${photo.image}` : photo.image_url;
+              const src = photo.image ? mediaSrc(photo.image) : photo.image_url;
               return (
                 <li key={i} className="overflow-hidden rounded-2xl bg-raised">
                   <a href={src} target="_blank" rel="noopener noreferrer" className="block">

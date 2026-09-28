@@ -1,4 +1,4 @@
-﻿asgiref==3.12.1
+asgiref==3.12.1
 Django==5.1.15
 django-cors-headers==4.9.0
 django-filter==25.1
@@ -15,6 +15,16 @@ dj-database-url==2.3.0
 psycopg[binary]==3.2.9
 # Verifies Google's "Sign in with Google" ID tokens server-side.
 google-auth==2.35.0
+# Uploaded photos (and optionally static files) live in a Google Cloud Storage bucket.
+django-storages[google]==1.14.4
+google-cloud-storage==3.15.0
+google-cloud-core==2.7.0
+google-api-core==2.39.0
+google-crc32c==1.9.0
+google-resumable-media==2.10.2
+googleapis-common-protos==1.75.4
+proto-plus==1.28.4
+protobuf==7.36.2
 requests==2.32.3
 cachetools==5.5.2
 certifi==2026.7.22

@@ -144,6 +144,46 @@ STORAGES = {
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# --- Google Cloud Storage -------------------------------------------------------
+# Set GS_BUCKET_NAME (e.g. "safarplan") and every upload — trip photos, reward
+# pictures — goes to that bucket under media/ instead of the server's disk,
+# which a host like Railway wipes on each deploy. Credentials, in order:
+#   GS_CREDENTIALS_JSON   the service-account key file's JSON, pasted as one env var
+#   GOOGLE_APPLICATION_CREDENTIALS   a path to that key file (local dev)
+#   otherwise the machine's own Google identity (Cloud Run, GCE)
+# Set GS_STATIC=1 to serve static files (admin CSS/JS) from the bucket too;
+# otherwise WhiteNoise keeps serving them from the app.
+GS_BUCKET_NAME = os.environ.get("GS_BUCKET_NAME", "")
+if GS_BUCKET_NAME:
+    GS_PROJECT_ID = os.environ.get("GS_PROJECT_ID") or None
+    if os.environ.get("GS_CREDENTIALS_JSON"):
+        import json
+
+        from google.oauth2 import service_account
+
+        GS_CREDENTIALS = service_account.Credentials.from_service_account_info(
+            json.loads(os.environ["GS_CREDENTIALS_JSON"])
+        )
+    # Public, permanent links (the bucket grants allUsers "Storage Object
+    # Viewer") — photos are shown in the Feed and cached by browsers, so
+    # expiring signed URLs would break them. Set GS_SIGNED_URLS=1 to keep the
+    # bucket private and hand out signed links instead.
+    GS_QUERYSTRING_AUTH = os.environ.get("GS_SIGNED_URLS") == "1"
+    GS_DEFAULT_ACL = None  # the bucket uses uniform bucket-level access
+    GS_FILE_OVERWRITE = False
+    GS_OBJECT_PARAMETERS = {"cache_control": "public, max-age=31536000"}
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+        "OPTIONS": {"location": "media"},
+    }
+    MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/media/"
+    if os.environ.get("GS_STATIC") == "1":
+        STORAGES["staticfiles"] = {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": {"location": "static"},
+        }
+        STATIC_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/static/"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {

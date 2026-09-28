@@ -41,6 +41,9 @@ urlpatterns = [
     path("api/trips/invite/<str:code>/", trips_views.invite_preview, name="invite_preview"),
     path("api/rewards/me/", rewards_views.my_rewards, name="my_rewards"),
     path("api/rewards/leaderboard/", rewards_views.leaderboard, name="leaderboard"),
+    path("api/rewards/admin/overview/", rewards_views.admin_overview, name="rewards_admin_overview"),
+    path("api/rewards/admin/claims/", rewards_views.admin_claims, name="rewards_admin_claims"),
+    path("api/rewards/admin/claims/<int:pk>/", rewards_views.admin_update_claim, name="rewards_admin_claim"),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
     path("api/music/search/", explore_views.music_search, name="music_search"),
     path("api/notifications/", notifications_views.notification_list, name="notification_list"),
@@ -55,7 +58,9 @@ urlpatterns = [
     path("api/", include(router.urls)),
 ]
 
-if settings.DEBUG:
+if settings.GS_BUCKET_NAME:
+    pass  # Uploads are served straight from the Google Cloud Storage bucket.
+elif settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 else:
     # Small-scale hosting: serve uploaded photos from the app itself. On a host with

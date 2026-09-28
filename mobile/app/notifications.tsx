@@ -29,6 +29,8 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
   track_published: 'radio-outline',
   new_follower: 'person-add-outline',
   achievement_unlocked: 'trophy-outline',
+  reward_claimed: 'gift-outline',
+  reward_update: 'gift-outline',
 };
 
 /** Where tapping a notification should go — trip and track detail screens
@@ -37,6 +39,7 @@ function notificationHref(note: Notification): string | null {
   if (note.trip_id) return `/trips/${note.trip_id}`;
   if (note.track_id) return `/tracks/${note.track_id}`;
   if (note.kind === 'new_follower' && note.actor) return `/u/${note.actor.username}`;
+  if (note.kind === 'reward_update') return '/(tabs)/rewards';
   return null;
 }
 

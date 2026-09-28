@@ -13,6 +13,7 @@ from accounts.authentication import OptionalJWTAuthentication
 from accounts.serializers import UserSerializer
 from notifications.services import notify, notify_many
 from rewards.services import TRACK_PUBLISH_XP, award_xp, evaluate_achievements
+from trips.media import absolute_url
 from trips.models import Activity, Day, Trip, TripMember
 from trips.serializers import TripDetailSerializer
 
@@ -168,7 +169,7 @@ def track_from_trip(request):
         destination=trip.destination,
         region=trip.region,
         cover_key=trip.cover_key,
-        cover_image=trip.cover_image,
+        cover_image=trip.display_cover(request),
         days=trip.duration_days,
         trip_type=trip.trip_type,
         difficulty=request.data.get("difficulty", "easy"),
@@ -286,7 +287,11 @@ class TravelPostViewSet(viewsets.ModelViewSet):
         trip = post.trip
         if trip and trip.is_public:
             photos = [
-                {"image": m.image.url if m.image else "", "image_url": m.image_url, "caption": m.caption}
+                {
+                    "image": absolute_url(m.image.url, request) if m.image else "",
+                    "image_url": m.image_url,
+                    "caption": m.caption,
+                }
                 for m in trip.memories.all()[:24]
                 if m.image or m.image_url
             ]
@@ -296,7 +301,7 @@ class TravelPostViewSet(viewsets.ModelViewSet):
                 "region": trip.region,
                 "summary": trip.summary,
                 "cover_key": trip.cover_key,
-                "cover_image": trip.cover_image,
+                "cover_image": trip.display_cover(request),
                 "theme": trip.theme,
                 "start_date": trip.start_date,
                 "end_date": trip.end_date,

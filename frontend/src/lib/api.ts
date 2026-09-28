@@ -5,6 +5,14 @@ import type { Paginated, User } from "./types";
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
 
+/** A link for an uploaded file. With Google Cloud Storage the API hands back
+ *  a full https://storage.googleapis.com/... URL; on local disk it's a
+ *  /media/... path that lives on the API's host, not this one. */
+export function mediaSrc(path: string | null | undefined): string {
+  if (!path) return "";
+  return /^https?:\/\//.test(path) ? path : `${API_BASE}${path}`;
+}
+
 const ACCESS_KEY = "safar.access";
 const REFRESH_KEY = "safar.refresh";
 

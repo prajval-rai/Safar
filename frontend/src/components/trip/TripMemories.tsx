@@ -8,7 +8,7 @@ import { Avatar, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
-import { API_BASE, ApiError, request } from "@/lib/api";
+import { ApiError, mediaSrc, request } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { Memory, TripDetail, XPResult } from "@/lib/types";
 import { shortDate } from "@/lib/utils";
@@ -39,7 +39,7 @@ export function TripMemories({ trip }: { trip: TripDetail }) {
                 {memory.image || memory.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={memory.image ? `${API_BASE}${memory.image}` : memory.image_url}
+                    src={memory.image ? mediaSrc(memory.image) : memory.image_url}
                     alt={memory.caption || "Trip photo"}
                     loading="lazy"
                     decoding="async"

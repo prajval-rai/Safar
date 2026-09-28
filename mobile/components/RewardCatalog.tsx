@@ -19,7 +19,7 @@ export function RewardCatalog({ myXp, colors }: { myXp: number; colors: Palette 
     setBusyId(offer.id);
     try {
       await api(`/api/rewards/catalog/${offer.id}/claim/`, { method: 'POST' });
-      Alert.alert('Claimed 🎁', offer.title);
+      Alert.alert('Claimed 🎁', `${offer.title} — an admin will hand it over.`);
       await refresh();
     } catch (e) {
       Alert.alert("Couldn't claim that", e instanceof ApiError ? e.message : 'Try again in a moment.');
@@ -42,7 +42,10 @@ export function RewardCatalog({ myXp, colors }: { myXp: number; colors: Palette 
         return (
           <View key={offer.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {offer.image ? (
-              <Image source={{ uri: offer.image }} style={styles.image} />
+              <View style={[styles.image, { backgroundColor: colors.raised }]}>
+                <Image source={{ uri: offer.image }} style={StyleSheet.absoluteFill} blurRadius={25} />
+                <Image source={{ uri: offer.image }} style={styles.imageFront} resizeMode="contain" />
+              </View>
             ) : (
               <View style={[styles.image, styles.placeholder, { backgroundColor: colors.raised }]}>
                 <Text style={{ fontSize: 40 }}>🎁</Text>
@@ -65,7 +68,24 @@ export function RewardCatalog({ myXp, colors }: { myXp: number; colors: Palette 
                 </View>
               ) : null}
               {offer.claimed_by_me ? (
-                <Text style={{ color: colors.success, fontWeight: '700', fontSize: 13 }}>✓ Claimed</Text>
+                <View style={{ gap: 4 }}>
+                  <Text
+                    style={{
+                      color: offer.my_claim_status === 'delivered' ? colors.success : offer.my_claim_status === 'rejected' ? colors.danger : colors.muted,
+                      fontWeight: '700',
+                      fontSize: 13,
+                    }}
+                  >
+                    {offer.my_claim_status === 'delivered'
+                      ? '🎁 Delivered'
+                      : offer.my_claim_status === 'rejected'
+                        ? 'Declined'
+                        : '⏳ Claimed — on its way'}
+                  </Text>
+                  {offer.my_claim_note ? (
+                    <Text style={{ color: colors.text, fontSize: 12 }}>{offer.my_claim_note}</Text>
+                  ) : null}
+                </View>
               ) : (
                 <Pressable
                   onPress={() => claim(offer)}
@@ -91,7 +111,8 @@ export function RewardCatalog({ myXp, colors }: { myXp: number; colors: Palette 
 
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
-  image: { width: '100%', height: 150 },
+  image: { width: '100%', aspectRatio: 16 / 10, overflow: 'hidden' },
+  imageFront: { width: '100%', height: '100%' },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   body: { padding: 14, gap: 6 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },

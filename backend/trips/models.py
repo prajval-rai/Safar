@@ -172,6 +172,28 @@ class Trip(models.Model):
             points.insert(0, self.start_point)
         return route_xp(points)
 
+    def first_gallery_photo(self):
+        """The earliest photo anyone added to this trip's gallery, or None."""
+        return (
+            self.memories.filter(
+                (models.Q(image__isnull=False) & ~models.Q(image="")) | ~models.Q(image_url="")
+            )
+            .order_by("created_at")
+            .first()
+        )
+
+    def display_cover(self, request=None) -> str:
+        """The trip's picture everywhere it's shown — trip cards, the trip page,
+        the Feed, invites, tracks. Once the gallery has a photo, the first one
+        is the trip's picture; before that it's the cover picked when planning
+        (a Google place photo), or "" for the illustrated cover."""
+        from .media import memory_photo_url
+
+        first = self.first_gallery_photo()
+        if first:
+            return memory_photo_url(first, request)
+        return self.cover_image
+
     def current_day(self):
         """The day the traveller is on right now, or the first unfinished day."""
         today = timezone.localdate()
