@@ -25,7 +25,7 @@ google-resumable-media==2.10.2
 googleapis-common-protos==1.75.4
 proto-plus==1.28.4
 protobuf==7.36.2
-requests==2.32.3
+requests==2.34.2
 cachetools==5.5.2
 certifi==2026.7.22
 charset-normalizer==3.5.1
