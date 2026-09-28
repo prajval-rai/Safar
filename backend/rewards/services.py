@@ -87,16 +87,19 @@ def completion_share(done: int, total: int) -> Decimal:
     return Decimal(done) / Decimal(total)
 
 
-# The rulebook behind every number above, in the order they'd apply across a
-# trip's life — powers the "How XP works" info tag on the Rewards screen, so
-# there's exactly one place these numbers are written down.
+# The rulebook behind every number above — powers the "How XP works" info tag
+# on the Rewards screen, so there's exactly one place these numbers are written
+# down. `kind` groups them there: "earn" (ways to get XP), "note" (how it
+# works) and "cut" (ways to lose it, which the screen highlights).
 XP_RULES = [
     {
+        "kind": "earn",
         "icon": "🧭",
         "title": "Plan a trip",
         "detail": f"+{TRIP_CREATE_XP} XP for starting a new trip as its organiser.",
     },
     {
+        "kind": "earn",
         "icon": "📍",
         "title": "Travel the distance",
         "detail": (
@@ -107,11 +110,19 @@ XP_RULES = [
         ),
     },
     {
+        "kind": "earn",
+        "icon": "🗺️",
+        "title": "Check in at a place",
+        "detail": f"+{CHECKIN_XP} XP for confirming you've actually arrived somewhere.",
+    },
+    {
+        "kind": "earn",
         "icon": "🌅",
         "title": "Finish a full day",
         "detail": f"+{DAY_COMPLETE_BONUS} XP each once every stop planned for that day is done.",
     },
     {
+        "kind": "earn",
         "icon": "📸",
         "title": "Add a photo",
         "detail": (
@@ -120,11 +131,7 @@ XP_RULES = [
         ),
     },
     {
-        "icon": "🗺️",
-        "title": "Check in at a place",
-        "detail": f"+{CHECKIN_XP} XP for confirming you've actually arrived somewhere.",
-    },
-    {
+        "kind": "earn",
         "icon": "🏁",
         "title": "Complete the whole trip",
         "detail": (
@@ -134,6 +141,7 @@ XP_RULES = [
         ),
     },
     {
+        "kind": "earn",
         "icon": "👑",
         "title": "Organise it to the end",
         "detail": (
@@ -142,6 +150,28 @@ XP_RULES = [
         ),
     },
     {
+        "kind": "earn",
+        "icon": "📝",
+        "title": "Write about the trip",
+        "detail": f"+{EXPERIENCE_XP} XP for sharing your experience once a trip is finished.",
+    },
+    {
+        "kind": "earn",
+        "icon": "✍️",
+        "title": "Publish a track",
+        "detail": f"+{TRACK_PUBLISH_XP} XP for turning a finished trip into a track others can follow.",
+    },
+    {
+        "kind": "earn",
+        "icon": "🏆",
+        "title": "Unlock achievements",
+        "detail": (
+            f"A one-time bonus of up to {MAX_REWARD} XP for each achievement you unlock — "
+            "see the Achievements tab for what's left."
+        ),
+    },
+    {
+        "kind": "note",
         "icon": "🔒",
         "title": "Settle up to unlock",
         "detail": (
@@ -151,16 +181,15 @@ XP_RULES = [
         ),
     },
     {
-        "icon": "📝",
-        "title": "Write about the trip",
-        "detail": f"+{EXPERIENCE_XP} XP for sharing your experience once a trip is finished.",
+        "kind": "note",
+        "icon": "🎁",
+        "title": "Claiming rewards is free",
+        "detail": (
+            "Claiming a reward never spends your XP — you just need enough total XP to qualify."
+        ),
     },
     {
-        "icon": "✍️",
-        "title": "Publish a track",
-        "detail": f"+{TRACK_PUBLISH_XP} XP for turning a finished trip into a track others can follow.",
-    },
-    {
+        "kind": "note",
         "icon": "📈",
         "title": "Levels get harder",
         "detail": (
@@ -169,6 +198,7 @@ XP_RULES = [
         ),
     },
     {
+        "kind": "cut",
         "icon": "🚪",
         "title": "Leave a trip you joined",
         "detail": (
@@ -177,12 +207,29 @@ XP_RULES = [
         ),
     },
     {
+        "kind": "cut",
         "icon": "⚠️",
         "title": "Cancel a trip you've already started",
         "detail": (
             f"{CANCEL_PENALTY} XP for the organiser if a trip that's already active gets "
             "cancelled. Cancelling one that's still in planning costs nothing."
         ),
+    },
+    {
+        "kind": "cut",
+        "icon": "↩️",
+        "title": "Undo a stop",
+        "detail": (
+            "If the organiser undoes a stop that was marked done by mistake, everyone on the trip "
+            f"loses the distance XP it paid — plus the +{DAY_COMPLETE_BONUS} day bonus if its day "
+            "was complete, and the completion and organiser bonuses if the trip was finished."
+        ),
+    },
+    {
+        "kind": "cut",
+        "icon": "🛟",
+        "title": "Never below zero",
+        "detail": "However much gets cut, your XP total never drops below 0.",
     },
 ]
 

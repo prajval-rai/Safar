@@ -364,6 +364,8 @@ export interface XPTransaction {
 
 /** One entry in the "How XP works" rulebook — what earns it, or costs it. */
 export interface XPRule {
+  /** "earn" gets you XP, "note" explains how it works, "cut" takes it away. */
+  kind: "earn" | "note" | "cut";
   icon: string;
   title: string;
   detail: string;

@@ -61,6 +61,13 @@ export default function RewardsPage() {
           </span>{" "}
           achievements
         </p>
+        <button
+          type="button"
+          onClick={() => setRulesOpen(true)}
+          className="tap mt-2 text-sm font-semibold text-brand hover:underline"
+        >
+          How XP is earned — and how it gets cut →
+        </button>
       </section>
 
       <XPRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} rules={data.xp_rules} />
@@ -179,22 +186,58 @@ function XPRulesSheet({
   onClose: () => void;
   rules: XPRule[];
 }) {
+  const earn = rules.filter((rule) => rule.kind === "earn");
+  const notes = rules.filter((rule) => rule.kind === "note");
+  const cuts = rules.filter((rule) => rule.kind === "cut");
+
   return (
-    <Sheet open={open} onClose={onClose} title="How XP works" description="Every way to earn it, and the one way to lose it.">
-      <ul className="space-y-3">
+    <Sheet open={open} onClose={onClose} title="How XP works" description="Every way to earn it, and every way to lose it.">
+      <div className="space-y-5">
+        <XPRuleGroup heading="Ways to earn XP" rules={earn} />
+        <XPRuleGroup heading="Good to know" rules={notes} />
+        {cuts.length ? (
+          <section className="rounded-2xl border-2 border-danger/40 bg-danger-soft/60 p-3">
+            <h3 className="flex items-center gap-2 px-1 text-sm font-extrabold tracking-wide text-danger uppercase">
+              <span aria-hidden="true">⛔</span> How XP gets cut
+            </h3>
+            <p className="mt-1 px-1 text-xs text-danger/80">These take XP away — worth knowing before you do them.</p>
+            <ul className="mt-3 space-y-2">
+              {cuts.map((rule) => (
+                <XPRuleItem key={rule.title} rule={rule} className="border border-danger/25 bg-surface" titleClassName="text-danger" />
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+    </Sheet>
+  );
+}
+
+function XPRuleGroup({ heading, rules }: { heading: string; rules: XPRule[] }) {
+  if (!rules.length) return null;
+  return (
+    <section>
+      <h3 className="px-1 text-xs font-bold tracking-widest text-muted uppercase">{heading}</h3>
+      <ul className="mt-2 space-y-2">
         {rules.map((rule) => (
-          <li key={rule.title} className="flex items-start gap-3 rounded-xl bg-raised p-3">
-            <span className="mt-0.5 text-xl" aria-hidden="true">
-              {rule.icon}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-ink">{rule.title}</p>
-              <p className="mt-0.5 text-sm text-muted">{rule.detail}</p>
-            </div>
-          </li>
+          <XPRuleItem key={rule.title} rule={rule} className="bg-raised" />
         ))}
       </ul>
-    </Sheet>
+    </section>
+  );
+}
+
+function XPRuleItem({ rule, className, titleClassName }: { rule: XPRule; className?: string; titleClassName?: string }) {
+  return (
+    <li className={cn("flex items-start gap-3 rounded-xl p-3", className)}>
+      <span className="mt-0.5 text-xl" aria-hidden="true">
+        {rule.icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={cn("text-sm font-bold text-ink", titleClassName)}>{rule.title}</p>
+        <p className="mt-0.5 text-sm text-muted">{rule.detail}</p>
+      </div>
+    </li>
   );
 }
 
