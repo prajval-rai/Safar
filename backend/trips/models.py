@@ -107,6 +107,10 @@ class Trip(models.Model):
     # True when the organiser ended the trip before every stop was done; the
     # stops left over were marked skipped.
     finished_early = models.BooleanField(default=False)
+    # A trip to somewhere within MIN_TRIP_DISTANCE_KM of where it was planned or
+    # started from. It can still be planned and run, but it never earns or costs
+    # XP (see rewards.services.award_xp) — a trip round the corner isn't an XP farm.
+    no_xp = models.BooleanField(default=False)
     # Set once the "starts tomorrow" reminder has gone out, so it's never
     # sent twice (see trips.management.commands.send_trip_reminders).
     day_before_reminder_sent = models.BooleanField(default=False)
@@ -240,6 +244,32 @@ class TripMember(models.Model):
     def progress_percent(self) -> int:
         # A stop the organiser completes is done for the whole group.
         return self.trip.progress_percent
+
+
+class TripInvite(models.Model):
+    """An organiser asked someone to come along. They're only on the trip once
+    they accept; declining just closes the invite. Joining with the invite
+    code skips this — typing a code is already saying yes."""
+
+    STATUS = [("pending", "Pending"), ("accepted", "Accepted"), ("declined", "Declined")]
+
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="invites")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trip_invites"
+    )
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_trip_invites"
+    )
+    status = models.CharField(max_length=10, choices=STATUS, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("trip", "user")
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user} invited to {self.trip} ({self.status})"
 
 
 class Day(models.Model):

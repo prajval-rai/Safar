@@ -38,6 +38,12 @@ urlpatterns = [
     path("api/catalog/", trips_views.catalog, name="catalog"),
     path("api/catalog/defaults/", trips_views.destination_defaults, name="destination_defaults"),
     path("api/trips/join/", trips_views.join_trip, name="join_trip"),
+    path("api/invites/", trips_views.invite_list, name="invite_list"),
+    path(
+        "api/invites/<int:pk>/<str:decision>/",
+        trips_views.respond_to_invite,
+        name="invite_respond",
+    ),
     path("api/trips/invite/<str:code>/", trips_views.invite_preview, name="invite_preview"),
     path("api/rewards/me/", rewards_views.my_rewards, name="my_rewards"),
     path("api/rewards/leaderboard/", rewards_views.leaderboard, name="leaderboard"),

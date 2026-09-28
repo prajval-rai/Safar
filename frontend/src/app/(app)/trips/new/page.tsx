@@ -14,6 +14,7 @@ import { Avatar, Chip, Progress } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { ChoiceCard, SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { ApiError, api } from "@/lib/api";
+import { type Position, getPosition } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
 import { TYPE_INTERESTS } from "@/lib/interests";
 import { coverFor } from "@/lib/places";
@@ -26,11 +27,14 @@ import {
   addDays,
   cn,
   daysBetween,
+  distanceKm,
   shortDate,
   todayISO,
 } from "@/lib/utils";
 
 const TOTAL_STEPS = 6;
+/** Matches MIN_TRIP_DISTANCE_KM in backend/trips/geo.py. */
+const MIN_TRIP_DISTANCE_KM = 10;
 
 const TRIP_TYPES: { id: string; emoji: string }[] = [
   { id: "friends", emoji: "🎒" },
@@ -77,6 +81,12 @@ export default function NewTripPage() {
   const [trip, setTrip] = useState<TripDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Where the planner is, read when they leave step 1. A trip closer than
+  // MIN_TRIP_DISTANCE_KM can still be planned, but earns no XP (the server
+  // decides that on create, from this same location).
+  const [origin, setOrigin] = useState<Position | null>(null);
+  const [nearbyKm, setNearbyKm] = useState<number | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const [draft, setDraft] = useState<Draft>({
     destination: "",
@@ -134,6 +144,29 @@ export default function NewTripPage() {
       .catch(() => {});
   }
 
+  /** Step 1 → 2: note where you are, and warn (not block) when the destination
+   *  is close enough that the trip won't earn XP. No location → just carry on. */
+  async function leaveDestinationStep() {
+    setError(null);
+    setNearbyKm(null);
+    if (draft.latitude == null || draft.longitude == null) {
+      setStep(2);
+      return;
+    }
+    setLocating(true);
+    try {
+      const here = await getPosition();
+      const km = distanceKm(here.latitude, here.longitude, draft.latitude, draft.longitude);
+      setOrigin(here);
+      if (km < MIN_TRIP_DISTANCE_KM) setNearbyKm(km);
+    } catch {
+      setOrigin(null);
+    } finally {
+      setLocating(false);
+      setStep(2);
+    }
+  }
+
   async function createTrip() {
     setBusy(true);
     setError(null);
@@ -141,6 +174,8 @@ export default function NewTripPage() {
       const created = await api.post<TripDetail & { xp_awarded?: number }>("/api/trips/", {
         ...draft,
         title: draft.title.trim() || `${draft.destination} trip`,
+        planner_latitude: origin?.latitude ?? null,
+        planner_longitude: origin?.longitude ?? null,
       });
       setTrip(created);
       setStep(5);
@@ -179,6 +214,13 @@ export default function NewTripPage() {
         {error ? (
           <p role="alert" className="mb-4 rounded-xl bg-danger-soft px-3.5 py-2.5 text-sm font-medium text-danger">
             {error}
+          </p>
+        ) : null}
+
+        {nearbyKm !== null && step >= 2 && step <= 4 ? (
+          <p role="status" className="mb-4 rounded-xl bg-warn-soft px-3.5 py-2.5 text-sm font-medium text-warn">
+            <span aria-hidden="true">🏠</span> {draft.destination} is only {nearbyKm.toFixed(1)} km from you. You can
+            still plan it, but trips within {MIN_TRIP_DISTANCE_KM} km don&apos;t earn any XP.
           </p>
         ) : null}
 
@@ -228,8 +270,13 @@ export default function NewTripPage() {
           ) : null}
 
           {step < 4 ? (
-            <Button size="lg" fullWidth disabled={!canContinue} onClick={() => setStep(step + 1)}>
-              Continue
+            <Button
+              size="lg"
+              fullWidth
+              disabled={!canContinue || locating}
+              onClick={step === 1 ? leaveDestinationStep : () => setStep(step + 1)}
+            >
+              {locating ? "Checking…" : "Continue"}
             </Button>
           ) : null}
 
@@ -475,7 +522,7 @@ function StepWho({ draft, patch }: { draft: Draft; patch: (changes: Partial<Draf
         label="Search travellers"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Type a username"
+        placeholder="Name, username or email"
         autoComplete="off"
       />
 

@@ -47,7 +47,7 @@ class NotificationTestCase(TestCase):
         trip = self.make_trip(self.me)
         self.client_for(self.me).post(f"/api/trips/{trip.id}/members/", {"username": "ann"})
         note = Notification.objects.get(user=self.ann)
-        self.assertEqual(note.kind, "trip_member_added")
+        self.assertEqual(note.kind, "trip_invite")
         self.assertEqual(note.trip_id, trip.id)
         self.assertFalse(note.read)
 

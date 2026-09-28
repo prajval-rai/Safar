@@ -38,7 +38,7 @@ from rewards.services import (
 )
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
-from .geo import distance_from_stop, haversine_km, optional_point
+from .geo import distance_from_stop, haversine_km, optional_point, too_close_for_xp
 from .settle import award_or_hold, release_if_settled, suggested_transfers, take_back, upi_link
 from .regional_theme import DEFAULT_TRIP_THEME
 from .models import (
@@ -51,6 +51,7 @@ from .models import (
     Settlement,
     Trip,
     TripExperience,
+    TripInvite,
     TripMember,
 )
 from .serializers import (
@@ -64,6 +65,7 @@ from .serializers import (
     TripCreateSerializer,
     TripDetailSerializer,
     TripExperienceSerializer,
+    TripInviteSerializer,
     TripListSerializer,
     TripMemberSerializer,
 )
@@ -310,7 +312,7 @@ class TripViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         invites = serializer.validated_data.pop("invite_usernames", [])
-        trip = serializer.save(created_by=self.request.user)
+        trip = serializer.save(created_by=self.request.user, no_xp=getattr(self, "_no_xp", False))
         TripMember.objects.create(trip=trip, user=self.request.user, role="owner")
 
         # One Day row per calendar date so the itinerary is ready to fill in.
@@ -326,19 +328,31 @@ class TripViewSet(viewsets.ModelViewSet):
             for username in invites:
                 friend = User.objects.filter(username__iexact=username.strip()).first()
                 if friend and friend != self.request.user:
-                    TripMember.objects.get_or_create(trip=trip, user=friend)
-        # Rewards taking the initiative to plan something, not just finishing it.
+                    send_invite(trip, friend, self.request.user)
+        # Rewards taking the initiative to plan something, not just finishing it
+        # (award_xp skips it for a no-XP trip).
         award_xp(self.request.user, TRIP_CREATE_XP, f"Planned {trip.title}", kind="trip", trip=trip)
         self._created_trip = trip
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        planner = optional_point(
+            {
+                "latitude": request.data.get("planner_latitude"),
+                "longitude": request.data.get("planner_longitude"),
+            }
+        )
+        self._no_xp = too_close_for_xp(
+            serializer.validated_data.get("latitude"),
+            serializer.validated_data.get("longitude"),
+            planner,
+        )
         self.perform_create(serializer)
         trip = self._created_trip
         detail = TripDetailSerializer(trip, context=self.get_serializer_context())
         payload = dict(detail.data)
-        payload["xp_awarded"] = TRIP_CREATE_XP
+        payload["xp_awarded"] = 0 if trip.no_xp else TRIP_CREATE_XP
         return Response(payload, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
@@ -435,22 +449,21 @@ class TripViewSet(viewsets.ModelViewSet):
             from django.contrib.auth import get_user_model
 
             User = get_user_model()
+            # `user_id` when they were picked from search; `username` typed by hand.
+            user_id = request.data.get("user_id")
             username = (request.data.get("username") or "").strip()
-            friend = User.objects.filter(username__iexact=username).first()
+            if user_id:
+                friend = User.objects.filter(pk=user_id, is_active=True).first()
+            else:
+                friend = User.objects.filter(username__iexact=username).first()
             if not friend:
                 raise ValidationError({"username": f"No traveller named '{username}' yet."})
-            member, created = TripMember.objects.get_or_create(trip=trip, user=friend)
-            if created:
-                notify(
-                    friend,
-                    "trip_member_added",
-                    f"You're on {trip.title}",
-                    actor=request.user,
-                    body=f"{request.user.display_name or request.user.username} added you to a trip to {trip.destination}.",
-                    trip=trip,
-                )
+            if trip.members.filter(user=friend).exists():
+                raise ValidationError({"username": f"{friend.name} is already on this trip."})
+            # They're asked, not added: they join once they accept.
+            invite, created = send_invite(trip, friend, request.user)
             return Response(
-                TripMemberSerializer(member).data,
+                TripInviteSerializer(invite).data,
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
             )
         return Response(TripMemberSerializer(trip.members.select_related("user"), many=True).data)
@@ -639,7 +652,11 @@ class TripViewSet(viewsets.ModelViewSet):
         trip.started_at = timezone.now()
         if point:
             trip.start_latitude, trip.start_longitude = point
-        trip.save(update_fields=["status", "started_at", "start_latitude", "start_longitude"])
+            # Starting from right next to the destination makes it a no-XP trip,
+            # however far away it was planned from.
+            if too_close_for_xp(trip.latitude, trip.longitude, point):
+                trip.no_xp = True
+        trip.save(update_fields=["status", "started_at", "start_latitude", "start_longitude", "no_xp"])
         others = [m.user for m in trip.members.exclude(user=request.user).select_related("user")]
         notify_many(
             others,
@@ -1367,6 +1384,76 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
+def send_invite(trip, friend, by):
+    """Ask `friend` to come on `trip`. Returns (invite, created). Re-inviting
+    someone who declined asks them again."""
+    invite, created = TripInvite.objects.get_or_create(
+        trip=trip, user=friend, defaults={"invited_by": by}
+    )
+    if not created and invite.status == "pending":
+        return invite, False
+    if not created:
+        invite.status, invite.invited_by, invite.responded_at = "pending", by, None
+        invite.save(update_fields=["status", "invited_by", "responded_at"])
+    notify(
+        friend,
+        "trip_invite",
+        f"{by.display_name or by.username} invited you to {trip.title}",
+        actor=by,
+        body=f"A trip to {trip.destination}. Accept to join, or say no.",
+        trip=trip,
+    )
+    return invite, True
+
+
+def my_pending_invites(user):
+    return (
+        TripInvite.objects.filter(user=user, status="pending", trip__status__in=["planning", "active"])
+        .select_related("trip", "trip__created_by", "invited_by", "user")
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def invite_list(request):
+    """Trips I've been asked to join and haven't answered yet."""
+    return Response(
+        TripInviteSerializer(my_pending_invites(request.user), many=True, context={"request": request}).data
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def respond_to_invite(request, pk, decision):
+    """Accept (join the trip) or decline an invite — only your own, only once."""
+    if decision not in ("accept", "decline"):
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    invite = get_object_or_404(my_pending_invites(request.user), pk=pk)
+    trip = invite.trip
+    invite.status = "accepted" if decision == "accept" else "declined"
+    invite.responded_at = timezone.now()
+    invite.save(update_fields=["status", "responded_at"])
+    name = request.user.display_name or request.user.username
+    if invite.status == "declined":
+        notify(invite.invited_by, "trip_left", f"{name} can't make {trip.title}", actor=request.user,
+               body="They said no to your invite.", trip=trip)
+        return Response({"status": "declined"})
+    TripMember.objects.get_or_create(trip=trip, user=request.user)
+    organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
+    notify_many(
+        organisers,
+        "trip_joined",
+        f"{name} joined {trip.title}",
+        actor=request.user,
+        body="They accepted your invite.",
+        trip=trip,
+    )
+    return Response(
+        {"status": "accepted", "trip": TripDetailSerializer(trip, context={"request": request}).data}
+    )
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def join_trip(request):
@@ -1378,6 +1465,10 @@ def join_trip(request):
     if not already and trip.status in ("completed", "cancelled"):
         raise ValidationError({"code": f"This trip is {trip.status}, so it can't be joined any more."})
     _, created = TripMember.objects.get_or_create(trip=trip, user=request.user)
+    # Joining with the code answers any invite they had waiting.
+    TripInvite.objects.filter(trip=trip, user=request.user, status="pending").update(
+        status="accepted", responded_at=timezone.now()
+    )
     if created:
         organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
         notify_many(

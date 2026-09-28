@@ -50,12 +50,26 @@ def me(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def search_users(request):
-    """Used by 'Who's coming with you?' in the create-trip wizard."""
+    """Find people to invite or follow, by name, username or email.
+
+    Every word has to match somewhere, so "prajval rai" finds Prajval Rai
+    however the name is stored. Email only matches from the start ("prajval",
+    "prajval@gmail.com") — never "gmail" — and is never sent back."""
     query = (request.query_params.get("q") or "").strip()
     if len(query) < 2:
         return Response([])
-    users = User.objects.filter(
-        Q(username__icontains=query) | Q(display_name__icontains=query)
-    ).exclude(pk=request.user.pk)[:12]
+    users = User.objects.filter(is_active=True).exclude(pk=request.user.pk)
+    if "@" in query:
+        users = users.filter(email__istartswith=query)
+    else:
+        for word in query.split():
+            users = users.filter(
+                Q(username__icontains=word)
+                | Q(display_name__icontains=word)
+                | Q(first_name__icontains=word)
+                | Q(last_name__icontains=word)
+                | Q(email__istartswith=word)
+            )
+    users = users.order_by("display_name", "username")[:12]
     # Includes whether I already follow each person, so results can show Follow/Following.
     return Response(_people(request, users))

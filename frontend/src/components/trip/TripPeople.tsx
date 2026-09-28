@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { InviteCardSheet } from "@/components/trip/InviteCardSheet";
 
 import { useCelebration } from "@/components/providers/CelebrationProvider";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
-import type { TripDetail, TripMember } from "@/lib/types";
+import type { TripDetail, TripMember, UserMini } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 
 const ROLE_LABELS = { owner: "Organiser", admin: "Co-planner", member: "Traveller" };
@@ -59,7 +59,7 @@ export function TripPeople({
           </Button>
           {canEdit ? (
             <Button size="sm" icon="➕" onClick={() => setInviteOpen(true)}>
-              Add someone
+              Invite someone
             </Button>
           ) : null}
         </div>
@@ -199,23 +199,40 @@ function InviteSheet({
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [username, setUsername] = useState("");
+  const [query, setQuery] = useState("");
+  // Results remember which search they answer, so a stale list never shows.
+  const [found, setFound] = useState<{ needle: string; people: UserMini[] }>({ needle: "", people: [] });
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
   const { toast } = useCelebration();
+  const onTrip = new Set(trip.members.map((member) => member.user.id));
+  const invited = new Set(trip.pending_invites.map((invite) => invite.user.id));
+  const needle = query.trim();
+  const results = needle.length >= 2 && found.needle === needle ? found.people : [];
 
-  async function add() {
-    setBusy(true);
+  // Debounced so we aren't firing a request on every keystroke.
+  useEffect(() => {
+    if (needle.length < 2) return;
+    const timer = window.setTimeout(() => {
+      api
+        .get<UserMini[]>(`/api/users/search/?q=${encodeURIComponent(needle)}`)
+        .then((people) => setFound({ needle, people }))
+        .catch(() => setFound({ needle, people: [] }));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [needle]);
+
+  async function add(person: UserMini) {
+    setBusyId(person.id);
     setError(null);
     try {
-      await api.post(`/api/trips/${trip.id}/members/`, { username: username.trim() });
-      toast(`${username.trim()} is in.`);
-      setUsername("");
+      await api.post(`/api/trips/${trip.id}/members/`, { user_id: person.id });
+      toast(`Invite sent to ${person.name || person.username} — they're in once they accept.`);
       onAdded();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't add them.");
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
 
@@ -224,22 +241,63 @@ function InviteSheet({
       open={open}
       onClose={onClose}
       title="Add someone to the trip"
-      description="They'll see the plan and can tick off activities too."
-      footer={
-        <Button fullWidth size="lg" onClick={add} disabled={busy || !username.trim()}>
-          {busy ? "Adding…" : "Add to trip"}
-        </Button>
-      }
+      description="They get an invite, and join once they accept."
     >
       <TextField
-        label="Their username"
+        label="Search by name, username or email"
         data-autofocus
-        value={username}
+        value={query}
         error={error ?? undefined}
-        onChange={(e) => setUsername(e.target.value)}
-        placeholder="rahul"
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Rahul Sharma or rahul@gmail.com"
         autoCapitalize="none"
+        autoComplete="off"
       />
+
+      <ul className="mt-4 space-y-2">
+        {results.map((person) => {
+          const added = onTrip.has(person.id);
+          return (
+            <li key={person.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3">
+              <Avatar user={person} size="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-ink">{person.name}</span>
+                <span className="block truncate text-xs text-muted">@{person.username}</span>
+              </span>
+              {added ? (
+                <span className="text-sm font-semibold text-muted">On the trip</span>
+              ) : invited.has(person.id) ? (
+                <span className="text-sm font-semibold text-muted">Invited</span>
+              ) : (
+                <Button size="sm" onClick={() => add(person)} disabled={busyId !== null}>
+                  {busyId === person.id ? "Adding…" : "Add"}
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {needle.length >= 2 && found.needle === needle && results.length === 0 ? (
+        <p className="mt-4 text-sm text-muted">
+          Nobody matches that yet. Share the invite code or card instead.
+        </p>
+      ) : null}
+
+      {trip.pending_invites.length ? (
+        <section className="mt-6">
+          <h3 className="text-xs font-bold tracking-widest text-muted uppercase">Waiting for an answer</h3>
+          <ul className="mt-2 space-y-2">
+            {trip.pending_invites.map((invite) => (
+              <li key={invite.id} className="flex items-center gap-3 rounded-xl bg-raised p-3">
+                <Avatar user={invite.user} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{invite.user.name}</span>
+                <span className="text-xs font-semibold text-muted">Invited</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </Sheet>
   );
 }

@@ -21,6 +21,7 @@ from rewards.services import (
     DISTANCE_XP_LEG_CAP,
     TRIP_CREATE_XP,
     as_xp,
+    award_xp,
     distance_xp,
     seed_achievements,
 )
@@ -607,9 +608,43 @@ class DestinationPlanningTests(SafarTestCase):
             "interests": ["food", "night"],
             "start_date": str(date.today()),
             "end_date": str(date.today() + timedelta(days=1)),
+            # Planning from Pune, ~120 km away.
+            "planner_latitude": 18.5204,
+            "planner_longitude": 73.8567,
         }
         payload.update(extra)
         return self.client_for(self.owner).post("/api/trips/", payload, format="json")
+
+    def test_a_trip_within_10_km_is_allowed_but_earns_no_xp(self):
+        # Dadar is ~7 km from the Mumbai pin.
+        before = self.owner.xp
+        response = self.create_trip(planner_latitude=19.0178, planner_longitude=72.8478)
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["no_xp"])
+        self.assertEqual(response.data["xp_awarded"], 0)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, before)
+
+        # Nothing on it pays — or costs — XP, but achievements still can.
+        trip = Trip.objects.get(pk=response.data["id"])
+        self.assertIsNone(award_xp(self.owner, 5, "Finished day 1", kind="day", trip=trip))
+        self.assertIsNone(award_xp(self.owner, -10, "Cancelled", kind="bonus", trip=trip))
+        self.assertIsNotNone(award_xp(self.owner, 5, "Achievement: X", kind="bonus", trip=trip, achievement=True))
+
+    def test_a_trip_10_km_or_more_away_earns_xp(self):
+        # Thane is ~19 km away.
+        response = self.create_trip(planner_latitude=19.2183, planner_longitude=72.9781)
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data["no_xp"])
+        self.assertEqual(response.data["xp_awarded"], TRIP_CREATE_XP)
+
+    def test_starting_a_trip_next_to_its_destination_makes_it_no_xp(self):
+        trip_id = self.create_trip().data["id"]
+        response = self.client_for(self.owner).post(
+            f"/api/trips/{trip_id}/start/", {"latitude": 19.0178, "longitude": 72.8478}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Trip.objects.get(pk=trip_id).no_xp)
 
     def test_trip_stores_destination_coordinates_area_and_interests(self):
         response = self.create_trip()

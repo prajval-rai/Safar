@@ -282,6 +282,7 @@ export interface TravelMapData {
 
 export type NotificationKind =
   | "trip_member_added"
+  | "trip_invite"
   | "trip_joined"
   | "trip_left"
   | "trip_started"
@@ -376,4 +377,25 @@ export interface RewardOffer {
   /** Why you can't claim it right now, or "" when you can. */
   blocked_reason: string;
   created_at: string;
+}
+
+/** A trip someone asked you to join (GET /api/invites/). */
+export interface TripInvite {
+  id: number;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  invited_by: { id: number; username: string; name: string };
+  trip: {
+    id: string;
+    title: string;
+    destination: string;
+    region: string;
+    start_date: string;
+    end_date: string;
+    duration_days: number;
+    member_count: number;
+    stop_count: number;
+    no_xp: boolean;
+    organiser: { id: number; username: string; name: string };
+  };
 }

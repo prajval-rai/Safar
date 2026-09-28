@@ -13,6 +13,9 @@ from rest_framework.exceptions import ValidationError
 COMPLETE_RADIUS_KM = 1.0
 # A fix worse than this is too vague to trust either way.
 MAX_ACCURACY_M = 1000.0
+# A new trip's destination has to be at least this far from where the planner
+# is — a trip round the corner isn't a trip (and would be an easy XP farm).
+MIN_TRIP_DISTANCE_KM = 10.0
 
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -38,6 +41,15 @@ def optional_point(data):
     if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
         return None
     return (lat, lng)
+
+
+def too_close_for_xp(dest_lat, dest_lng, point) -> bool:
+    """True when `point` (lat, lng) — where the trip was planned or started
+    from — is within MIN_TRIP_DISTANCE_KM of the destination. Such a trip is
+    allowed but earns no XP (Trip.no_xp). Nothing to measure → False."""
+    if dest_lat is None or dest_lng is None or point is None:
+        return False
+    return haversine_km(point[0], point[1], float(dest_lat), float(dest_lng)) < MIN_TRIP_DISTANCE_KM
 
 
 def distance_from_stop(activity, data) -> float:

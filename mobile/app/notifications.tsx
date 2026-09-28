@@ -1,19 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState, ErrorState, Loading } from '@/components/ScreenState';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { api } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
-import type { Notification, NotificationKind, NotificationPage } from '@/lib/types';
+import type { Notification, NotificationKind, NotificationPage, TripInvite } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
 const KIND_ICONS: Record<NotificationKind, IconName> = {
   trip_member_added: 'map-outline',
+  trip_invite: 'mail-outline',
   trip_joined: 'person-add-outline',
   trip_left: 'person-remove-outline',
   trip_started: 'play-circle-outline',
@@ -36,6 +38,8 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
 /** Where tapping a notification should go — trip and track detail screens
  *  both exist now, so this actually navigates rather than only marking read. */
 function notificationHref(note: Notification): string | null {
+  // An invitee isn't on the trip yet; invites are answered at the top of this screen.
+  if (note.kind === 'trip_invite') return null;
   if (note.trip_id) return `/trips/${note.trip_id}`;
   if (note.track_id) return `/tracks/${note.track_id}`;
   if (note.kind === 'new_follower' && note.actor) return `/u/${note.actor.username}`;
@@ -46,6 +50,22 @@ function notificationHref(note: Notification): string | null {
 export default function NotificationsScreen() {
   const colors = Colors[useColorScheme()];
   const { data, loading, refreshing, error, refresh, set } = useFetch<NotificationPage>('/api/notifications/');
+  const invites = useFetch<TripInvite[]>('/api/invites/');
+  const [answering, setAnswering] = useState<number | null>(null);
+
+  async function answer(invite: TripInvite, decision: 'accept' | 'decline') {
+    setAnswering(invite.id);
+    try {
+      await api(`/api/invites/${invite.id}/${decision}/`, { method: 'POST' });
+      invites.set((invites.data ?? []).filter((i) => i.id !== invite.id));
+      if (decision === 'accept') router.push(`/trips/${invite.trip.id}` as never);
+    } catch (err) {
+      Alert.alert("Couldn't answer that invite", err instanceof Error ? err.message : 'Try again.');
+      invites.refresh();
+    } finally {
+      setAnswering(null);
+    }
+  }
 
   function markRead(note: Notification) {
     if (note.read || !data) return;
@@ -76,8 +96,56 @@ export default function NotificationsScreen() {
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.tint} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            refresh();
+            invites.refresh();
+          }}
+          tintColor={colors.tint}
+        />
+      }
     >
+      {invites.data && invites.data.length ? (
+        <View style={styles.invites}>
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>TRIP INVITES</Text>
+          {invites.data.map((invite) => (
+            <View key={invite.id} style={[styles.invite, { borderColor: colors.border, backgroundColor: colors.card }]}>
+              <Text style={[styles.title, { color: colors.text }]}>{invite.trip.title}</Text>
+              <Text style={[styles.desc, { color: colors.muted }]}>
+                📍 {invite.trip.destination} · {invite.trip.start_date} → {invite.trip.end_date} ·{' '}
+                {invite.trip.duration_days} days
+              </Text>
+              <Text style={[styles.desc, { color: colors.muted }]}>
+                {invite.invited_by.name} invited you · {invite.trip.member_count} going · {invite.trip.stop_count} stops
+              </Text>
+              {invite.trip.no_xp ? (
+                <Text style={[styles.desc, { color: colors.muted }]}>🏠 Close to home — this trip earns no XP.</Text>
+              ) : null}
+              <View style={styles.inviteActions}>
+                <Pressable
+                  disabled={answering !== null}
+                  onPress={() => answer(invite, 'decline')}
+                  style={[styles.inviteButton, { borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>Decline</Text>
+                </Pressable>
+                <Pressable
+                  disabled={answering !== null}
+                  onPress={() => answer(invite, 'accept')}
+                  style={[styles.inviteButton, { backgroundColor: colors.tint, borderColor: colors.tint }]}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    {answering === invite.id ? 'Joining…' : 'Accept'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {data && data.unread_count > 0 ? (
         <Pressable onPress={markAllRead} style={styles.markAll}>
           <Text style={{ color: colors.tint, fontWeight: '700', fontSize: 13 }}>Mark all as read</Text>
@@ -125,4 +193,9 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   desc: { fontSize: 13, marginTop: 2 },
   time: { fontSize: 11, marginTop: 4 },
+  invites: { marginBottom: 12 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2, marginBottom: 6, marginLeft: 4 },
+  invite: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8, gap: 2 },
+  inviteActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  inviteButton: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
 });

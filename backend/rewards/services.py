@@ -5,6 +5,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.conf import settings
 from django.db import models, transaction
 
+from trips.geo import MIN_TRIP_DISTANCE_KM
+
 from .models import Achievement, UserAchievement, XPTransaction
 
 # XP is deliberately scarce: every single reward is at most 10 XP (MAX_REWARD),
@@ -227,6 +229,16 @@ XP_RULES = [
     },
     {
         "kind": "cut",
+        "icon": "🏠",
+        "title": "Trips close to home earn nothing",
+        "detail": (
+            f"A trip to somewhere within {MIN_TRIP_DISTANCE_KM:.0f} km of where you planned or started "
+            "it can still be planned and run, but nothing on it earns XP — no stop, day, photo, "
+            "check-in or completion XP — and it doesn't count towards achievements."
+        ),
+    },
+    {
+        "kind": "cut",
         "icon": "🛟",
         "title": "Never below zero",
         "detail": "However much gets cut, your XP total never drops below 0.",
@@ -234,11 +246,20 @@ XP_RULES = [
 ]
 
 
+def earns_no_xp(trip) -> bool:
+    """A trip within MIN_TRIP_DISTANCE_KM of where it was planned from (see
+    Trip.no_xp): nothing on it earns XP, and nothing on it costs XP either."""
+    return trip is not None and getattr(trip, "no_xp", False)
+
+
 @transaction.atomic
-def award_xp(user, amount, reason: str, kind: str = "activity", trip=None):
-    """Record an XP transaction and keep the denormalised user total in sync."""
+def award_xp(user, amount, reason: str, kind: str = "activity", trip=None, *, achievement=False):
+    """Record an XP transaction and keep the denormalised user total in sync.
+
+    Does nothing for a no-XP trip — except an achievement unlocked while on
+    one, since achievements are measured without no-XP trips anyway."""
     amount = as_xp(amount)
-    if not amount:
+    if not amount or (earns_no_xp(trip) and not achievement):
         return None
     txn = XPTransaction.objects.create(
         user=user, trip=trip, amount=amount, kind=kind, reason=reason
@@ -253,7 +274,7 @@ def hold_xp(user, amount, reason: str, kind: str = "trip", trip=None):
     from .models import HeldXP
 
     amount = as_xp(amount)
-    if not amount:
+    if not amount or earns_no_xp(trip):
         return None
     return HeldXP.objects.create(user=user, trip=trip, amount=amount, kind=kind, reason=reason)
 
@@ -288,22 +309,28 @@ def _stats(user) -> dict:
     from accounts.models import Follow
     from trips.models import Activity, Memory, Trip
 
-    finished = Trip.objects.filter(members__user=user, status="completed").distinct()
+    # No-XP trips (too close to home) don't count towards anything either —
+    # otherwise achievements would be a back door to the XP they don't pay.
+    finished = Trip.objects.filter(members__user=user, status="completed", no_xp=False).distinct()
     # The organiser completes a stop for the whole group, so a stop counts for
     # everyone on the trip, not just whoever tapped it.
-    done = Activity.objects.filter(day__trip__members__user=user, status="completed").distinct()
+    done = Activity.objects.filter(
+        day__trip__members__user=user, day__trip__no_xp=False, status="completed"
+    ).distinct()
     return {
         "trips_completed": finished.count(),
         "activities_completed": done.count(),
         # Only first-time photos count — re-uploading one picture doesn't add up.
-        "photos_uploaded": Memory.objects.filter(user=user, is_original=True).count(),
+        "photos_uploaded": Memory.objects.filter(user=user, is_original=True, trip__no_xp=False).count(),
         "places_visited": done.exclude(place_name="")
         .values("place_name")
         .distinct()
         .count(),
         "xp_total": user.xp,
-        "tracks_published": user.tracks.filter(is_published=True).count(),
-        "states_visited": Trip.objects.filter(members__user=user)
+        "tracks_published": user.tracks.filter(is_published=True)
+        .exclude(source_trip__no_xp=True)
+        .count(),
+        "states_visited": Trip.objects.filter(members__user=user, no_xp=False)
         .exclude(region="")
         .values("region")
         .distinct()
@@ -336,6 +363,7 @@ def evaluate_achievements(user, trip=None) -> list[Achievement]:
                 f"Achievement: {achievement.title}",
                 kind="bonus",
                 trip=trip,
+                achievement=True,
             )
             from notifications.services import notify
 

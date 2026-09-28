@@ -46,7 +46,24 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "is_staff",
         ]
-        read_only_fields = ["id", "username", "xp", "date_joined", "is_staff"]
+        read_only_fields = ["id", "xp", "date_joined", "is_staff"]
+
+    def validate_username(self, value: str) -> str:
+        """Usernames are in profile links (/u/<username>), so keep them short,
+        URL-safe and unique regardless of case."""
+        import re
+
+        value = (value or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.]{3,30}", value):
+            raise serializers.ValidationError(
+                "Use 3–30 letters, numbers, dots or underscores — no spaces."
+            )
+        taken = User.objects.filter(username__iexact=value)
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            raise serializers.ValidationError("That username is taken.")
+        return value
 
     def validate_upi_id(self, value: str) -> str:
         from trips.settle import is_valid_upi_id, normalise_upi_id

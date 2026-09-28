@@ -156,6 +156,8 @@ export interface Trip {
   /** Palette drawn from the destination's state — the same for every member,
    *  regardless of anyone's own personal theme. See useTripTheme(). */
   theme: ThemeId;
+  /** Within 10 km of where it was planned or started from — earns no XP. */
+  no_xp: boolean;
 }
 
 export interface TripDetail extends Trip {
@@ -178,7 +180,38 @@ export interface TripDetail extends Trip {
   finished_early: boolean;
   /** You're the organiser and at least one stop is done, so you can wrap it up. */
   can_finish: boolean;
+  /** People asked to come who haven't answered yet. */
+  pending_invites: { id: number; user: UserMini }[];
   created_at: string;
+}
+
+/** A trip someone asked you to join — as much as you need to decide. */
+export interface TripInvite {
+  id: number;
+  status: "pending" | "accepted" | "declined";
+  created_at: string;
+  invited_by: UserMini;
+  trip: {
+    id: string;
+    title: string;
+    destination: string;
+    region: string;
+    summary: string;
+    cover_key: CoverKey;
+    cover_image: string;
+    theme: ThemeId;
+    status: TripStatus;
+    start_date: string;
+    end_date: string;
+    duration_days: number;
+    trip_type: string;
+    transport: string;
+    budget_per_person: number;
+    member_count: number;
+    stop_count: number;
+    no_xp: boolean;
+    organiser: UserMini;
+  };
 }
 
 export interface LiveTrip {
@@ -442,6 +475,7 @@ export interface Paginated<T> {
 
 export type NotificationKind =
   | "trip_member_added"
+  | "trip_invite"
   | "trip_joined"
   | "trip_left"
   | "trip_started"

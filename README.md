@@ -3,10 +3,12 @@
 Plan a trip with your people, follow the plan while you're actually travelling,
 split what you spend, and earn XP along the way.
 
-Two pieces:
+Three pieces, one API:
 
-- `backend/` — Django 5 + Django REST Framework, JWT auth, SQLite
+- `backend/` — Django 5 + Django REST Framework, JWT auth, SQLite locally / PostgreSQL hosted
 - `frontend/` — Next.js 16 (App Router) + React 19 + Tailwind CSS 4, TypeScript
+- `mobile/` — React Native (Expo) app for Android and iOS, talking to the same backend
+  (see [mobile/README.md](mobile/README.md))
 
 ---
 
@@ -36,6 +38,20 @@ npm run dev
 
 Open <http://localhost:3000>.
 
+### 3. Mobile (optional)
+
+Run the backend with `python manage.py runserver 0.0.0.0:8000` so your phone can reach it, then:
+
+```bash
+cd mobile
+npm install
+npx expo start                  # scan the QR code with Expo Go
+```
+
+Set `EXPO_PUBLIC_API_BASE=http://<your-LAN-IP>:8000` in `mobile/.env`. An installed APK
+(`eas build -p android --profile preview`) doesn't update itself — rebuild it to pick up
+new screens.
+
 ### Signing in
 
 Safar signs people in with **Google only** — there is no username/password
@@ -53,29 +69,79 @@ data in it straight away.
 
 ## What's in it
 
+**Account**
+- Google sign-in (web and mobile); account recovery with one security question
+- Profile with level, traveller tag (e.g. "Awara"), saved theme and push settings
+- Account menu on the avatar in the top-right corner: name, username, level and XP, change
+  username, Rewards, *More* (the full profile page) and Log out
+
 **Planning**
 - Six-step create-trip wizard (where → when → who → what kind → itinerary → invite)
 - Smart defaults: picking "Weekend getaway" suggests 2 days; "Road trip" suggests a car
+- Search anywhere in India, browse popular places by state, or *Set my own destination* on the map
+- Pick interests, then *Find places* suggests matching spots to add
 - "Generate day plan" fills a day from a destination template you can then edit
-- Day-by-day itinerary, activities with times, costs, XP and locations
-- Invite by username or by a 6-character code
+- Day-by-day itinerary: stops with times, costs and locations; edit, delete, reorder or move
+  between days (drag-and-drop, or buttons)
+- Budget, set in the wizard and editable later
+
+**People and invites**
+- Invite people by searching name, username or email — they get an **invite** (the ✉️ in the
+  top bar shows how many are waiting, with the trip's details and Accept / Decline) and only join
+  once they accept. Or share a 6-character code; `/join/<code>` shows a preview of the trip
+- A shareable **invite card** image
+- Owner / co-planner / member roles; organisers add or remove people and assign stops
 
 **While travelling**
+- *Start trip* (one live trip per person at a time)
 - **Live Trip mode** — a stripped-back screen showing only NOW, NEXT, TODAY and who's with you
-- Check in, mark done, and navigate (deep-links into Google Maps)
-- Map tab: Google map with numbered stops and All / Day 1 / Day 2 filters (see below)
+- Check in, mark done (organisers, for the group) and navigate (deep-links into Google Maps)
+- The 1 km rule for pinned stops, checked on the server (see below)
+- Map tab: numbered stops, All / Day 1 / Day 2 filters, *Drop a pin* for your own spot
+- **Offline queue** — check-ins and completions made without signal are sent once you're back online
+- Organisers can undo a stop, finish early, cancel or reopen
+
+**Group tools** (a trip's "More" sheet)
+- **Expenses** with an equal split and who-owes-what
+- **Settle up** — suggested transfers, UPI pay links, "I paid" → the receiver confirms
+- **Checklist** — shared items for the group plus each person's own; organisers track everyone
+- **Group chat**, with push notifications
+- **Photo memories** — the first photo becomes the trip's cover everywhere; a re-uploaded
+  photo is spotted and earns nothing
 
 **After**
 - Trip completion screen with the route, the numbers and your crew
-- Home asks "How was <trip>?" with the XP you earned on it, and everyone's write-ups
-  show on the trip story
+- Home asks "How was <trip>?" with the XP you earned on it; the write-up goes to the Feed
 - Publish the trip as a **track** others can copy into their own trips
-- Write a travel post
+- A **soundtrack** for the trip — a song searched from Apple Music, with a preview player
+- A **story card** image to share to Instagram
 
-**Along the way**
-- XP for activities, days, trips, check-ins and photos; ten achievements; levels
-- Expenses with an equal split and who-owes-what
-- Checklist, group chat, photo memories
+**Explore, Feed and people**
+- Tracks: browse, like, save and use (copy into a new trip of your own)
+- **Feed** of travel posts with likes and an Everyone / Following filter; a post detail page
+- Public post pages at `/p/<id>` — anyone can open them, signed in or not
+- Follow travellers; profiles at `/u/<username>`; *Find travellers to follow*
+- India achievement map with a share card (see below)
+
+**Rewards**
+- XP for distance, check-ins, photos, days, trips, write-ups, tracks and achievements — and
+  XP cuts for leaving or cancelling trips and for undone stops (see [XP rules](#xp-rules))
+- Levels, 13 achievements, a leaderboard with a podium
+- **Reward catalog** — real rewards with an XP bar and a limited number of spots; claiming
+  doesn't spend XP
+- A *How XP works* sheet: ways to earn, good to know, and the cuts highlighted in red.
+  Tapping *Claim* without enough XP opens it with how much more you need
+- A reward share card
+
+**Notifications**
+- In-app bell, **Web Push** in the browser and **Expo push** on phones
+- Invites, joins and leaves, trip start, day-before and hour-before reminders, chat, settle-up,
+  held XP released, new followers, achievements, your track being used, reward claims
+
+**Admin** (staff only)
+- `/manage` — add and edit rewards with a picture, and hand over claims
+  (pending → delivered / rejected, with a note)
+- The Django admin at `/admin`
 
 ---
 
@@ -90,6 +156,12 @@ complete, from within 1 km of it — there is no override and it isn't configura
 asks for the device's location and the server does the distance check
 (`backend/trips/geo.py`); a stop with no pin has nothing to measure and just completes.
 
+- **Close-to-home trips earn no XP.** A trip whose destination is within 10 km of where it was
+  planned (`planner_latitude` / `planner_longitude` on `POST /api/trips/`) or started from is
+  still allowed, but is flagged `no_xp`: nothing on it earns or costs XP, and it doesn't count
+  towards achievements (`MIN_TRIP_DISTANCE_KM` in `backend/trips/geo.py`, enforced in
+  `rewards.services.award_xp`). The wizard warns when this happens. A destination typed
+  without a map pin, or planned with location off, has nothing to measure until it's started.
 - **Assignment.** An organiser can assign a stop to a member to show who's looking after
   it. It doesn't change who can complete it.
 - **Undo** is organiser-only and takes the XP back from everyone, including any day or trip
@@ -163,13 +235,15 @@ provide administrative boundary outlines through these APIs, so it is not drawn 
 
 ## Design notes
 
-**Simple outside, powerful inside.** Five top-level destinations (Home, My Trips,
-Explore, Rewards, Profile) and five tabs inside a trip. Expenses, checklist, chat
+**Simple outside, powerful inside.** A handful of top-level destinations (Home, My Trips,
+Explore, Tracks, Feed, Rewards, Profile — on phones the bottom bar is Home, My Trips,
+Explore, Feed and Rewards, with Profile as the avatar in the top bar) and five tabs inside a trip. Expenses, checklist, chat
 and settings sit behind a "More" sheet. Every form shows the three or four fields
 most people need and folds the rest under **More options**.
 
-**Five themes, light and dark.** Saffron Sunrise, Peacock Teal, Kerala Backwater,
-Rajasthan Terracotta and Himalayan Dusk — switchable from **Profile → Appearance**,
+**Nine themes, light and dark.** Saffron Sunrise, Peacock Teal, Kerala Backwater,
+Rajasthan Terracotta, Himalayan Dusk, Goa Beach, Jaipur Pink City, City Lights and
+Jungle Trail — switchable from **Profile → Appearance**,
 each with a light and a dark version plus an Auto mode that follows the OS.
 Every colour is a semantic CSS custom property (`--brand`, `--canvas`, `--ink`…)
 defined in `src/app/globals.css`, so components never hardcode a hex value. A tiny
@@ -243,14 +317,24 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 | `GET /api/trips/{id}/summary/` | The trip completion screen |
 | `POST /api/trips/{id}/start/`, `/cancel/`, `/reopen/` | Trip status — `start` takes the organiser's `latitude`/`longitude` as the distance-XP start point |
 | `POST /api/trips/{id}/finish/` | Organiser ends the trip early (after at least one stop); the rest are skipped and completion bonuses are paid pro rata |
-| `GET/POST /api/trips/{id}/experience/` | Your write-up of a finished trip |
-| `GET/POST /api/trips/{id}/expenses/`, `/checklist/`, `/memories/`, `/chat/`, `/members/` | The advanced sections |
-| `POST /api/trips/join/` | Join with an invite code |
-| `POST /api/activities/{id}/complete/`, `/undo/`, `/checkin/`, `/move/` | Activity actions |
+| `POST /api/trips/{id}/leave/`, `DELETE /api/trips/{id}/members/{member_id}/` | Leave a trip (costs XP) / organiser removes someone |
+| `GET/POST /api/trips/{id}/experience/`, `POST .../experience/skip/` | Your write-up of a finished trip, or "not now" |
+| `GET/POST /api/trips/{id}/expenses/`, `/checklist/`, `/memories/`, `/chat/`, `/members/`, `/days/` | The advanced sections |
+| `GET/POST /api/trips/{id}/settle/`, `POST .../settlements/{id}/confirm/` or `/decline/` | Settle up: suggested transfers with UPI links; record a payment; the receiver confirms it |
+| `POST /api/trips/join/`, `GET /api/trips/invite/{code}/` | Join with an invite code / preview a trip before joining |
+| `POST /api/trips/{id}/members/` (`user_id` or `username`) | Invite someone — they join once they accept |
+| `GET /api/invites/`, `POST /api/invites/{id}/accept/` or `/decline/` | Trips I've been invited to, and answering them |
+| `POST /api/activities/{id}/complete/`, `/undo/`, `/checkin/`, `/move/`, `/assign/` | Activity actions |
 | `GET /api/explore/tracks/`, `POST .../{id}/like/`, `/save/`, `/use/` | Explore |
 | `POST /api/explore/tracks/from-trip/` | Publish a finished trip as a track |
-| `GET /api/rewards/me/`, `/leaderboard/` | XP, achievements, levels |
+| `GET/POST /api/explore/posts/`, `POST .../{id}/like/`, `GET .../{id}/story/` | Feed posts; `story` is public and powers `/p/{id}` |
+| `GET /api/music/search/` | Song search for trip soundtracks (iTunes Search API) |
+| `GET /api/users/search/`, `/api/users/{username}/`, `.../follow/`, `/followers/`, `/following/`, `/travel-map/` | People, following and the India map |
+| `GET /api/rewards/me/`, `/leaderboard/` | XP, achievements, levels and the XP rulebook |
 | `GET/POST /api/rewards/catalog/`, `PATCH/DELETE .../{id}/`, `POST .../{id}/claim/` | Reward catalog: staff upload a reward image with the XP needed and how many people can claim it; travellers claim once (XP isn't spent) |
+| `GET /api/rewards/admin/overview/`, `/admin/claims/`, `PATCH .../claims/{id}/` | Admin page: handle reward claims |
+| `GET /api/notifications/`, `/unread-count/`, `POST /read-all/`, `/{id}/read/` | The notification bell |
+| `/api/push/config/`, `/subscribe/`, `/unsubscribe/`, `/expo/register/`, `/expo/unregister/` | Web Push and Expo push sign-up |
 
 Actions that earn XP return a common shape — the new user totals, `xp_awarded`,
 `day_completed`, `trip_completed` and any `unlocked` achievements — so the UI knows
@@ -271,10 +355,16 @@ Defined in one place, `backend/rewards/services.py`:
 | Add a memory | +1 |
 | Publish a track | +10 |
 | Unlock an achievement | 2–10 |
-| Leave a trip you joined | −2 before it starts, −3 once it's live |
-| Cancel a trip that's already live | −10 (organiser) |
+| **Leave a trip you joined** | **−2** before it starts, **−3** once it's live (XP already earned is kept) |
+| **Cancel a trip that's already live** | **−10** (organiser); cancelling one still in planning is free |
+| **Trip within 10 km of where it was planned / started** | Nothing — no XP earned or lost on it, and it doesn't count towards achievements |
+| **Organiser undoes a stop** | Everyone loses that stop's distance XP — plus the day bonus if its day was complete, and the completion and organiser bonuses if the trip was finished |
 
 **Settle up to unlock:** if you still owe money on a trip when it finishes, its completion XP (and the organiser bonus) is held until you've paid back what you owe and it's confirmed; stop and day XP isn't affected.
+
+XP never drops below 0, and claiming a reward never spends it. Each rule in `XP_RULES` has a
+`kind` — `earn`, `note` or `cut` — which groups it on the Rewards screen's *How XP works* sheet,
+where the cuts are highlighted.
 
 XP is kept to two decimal places, and no single reward is over 10 XP. A stop's XP is set by the server from the distance travelled; clients can't set it. Levels get
 steeper: moving from level *L* to *L+1* costs `25 × L × (L+1)` XP — 50, 150, 300, 500… —
@@ -286,7 +376,7 @@ so level 3 takes about three trips and level 8 about 4,200 XP.
 
 ```bash
 cd backend
-python manage.py test           # 87 tests: XP rules, Google-picked places, the 1 km rule, assignment, following, travel map, permissions, itinerary, tracks, expenses
+python manage.py test           # ~250 tests: XP rules, held XP, settle up, the 1 km rule, trip life cycle, leaving, invites, checklist, chat push, photos, experiences, soundtracks, the open feed, notifications, accounts
 ```
 
 ```bash
@@ -316,6 +406,9 @@ Backend environment variables (all optional in development):
    API and a Postgres database. When it's up, note the API address (`https://safar-api.onrender.com`).
    Then create your own admin: in the Render *Shell* run `python manage.py createsuperuser`.
    (Optional demo data: `python manage.py seed`. Never use `--reset` on a live database.)
+   **Or Railway:** point a service at `backend/`; `backend/start.sh` checks storage, runs
+   `collectstatic` and migrations, creates the default superuser, seeds the achievements
+   and starts gunicorn on every deploy.
 3. **Frontend on Vercel.** *Add New → Project*, pick the repo, set **Root Directory = `frontend`**, and add:
    - `NEXT_PUBLIC_API_BASE` = your Render API address
    - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` = your (restricted) browser key

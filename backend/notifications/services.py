@@ -45,12 +45,16 @@ def notify(user, kind, title, *, actor=None, body="", trip=None, track=None):
     note = Notification.objects.create(
         user=user, actor=actor, kind=kind, title=title, body=body, trip=trip, track=track
     )
-    push_to_user(user, title, body, url=_open_url(trip=trip, track=track), tag=_tag(trip=trip, track=track))
+    # An invitee isn't on the trip yet, so its page would be a dead end — the
+    # push opens the invites list instead.
+    invite = kind == "trip_invite"
+    web_url = "/?invites=1" if invite else _open_url(trip=trip, track=track)
+    push_to_user(user, title, body, url=web_url, tag=_tag(trip=trip, track=track))
     push_to_expo_tokens(
         list(user.expo_push_tokens.values_list("token", flat=True)),
         title,
         body,
-        url=_open_url_mobile(trip=trip, track=track),
+        url="/" if invite else _open_url_mobile(trip=trip, track=track),
     )
     return note
 

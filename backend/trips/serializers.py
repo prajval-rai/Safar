@@ -13,6 +13,7 @@ from .models import (
     Settlement,
     Trip,
     TripExperience,
+    TripInvite,
     TripMember,
 )
 
@@ -155,7 +156,10 @@ class TripListSerializer(serializers.ModelSerializer):
             "member_count",
             "activity_count",
             "theme",
+            # Too close to where it was planned or started from: earns no XP.
+            "no_xp",
         ]
+        read_only_fields = ["no_xp"]
 
     def get_activity_count(self, obj) -> int:
         return Activity.objects.filter(day__trip=obj).count()
@@ -178,6 +182,8 @@ class TripDetailSerializer(TripListSerializer):
     # Completion XP held back from you until you've settled up on this trip.
     my_held_xp = serializers.SerializerMethodField()
     can_finish = serializers.SerializerMethodField()
+    # People asked to come who haven't answered yet (organisers see them in People).
+    pending_invites = serializers.SerializerMethodField()
 
     class Meta(TripListSerializer.Meta):
         fields = TripListSerializer.Meta.fields + [
@@ -195,6 +201,7 @@ class TripDetailSerializer(TripListSerializer):
             "organizer_bonus",
             "finished_early",
             "can_finish",
+            "pending_invites",
             "created_at",
         ]
 
@@ -203,6 +210,10 @@ class TripDetailSerializer(TripListSerializer):
         if obj.status not in ("planning", "active") or self.get_my_role(obj) not in ("owner", "admin"):
             return False
         return Activity.objects.filter(day__trip=obj, status="completed").exists()
+
+    def get_pending_invites(self, obj) -> list[dict]:
+        pending = obj.invites.filter(status="pending").select_related("user")
+        return [{"id": i.id, "user": UserMiniSerializer(i.user).data} for i in pending]
 
     def get_my_role(self, obj) -> str | None:
         user = self.context["request"].user
@@ -398,3 +409,40 @@ class SettlementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Settlement
         fields = ["id", "from_user", "to_user", "amount", "method", "status", "created_at", "confirmed_at"]
+
+
+class TripInviteSerializer(serializers.ModelSerializer):
+    """An invite as the invitee sees it: who asked, and enough about the trip
+    to decide — but not the join code, chat or money."""
+
+    user = UserMiniSerializer(read_only=True)
+    invited_by = UserMiniSerializer(read_only=True)
+    trip = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TripInvite
+        fields = ["id", "status", "created_at", "responded_at", "user", "invited_by", "trip"]
+
+    def get_trip(self, obj) -> dict:
+        trip = obj.trip
+        return {
+            "id": str(trip.id),
+            "title": trip.title,
+            "destination": trip.destination,
+            "region": trip.region,
+            "summary": trip.summary,
+            "cover_key": trip.cover_key,
+            "cover_image": trip.display_cover(self.context.get("request")),
+            "theme": trip.theme,
+            "status": trip.status,
+            "start_date": trip.start_date,
+            "end_date": trip.end_date,
+            "duration_days": trip.duration_days,
+            "trip_type": trip.trip_type,
+            "transport": trip.transport,
+            "budget_per_person": trip.budget_per_person,
+            "member_count": trip.members.count(),
+            "stop_count": Activity.objects.filter(day__trip=trip).count(),
+            "no_xp": trip.no_xp,
+            "organiser": UserMiniSerializer(trip.created_by).data,
+        }

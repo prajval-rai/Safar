@@ -11,6 +11,7 @@ class Notification(models.Model):
 
     KIND_CHOICES = [
         ("trip_member_added", "Added to a trip"),
+        ("trip_invite", "Invited to a trip"),
         ("trip_joined", "Someone joined your trip"),
         ("trip_left", "Someone left your trip"),
         ("trip_started", "Trip started"),

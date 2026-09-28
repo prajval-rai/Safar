@@ -128,6 +128,28 @@ class FollowTests(SocialTestCase):
         self.assertEqual([r["username"] for r in results], ["ann"])
         self.assertTrue(results[0]["is_following"])
 
+    def test_you_can_change_your_username_but_not_to_a_taken_or_bad_one(self):
+        client = self.client_for(self.me)
+        self.assertEqual(client.patch("/api/auth/me/", {"username": "ANN"}).status_code, 400)
+        self.assertEqual(client.patch("/api/auth/me/", {"username": "no spaces"}).status_code, 400)
+        self.assertEqual(client.patch("/api/auth/me/", {"username": "ab"}).status_code, 400)
+        response = client.patch("/api/auth/me/", {"username": "me.travels"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["username"], "me.travels")
+
+    def test_search_finds_people_by_full_name_and_by_email_without_showing_it(self):
+        self.ann.email = "ann.rao@gmail.com"
+        self.ann.save(update_fields=["email"])
+        client = self.client_for(self.me)
+
+        self.assertEqual([r["username"] for r in client.get("/api/users/search/?q=ann rao").data], ["ann"])
+        by_email = client.get("/api/users/search/?q=ann.rao@gmail.com").data
+        self.assertEqual([r["username"] for r in by_email], ["ann"])
+        self.assertNotIn("email", by_email[0])
+        self.assertEqual([r["username"] for r in client.get("/api/users/search/?q=ann.r").data], ["ann"])
+        # Only the start of an address matches, so a domain can't list everyone.
+        self.assertEqual(client.get("/api/users/search/?q=gmail").data, [])
+
     def test_following_filter_on_posts(self):
         Follow.objects.create(follower=self.me, following=self.ann)
         TravelPost.objects.create(author=self.ann, caption="From Ann")

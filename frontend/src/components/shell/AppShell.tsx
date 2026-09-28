@@ -8,6 +8,7 @@ import {
   Unlock,
   BellRing,
   Clock,
+  Mail,
   Gift,
   ShieldCheck,
   Compass,
@@ -31,9 +32,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useAmbientTheme } from "@/lib/ambientTheme";
 import { Logo } from "@/components/brand/Logo";
+import { InvitesInbox } from "@/components/shell/InvitesInbox";
+import { ProfileMenu } from "@/components/shell/ProfileMenu";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Avatar, ErrorNote, Skeleton } from "@/components/ui/Bits";
+import { ErrorNote, Skeleton } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
 import { api } from "@/lib/api";
@@ -60,7 +63,8 @@ const NAV: NavItem[] = [
   { href: "/tracks", label: "Tracks", Icon: Route, match: (p) => p.startsWith("/tracks"), mobile: false },
   { href: "/feed", label: "Feed", Icon: MessageSquare, match: (p) => p.startsWith("/feed"), mobile: true },
   { href: "/rewards", label: "Rewards", Icon: Trophy, match: (p) => p.startsWith("/rewards"), mobile: true },
-  // On phones the profile is the avatar in the top bar, which frees this tab for Feed.
+  // The profile is also the avatar menu in the top-right corner (every screen
+  // size), which on phones frees this tab for Feed.
   { href: "/profile", label: "Profile", Icon: UserIcon, match: (p) => p.startsWith("/profile"), mobile: false },
 ];
 
@@ -218,6 +222,7 @@ function useUnreadCount(enabled: boolean) {
 
 const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_member_added: MapIcon,
+  trip_invite: Mail,
   trip_joined: UserPlus,
   trip_started: PlayCircle,
   trip_reminder: BellRing,
@@ -238,6 +243,8 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
 };
 
 function notificationHref(note: Notification): string | null {
+  // An invitee isn't on the trip yet — the invites sheet opens instead.
+  if (note.kind === "trip_invite") return null;
   if (note.trip_id) {
     // Money and chat notifications open the trip straight on that tab.
     const money = note.kind === "settle_paid" || note.kind === "settle_confirmed";
@@ -261,6 +268,14 @@ function TopBar({
   const { user } = useAuth();
   const router = useRouter();
   const [bellOpen, setBellOpen] = useState(false);
+  // A push about an invite links to `/?invites=1`. The inbox only renders once
+  // you're signed in (in the browser), so there's no server render to disagree.
+  const [invitesOpen, setInvitesOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const asked = new URLSearchParams(window.location.search).has("invites");
+    if (asked) window.history.replaceState(null, "", window.location.pathname);
+    return asked;
+  });
   const [unread, setUnread] = useUnreadCount(Boolean(user));
   const pendingSync = usePendingSyncCount();
   const { data, loading, error, reload, set } = useApi<NotificationPage>(
@@ -293,7 +308,8 @@ function TopBar({
     markRead(note);
     const href = notificationHref(note);
     setBellOpen(false);
-    if (href) router.push(href);
+    if (note.kind === "trip_invite") setInvitesOpen(true);
+    else if (href) router.push(href);
   }
 
   function markAllRead() {
@@ -363,15 +379,8 @@ function TopBar({
             ) : null}
           </button>
 
-          {user ? (
-            <Link
-              href="/profile"
-              className="tap flex items-center justify-center rounded-full lg:hidden"
-              aria-label={`Profile — ${user.name}`}
-            >
-              <Avatar user={user} size="sm" />
-            </Link>
-          ) : null}
+          {user ? <InvitesInbox open={invitesOpen} onOpenChange={setInvitesOpen} /> : null}
+          {user ? <ProfileMenu /> : null}
         </div>
       </div>
 
@@ -405,7 +414,7 @@ function TopBar({
           <ul className="-mx-1 space-y-1">
             {data.results.map((note) => {
               const Icon = NOTIFICATION_ICONS[note.kind];
-              const clickable = notificationHref(note) !== null;
+              const clickable = note.kind === "trip_invite" || notificationHref(note) !== null;
               return (
                 <li key={note.id}>
                   <button

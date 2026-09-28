@@ -171,12 +171,16 @@ export default function TripDetailPage() {
         alt={`${trip.destination} illustration`}
         className="h-44 w-full sm:h-56 lg:h-64"
       >
-        <Chip
-          tone={trip.status === "active" ? "success" : "brand"}
-          className="mb-2 w-fit bg-white/95"
-        >
-          <span aria-hidden="true">{badge.mark}</span> {badge.label}
-        </Chip>
+        <div className="mb-2 flex flex-wrap gap-2">
+          <Chip tone={trip.status === "active" ? "success" : "brand"} className="w-fit bg-white/95">
+            <span aria-hidden="true">{badge.mark}</span> {badge.label}
+          </Chip>
+          {trip.no_xp ? (
+            <Chip tone="warn" className="w-fit bg-white/95">
+              <span aria-hidden="true">🏠</span> Close to home · No XP
+            </Chip>
+          ) : null}
+        </div>
         <h1 className="text-2xl font-extrabold text-white drop-shadow sm:text-3xl">{trip.title}</h1>
         <p className="text-sm text-white/90 drop-shadow sm:text-base">
           <span aria-hidden="true">📍</span> {trip.destination}
