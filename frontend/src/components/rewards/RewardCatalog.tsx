@@ -24,9 +24,16 @@ const CLAIM_BADGE: Record<ClaimStatus, { label: string; className: string }> = {
  * Real rewards travellers can claim once they've earned enough XP. Claiming
  * doesn't spend XP — it's a bar you clear — and each reward only goes to as
  * many people as its rule allows. Rewards are added and handed over by
- * admins, from the separate Admin page.
+ * admins, from the separate Admin page. Tapping Claim before you've got the
+ * XP calls `onNeedMoreXp` so the page can show how to earn the rest.
  */
-export function RewardCatalog({ myXp }: { myXp: number }) {
+export function RewardCatalog({
+  myXp,
+  onNeedMoreXp,
+}: {
+  myXp: number;
+  onNeedMoreXp: (offer: RewardOffer, needed: number) => void;
+}) {
   const { user } = useAuth();
   const { toast } = useCelebration();
   const { data, loading, error, reload } = useApi<RewardOffer[]>("/api/rewards/catalog/");
@@ -140,6 +147,15 @@ export function RewardCatalog({ myXp }: { myXp: number }) {
                           <p className="rounded-xl bg-raised px-3 py-2 text-xs text-ink">{offer.my_claim_note}</p>
                         ) : null}
                       </div>
+                    ) : !affordable && !soldOut ? (
+                      <Button
+                        fullWidth
+                        variant="secondary"
+                        icon="🔒"
+                        onClick={() => onNeedMoreXp(offer, offer.xp_required - myXp)}
+                      >
+                        Claim reward
+                      </Button>
                     ) : offer.blocked_reason ? (
                       <p className="rounded-xl bg-raised px-3 py-2.5 text-center text-sm font-semibold text-muted">
                         <span aria-hidden="true">🔒</span> {offer.blocked_reason}

@@ -20,6 +20,8 @@ type View = "shop" | "achievements" | "activity" | "leaderboard";
 export default function RewardsPage() {
   const [view, setView] = useState<View>("shop");
   const [rulesOpen, setRulesOpen] = useState(false);
+  // Set when the rules were opened by tapping Claim without enough XP.
+  const [shortfall, setShortfall] = useState<{ title: string; needed: number } | null>(null);
   const { data, loading, error, reload } = useApi<RewardsPayload>("/api/rewards/me/");
 
   if (loading) return <LoadingBlock label="Loading your rewards…" />;
@@ -38,7 +40,10 @@ export default function RewardsPage() {
       <section className="card relative overflow-hidden p-5 text-center">
         <button
           type="button"
-          onClick={() => setRulesOpen(true)}
+          onClick={() => {
+            setShortfall(null);
+            setRulesOpen(true);
+          }}
           aria-label="How XP works"
           className="tap absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface text-sm font-bold text-muted hover:text-ink"
         >
@@ -63,14 +68,22 @@ export default function RewardsPage() {
         </p>
         <button
           type="button"
-          onClick={() => setRulesOpen(true)}
+          onClick={() => {
+            setShortfall(null);
+            setRulesOpen(true);
+          }}
           className="tap mt-2 text-sm font-semibold text-brand hover:underline"
         >
           How XP is earned — and how it gets cut →
         </button>
       </section>
 
-      <XPRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} rules={data.xp_rules} />
+      <XPRulesSheet
+        open={rulesOpen}
+        onClose={() => setRulesOpen(false)}
+        rules={data.xp_rules}
+        shortfall={shortfall}
+      />
 
       <div className="hide-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <SegmentedControl
@@ -86,7 +99,15 @@ export default function RewardsPage() {
         />
       </div>
 
-      {view === "shop" ? <RewardCatalog myXp={user.xp} /> : null}
+      {view === "shop" ? (
+        <RewardCatalog
+          myXp={user.xp}
+          onNeedMoreXp={(offer, needed) => {
+            setShortfall({ title: offer.title, needed });
+            setRulesOpen(true);
+          }}
+        />
+      ) : null}
 
       {view === "achievements" ? (
         <ul className="grid gap-3 sm:grid-cols-2">
@@ -181,10 +202,12 @@ function XPRulesSheet({
   open,
   onClose,
   rules,
+  shortfall,
 }: {
   open: boolean;
   onClose: () => void;
   rules: XPRule[];
+  shortfall: { title: string; needed: number } | null;
 }) {
   const earn = rules.filter((rule) => rule.kind === "earn");
   const notes = rules.filter((rule) => rule.kind === "note");
@@ -193,6 +216,15 @@ function XPRulesSheet({
   return (
     <Sheet open={open} onClose={onClose} title="How XP works" description="Every way to earn it, and every way to lose it.">
       <div className="space-y-5">
+        {shortfall ? (
+          <div className="rounded-2xl border border-brand/30 bg-brand-soft/60 p-3.5 text-sm text-ink">
+            <p className="font-bold">
+              <span aria-hidden="true">🔒</span> You need {formatNumber(shortfall.needed)} more XP to claim{" "}
+              {shortfall.title}.
+            </p>
+            <p className="mt-0.5 text-muted">Here&apos;s how to earn it.</p>
+          </div>
+        ) : null}
         <XPRuleGroup heading="Ways to earn XP" rules={earn} />
         <XPRuleGroup heading="Good to know" rules={notes} />
         {cuts.length ? (
