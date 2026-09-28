@@ -92,7 +92,7 @@ export function RewardShareSheet({ offer, onClose }: { offer: RewardOffer; onClo
     <Sheet
       open
       onClose={onClose}
-      title="Share on Instagram"
+      title="Share reward"
       description="A ready-made card for your story or feed, with a QR code to the Rewards page."
       footer={
         <div className="space-y-2">

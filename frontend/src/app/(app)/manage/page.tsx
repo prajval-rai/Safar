@@ -201,7 +201,7 @@ function RewardsPanel({
                 </div>
 
                 <Button fullWidth icon="📸" className="mt-auto" onClick={() => setSharing(reward)}>
-                  Share on Instagram
+                  Share reward
                 </Button>
                 <div className="grid grid-cols-3 gap-2">
                   <Button variant="secondary" size="sm" onClick={() => setEditing(reward)}>

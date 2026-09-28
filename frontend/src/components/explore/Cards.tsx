@@ -137,7 +137,23 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
             )
           ) : null}
         </div>
-        <Chip tone="brand">Level {post.author.level}</Chip>
+        {post.image_url ? (
+          <Link
+            href={`/p/${post.id}`}
+            className="shrink-0 rounded-full transition-transform hover:scale-105"
+            aria-label={post.trip_title ? `Photo from ${post.trip_title}` : "Open this post"}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={post.image_url}
+              alt=""
+              loading="lazy"
+              className="h-12 w-12 rounded-full object-cover ring-2 ring-[var(--surface)] shadow-[0_0_0_3px_var(--brand-soft)]"
+            />
+          </Link>
+        ) : (
+          <Chip tone="brand">Level {post.author.level}</Chip>
+        )}
       </div>
 
       {full ? (

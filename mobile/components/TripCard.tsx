@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { TripCover } from '@/components/TripCover';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -20,8 +20,6 @@ export function TripCard({ trip, onPress }: { trip: Trip; onPress?: () => void }
         { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
       ]}
     >
-      <TripCover cover={trip.cover_key} radius={0} style={styles.cover} />
-
       <View style={styles.body}>
         <View style={styles.chips}>
           <View style={[styles.chip, { backgroundColor: statusColor === colors.muted ? colors.raised : `${statusColor}22` }]}>
@@ -36,13 +34,25 @@ export function TripCard({ trip, onPress }: { trip: Trip; onPress?: () => void }
           </View>
         </View>
 
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-          {trip.title}
-        </Text>
-        <Text style={[styles.destination, { color: colors.muted }]} numberOfLines={1}>
-          📍 {trip.destination}
-          {trip.region ? `, ${trip.region}` : ''}
-        </Text>
+        <View style={styles.header}>
+          {/* The trip's picture as a small circle: its first gallery photo, or the illustrated cover. */}
+          <View style={[styles.avatar, { borderColor: colors.brandSoft }]}>
+            {trip.cover_image ? (
+              <Image source={{ uri: trip.cover_image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <TripCover cover={trip.cover_key} radius={0} style={StyleSheet.absoluteFill} />
+            )}
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+              {trip.title}
+            </Text>
+            <Text style={[styles.destination, { color: colors.muted }]} numberOfLines={1}>
+              📍 {trip.destination}
+              {trip.region ? `, ${trip.region}` : ''}
+            </Text>
+          </View>
+        </View>
 
         <Text style={[styles.meta, { color: colors.muted }]}>
           {dateRange(trip.start_date, trip.end_date)} · {trip.duration_days} {trip.duration_days === 1 ? 'day' : 'days'}
@@ -62,7 +72,8 @@ export function TripCard({ trip, onPress }: { trip: Trip; onPress?: () => void }
 
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 18, overflow: 'hidden', marginBottom: 14 },
-  cover: { height: 110 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 56, height: 56, borderRadius: 28, overflow: 'hidden', borderWidth: 3 },
   body: { padding: 14 },
   chips: { flexDirection: 'row', gap: 6, marginBottom: 8 },
   chip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },

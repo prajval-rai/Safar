@@ -213,6 +213,7 @@ export function TripCover({
   alt,
   className,
   rounded = true,
+  style,
   children,
 }: {
   cover: CoverKey;
@@ -220,6 +221,7 @@ export function TripCover({
   alt: string;
   className?: string;
   rounded?: boolean;
+  style?: React.CSSProperties;
   /** Overlay content, e.g. the trip title on a hero. */
   children?: React.ReactNode;
 }) {
@@ -230,6 +232,7 @@ export function TripCover({
         rounded && "rounded-2xl",
         className,
       )}
+      style={style}
     >
       {image ? (
         // Traveller-supplied URLs can point anywhere, so this stays a plain

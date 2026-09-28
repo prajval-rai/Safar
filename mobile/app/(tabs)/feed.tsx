@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Pressable,
   RefreshControl,
@@ -144,9 +145,18 @@ function PostCard({ post }: { post: TravelPost }) {
             <Text style={{ color: colors.muted, fontSize: 11 }}>{relativeTime(post.created_at)}</Text>
           )}
         </View>
-        <View style={[styles.levelChip, { backgroundColor: colors.brandSoft }]}>
-          <Text style={{ color: colors.tint, fontSize: 11, fontWeight: '700' }}>Level {post.author.level}</Text>
-        </View>
+        {post.image_url ? (
+          // The trip's picture as a small circle, like on the website.
+          <Image
+            source={{ uri: post.image_url }}
+            style={[styles.postPhoto, { borderColor: colors.brandSoft }]}
+            accessibilityLabel={post.trip_title ? `Photo from ${post.trip_title}` : 'Post photo'}
+          />
+        ) : (
+          <View style={[styles.levelChip, { backgroundColor: colors.brandSoft }]}>
+            <Text style={{ color: colors.tint, fontSize: 11, fontWeight: '700' }}>Level {post.author.level}</Text>
+          </View>
+        )}
       </View>
 
       <ExpandableCaption text={post.caption} colors={colors} />
@@ -397,6 +407,7 @@ const styles = StyleSheet.create({
   avatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
   postCard: { borderWidth: 1, borderRadius: 18, padding: 14, marginBottom: 12 },
+  postPhoto: { width: 48, height: 48, borderRadius: 24, borderWidth: 3 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   levelChip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   postFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },

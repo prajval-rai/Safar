@@ -14,6 +14,24 @@ import {
 } from "@/lib/utils";
 
 /**
+ * The trip's picture as a small circle — its first gallery photo when there is
+ * one, otherwise the illustrated cover. A circle shows the heart of a photo
+ * instead of a thin, heavily cropped strip of it.
+ */
+export function TripAvatar({ trip, size = 56 }: { trip: Pick<Trip, "cover_key" | "cover_image" | "destination">; size?: number }) {
+  return (
+    <TripCover
+      cover={trip.cover_key}
+      image={trip.cover_image || undefined}
+      alt={`${trip.destination}`}
+      rounded={false}
+      className="shrink-0 rounded-full ring-2 ring-[var(--surface)] shadow-[0_0_0_3px_var(--brand-soft)]"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/**
  * Horizontal on laptops, stacked on phones — the same card, re-laid out rather
  * than shrunk. Everything a traveller wants at a glance: where, when, how far
  * along, and how much XP.
@@ -24,16 +42,8 @@ export function TripCard({ trip }: { trip: Trip }) {
   return (
     <Link
       href={`/trips/${trip.id}`}
-      className="card group flex flex-col overflow-hidden transition-shadow hover:shadow-md sm:flex-row"
+      className="card group flex overflow-hidden transition-shadow hover:shadow-md"
     >
-      <TripCover
-        cover={trip.cover_key}
-        image={trip.cover_image || undefined}
-        alt={`${trip.destination} illustration`}
-        rounded={false}
-        className="h-36 w-full shrink-0 sm:h-auto sm:w-44 lg:w-56"
-      />
-
       <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <Chip
@@ -47,12 +57,15 @@ export function TripCard({ trip }: { trip: Trip }) {
           <Chip>{TRIP_TYPE_LABELS[trip.trip_type] ?? trip.trip_type}</Chip>
         </div>
 
-        <div>
-          <h3 className="truncate text-base font-bold text-ink sm:text-lg">{trip.title}</h3>
-          <p className="truncate text-sm text-muted">
-            <span aria-hidden="true">📍</span> {trip.destination}
-            {trip.region ? `, ${trip.region}` : ""}
-          </p>
+        <div className="flex items-center gap-3">
+          <TripAvatar trip={trip} size={56} />
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-bold text-ink sm:text-lg">{trip.title}</h3>
+            <p className="truncate text-sm text-muted">
+              <span aria-hidden="true">📍</span> {trip.destination}
+              {trip.region ? `, ${trip.region}` : ""}
+            </p>
+          </div>
         </div>
 
         <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
@@ -109,13 +122,6 @@ export function TripGridCard({ trip }: { trip: Trip }) {
       href={`/trips/${trip.id}`}
       className="card group flex h-full flex-col overflow-hidden rounded-[22px] transition-shadow hover:shadow-md"
     >
-      <TripCover
-        cover={trip.cover_key}
-        image={trip.cover_image || undefined}
-        alt={`${trip.destination} illustration`}
-        rounded={false}
-        className="h-44 w-full"
-      />
       <div className="flex flex-1 flex-col gap-2.5 p-5">
         <div className="flex flex-wrap items-center gap-2">
           <Chip
@@ -128,12 +134,15 @@ export function TripGridCard({ trip }: { trip: Trip }) {
           </Chip>
           <Chip>{TRIP_TYPE_LABELS[trip.trip_type] ?? trip.trip_type}</Chip>
         </div>
-        <div>
-          <h3 className="truncate text-lg font-bold text-ink">{trip.title}</h3>
-          <p className="truncate text-sm text-muted">
-            {trip.destination}
-            {trip.region ? `, ${trip.region}` : ""}
-          </p>
+        <div className="flex items-center gap-3">
+          <TripAvatar trip={trip} size={64} />
+          <div className="min-w-0">
+            <h3 className="truncate text-lg font-bold text-ink">{trip.title}</h3>
+            <p className="truncate text-sm text-muted">
+              {trip.destination}
+              {trip.region ? `, ${trip.region}` : ""}
+            </p>
+          </div>
         </div>
         <p className="text-sm text-muted">
           {dateRange(trip.start_date, trip.end_date)} · {trip.duration_days}{" "}
@@ -169,19 +178,17 @@ export function TripTile({ trip }: { trip: Trip }) {
       href={`/trips/${trip.id}`}
       className="card w-[248px] shrink-0 overflow-hidden transition-shadow hover:shadow-md"
     >
-      <TripCover
-        cover={trip.cover_key}
-        image={trip.cover_image || undefined}
-        alt={`${trip.destination} illustration`}
-        rounded={false}
-        className="h-28 w-full"
-      />
-      <div className="p-3">
-        <h3 className="truncate text-sm font-bold text-ink">{trip.title}</h3>
-        <p className="truncate text-xs text-muted">
-          {dateRange(trip.start_date, trip.end_date)} · {trip.duration_days}d
-        </p>
-        <div className="mt-2">
+      <div className="p-3.5">
+        <div className="flex items-center gap-3">
+          <TripAvatar trip={trip} size={52} />
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-bold text-ink">{trip.title}</h3>
+            <p className="truncate text-xs text-muted">
+              {dateRange(trip.start_date, trip.end_date)} · {trip.duration_days}d
+            </p>
+          </div>
+        </div>
+        <div className="mt-3">
           <Progress value={trip.progress_percent} size="sm" />
         </div>
       </div>
