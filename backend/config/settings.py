@@ -200,6 +200,9 @@ if GS_BUCKET_NAME:
     # expiring signed URLs would break them. Set GS_SIGNED_URLS=1 to keep the
     # bucket private and hand out signed links instead.
     GS_QUERYSTRING_AUTH = os.environ.get("GS_SIGNED_URLS") == "1"
+    # Signed links are re-made on every API response; 7 days (Google's maximum)
+    # keeps a page left open, or a cached feed, from losing its pictures.
+    GS_EXPIRATION = timedelta(days=7)
     GS_DEFAULT_ACL = None  # the bucket uses uniform bucket-level access
     GS_FILE_OVERWRITE = False
     GS_OBJECT_PARAMETERS = {"cache_control": "public, max-age=31536000"}
