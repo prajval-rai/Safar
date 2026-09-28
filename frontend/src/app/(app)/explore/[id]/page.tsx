@@ -132,7 +132,7 @@ export default function TrackDetailPage() {
                           .join(" · ")}
                       </p>
                     </div>
-                    <Chip tone="brand">+{stop.xp_value}</Chip>
+                    {stop.xp_value > 0 ? <Chip tone="brand">+{formatNumber(stop.xp_value)} XP</Chip> : null}
                   </li>
                 ))}
               </ol>

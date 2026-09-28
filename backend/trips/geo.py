@@ -32,6 +32,14 @@ def _number(value):
     return number if math.isfinite(number) else None
 
 
+def optional_point(data):
+    """(lat, lng) from a request body when it carries a usable location, else None."""
+    lat, lng = _number(data.get("latitude")), _number(data.get("longitude"))
+    if lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    return (lat, lng)
+
+
 def distance_from_stop(activity, data) -> float:
     """Kilometres between the traveller and the stop, or a friendly 400.
 

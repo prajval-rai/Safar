@@ -146,7 +146,7 @@ function StopRow({ stop, colors }: { stop: TrackStop; colors: (typeof Colors)['l
         {meta ? <Text style={{ color: colors.muted, fontSize: 11 }}>{meta}</Text> : null}
       </View>
       <View style={[styles.xpChip, { backgroundColor: colors.brandSoft }]}>
-        <Text style={{ color: colors.tint, fontSize: 11, fontWeight: '700' }}>+{stop.xp_value}</Text>
+        <Text style={{ color: colors.tint, fontSize: 11, fontWeight: '700' }}>{stop.xp_value > 0 ? `+${stop.xp_value}` : 'XP'}</Text>
       </View>
     </View>
   );

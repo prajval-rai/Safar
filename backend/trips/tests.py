@@ -2,6 +2,7 @@
 completion, permissions and the mobile 'move' alternative to drag and drop."""
 
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -17,9 +18,13 @@ from rewards.services import (
     DAY_COMPLETE_BONUS,
     ORGANIZER_COMPLETE_BONUS,
     TRIP_COMPLETE_BONUS,
+    DISTANCE_XP_LEG_CAP,
     TRIP_CREATE_XP,
+    as_xp,
+    distance_xp,
     seed_achievements,
 )
+from trips.geo import haversine_km
 from trips.models import Activity, Day, Trip, TripMember
 from trips.regional_theme import theme_for_trip
 
@@ -56,7 +61,6 @@ class SafarTestCase(TestCase):
         self.day3 = Day.objects.create(
             trip=self.trip, index=3, date=self.trip.start_date + timedelta(days=2)
         )
-        # XP comes from the category: adventure 5, food 2, sightseeing 4.
         self.a1 = Activity.objects.create(day=self.day1, title="Beach", category="adventure", order=0)
         self.a2 = Activity.objects.create(day=self.day1, title="Lunch", category="food", order=1)
         self.a3 = Activity.objects.create(day=self.day2, title="Fort", category="sightseeing", order=0)
@@ -67,60 +71,124 @@ class SafarTestCase(TestCase):
         return client
 
 
+MUMBAI = (19.0760, 72.8777)
+BAGA = (15.5553, 73.7517)
+CALANGUTE = (15.5439, 73.7553)
+FORT_AGUADA = (15.4920, 73.7735)
+
+
+def leg_xp(origin, stop):
+    return distance_xp(haversine_km(*origin, *stop))
+
+
 class XPTests(SafarTestCase):
-    def test_completing_an_activity_awards_its_xp(self):
+    """Stops pay distance XP: start point -> first stop, then stop -> stop."""
+
+    def setUp(self):
+        super().setUp()
+        for activity, (lat, lng) in ((self.a1, BAGA), (self.a2, CALANGUTE), (self.a3, FORT_AGUADA)):
+            activity.latitude, activity.longitude = lat, lng
+            activity.save()
+        self.leg1 = leg_xp(MUMBAI, BAGA)
+        self.leg2 = leg_xp(BAGA, CALANGUTE)
+        self.leg3 = leg_xp(CALANGUTE, FORT_AGUADA)
+
+    def start(self, client=None, point=MUMBAI):
+        client = client or self.client_for(self.owner)
+        return client.post(
+            f"/api/trips/{self.trip.id}/start/",
+            {"latitude": point[0], "longitude": point[1]},
+            format="json",
+        )
+
+    def complete(self, client, activity):
+        return client.post(
+            f"/api/activities/{activity.id}/complete/",
+            {"latitude": activity.latitude, "longitude": activity.longitude, "accuracy": 10},
+            format="json",
+        )
+
+    def test_distance_xp_is_small_decimal_and_capped(self):
+        self.assertEqual(distance_xp(1000), Decimal("10.00"))
+        self.assertEqual(distance_xp(2), Decimal("0.02"))
+        self.assertEqual(distance_xp(0.3), Decimal("0.00"))
+        self.assertEqual(distance_xp(None), Decimal("0.00"))
+        self.assertEqual(distance_xp(5000), DISTANCE_XP_LEG_CAP)
+
+    def test_starting_a_trip_records_the_start_point(self):
+        response = self.start()
+        self.assertEqual(response.status_code, 200)
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.start_point, MUMBAI)
+        self.assertIsNotNone(self.trip.started_at)
+        self.assertEqual(self.trip.status, "active")
+
+    def test_first_stop_pays_the_distance_from_the_start_point(self):
         client = self.client_for(self.owner)
-        response = client.post(f"/api/activities/{self.a1.id}/complete/")
+        self.start(client)
+        response = self.complete(client, self.a1)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["xp_awarded"], 5)
+        self.assertGreater(self.leg1, 0)
+        self.assertEqual(Decimal(str(response.data["xp_awarded"])), self.leg1)
         self.assertFalse(response.data["day_completed"])
+        self.a1.refresh_from_db()
+        self.assertEqual(self.a1.xp_value, self.leg1)
+        self.assertAlmostEqual(self.a1.leg_distance_km, haversine_km(*MUMBAI, *BAGA), places=2)
 
         self.owner.refresh_from_db()
-        self.assertEqual(self.owner.xp, 5 + self.first_steps_bonus)
-        # One row for the activity, one for the achievement that it unlocked.
+        self.assertEqual(self.owner.xp, self.leg1 + self.first_steps_bonus)
+        # One row for the distance, one for the achievement that it unlocked.
         self.assertEqual(XPTransaction.objects.filter(user=self.owner).count(), 2)
 
-    def test_finishing_every_activity_in_a_day_adds_the_day_bonus(self):
+    def test_each_next_stop_pays_the_leg_from_the_previous_stop(self):
         client = self.client_for(self.owner)
-        client.post(f"/api/activities/{self.a1.id}/complete/")
-        response = client.post(f"/api/activities/{self.a2.id}/complete/")
+        self.start(client)
+        self.complete(client, self.a1)
+        response = self.complete(client, self.a2)
 
         self.assertTrue(response.data["day_completed"])
-        self.assertEqual(response.data["xp_awarded"], 2 + DAY_COMPLETE_BONUS)
+        self.assertEqual(Decimal(str(response.data["xp_awarded"])), self.leg2 + DAY_COMPLETE_BONUS)
         self.assertEqual(response.data["day_index"], 1)
+
+    def test_without_a_start_point_the_first_stop_pays_nothing(self):
+        client = self.client_for(self.owner)
+        response = self.complete(client, self.a1)
+        self.assertEqual(response.data["xp_awarded"], 0)
+        # ...but the next leg is measured from it.
+        response = self.complete(client, self.a2)
+        self.assertEqual(Decimal(str(response.data["xp_awarded"])), self.leg2 + DAY_COMPLETE_BONUS)
 
     def test_last_activity_completes_the_whole_trip(self):
         client = self.client_for(self.owner)
-        client.post(f"/api/activities/{self.a1.id}/complete/")
-        client.post(f"/api/activities/{self.a2.id}/complete/")
-        response = client.post(f"/api/activities/{self.a3.id}/complete/")
+        self.start(client)
+        self.complete(client, self.a1)
+        self.complete(client, self.a2)
+        response = self.complete(client, self.a3)
 
         self.assertTrue(response.data["trip_completed"])
-        # activity + its day bonus + the trip bonus + the organiser bonus,
+        # leg + its day bonus + the trip bonus + the organiser bonus,
         # since self.owner (who tapped the last stop) is also the organiser.
         self.assertEqual(
-            response.data["xp_awarded"],
-            4 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS,
+            Decimal(str(response.data["xp_awarded"])),
+            self.leg3 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS,
         )
-
         self.trip.refresh_from_db()
         self.assertEqual(self.trip.status, "completed")
+        self.assertFalse(self.trip.finished_early)
 
     def test_the_whole_group_earns_what_the_organiser_completes(self):
         client = self.client_for(self.owner)
-        client.post(f"/api/activities/{self.a1.id}/complete/")
-        client.post(f"/api/activities/{self.a2.id}/complete/")
-        client.post(f"/api/activities/{self.a3.id}/complete/")
+        self.start(client)
+        for activity in (self.a1, self.a2, self.a3):
+            self.complete(client, activity)
 
-        # Stops, both day bonuses, the trip bonus, and the "First Steps" and
-        # "First Journey" badges this trip unlocked for everyone.
         badges = sum(
             Achievement.objects.filter(code__in=["first-steps", "first-journey"]).values_list(
                 "xp_reward", flat=True
             )
         )
-        group_xp = 5 + 2 + 4 + 2 * DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + badges
+        group_xp = self.leg1 + self.leg2 + self.leg3 + 2 * DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + badges
         member = TripMember.objects.get(trip=self.trip, user=self.friend)
         organiser = TripMember.objects.get(trip=self.trip, user=self.owner)
         self.assertEqual(member.xp_earned, group_xp)
@@ -129,16 +197,71 @@ class XPTests(SafarTestCase):
 
     def test_client_cannot_set_what_a_stop_is_worth(self):
         response = self.client_for(self.owner).patch(
-            f"/api/activities/{self.a2.id}/", {"xp_value": 9999}, format="json"
+            f"/api/activities/{self.a2.id}/", {"xp_value": 9999, "leg_distance_km": 5000}, format="json"
         )
         self.assertEqual(response.status_code, 200)
         self.a2.refresh_from_db()
-        self.assertEqual(self.a2.xp_value, 2)
+        self.assertEqual(self.a2.xp_value, 0)
+        self.assertIsNone(self.a2.leg_distance_km)
+
+    def test_organiser_can_finish_a_multi_day_trip_after_one_stop(self):
+        client = self.client_for(self.owner)
+        self.start(client)
+        self.complete(client, self.a1)
+        self.friend.refresh_from_db()
+        before = self.friend.xp
+
+        response = client.post(f"/api/trips/{self.trip.id}/finish/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["trip_completed"])
+        self.assertEqual((response.data["stops_done"], response.data["stops_total"]), (1, 3))
+
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.status, "completed")
+        self.assertTrue(self.trip.finished_early)
+        # 1 of 3 stops done: a third of each completion bonus.
+        share = Decimal(1) / Decimal(3)
+        self.assertEqual(self.trip.completion_bonus, as_xp(TRIP_COMPLETE_BONUS * share))
+        self.assertEqual(self.trip.organizer_bonus, as_xp(ORGANIZER_COMPLETE_BONUS * share))
+        self.a2.refresh_from_db()
+        self.assertEqual(self.a2.status, "skipped")
+
+        first_journey = Achievement.objects.get(code="first-journey").xp_reward
+        self.friend.refresh_from_db()
+        self.assertEqual(self.friend.xp, before + self.trip.completion_bonus + first_journey)
+
+    def test_finishing_needs_at_least_one_stop_and_an_organiser(self):
+        self.assertEqual(
+            self.client_for(self.owner).post(f"/api/trips/{self.trip.id}/finish/").status_code, 400
+        )
+        self.complete(self.client_for(self.owner), self.a1)
+        self.assertEqual(
+            self.client_for(self.friend).post(f"/api/trips/{self.trip.id}/finish/").status_code, 403
+        )
+
+    def test_undoing_on_an_early_finished_trip_reopens_it_and_takes_back_the_share(self):
+        client = self.client_for(self.owner)
+        self.start(client)
+        self.complete(client, self.a1)
+        client.post(f"/api/trips/{self.trip.id}/finish/")
+        self.trip.refresh_from_db()
+        bonus = self.trip.completion_bonus
+        self.friend.refresh_from_db()
+        before = self.friend.xp
+
+        client.post(f"/api/activities/{self.a1.id}/undo/")
+
+        self.friend.refresh_from_db()
+        self.assertEqual(self.friend.xp, before - self.leg1 - bonus)
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.status, "active")
+        self.assertFalse(self.trip.finished_early)
+        self.assertEqual(Activity.objects.filter(day__trip=self.trip, status="skipped").count(), 0)
 
     def test_cancelling_an_active_trip_costs_the_organizer_xp(self):
         client = self.client_for(self.owner)
         # Starts the trip (moves it out of "planning").
-        client.post(f"/api/activities/{self.a1.id}/complete/")
+        self.complete(client, self.a1)
         # Enough XP that the penalty isn't cut short by XP never going below zero.
         self.owner.refresh_from_db()
         self.owner.xp = 100
@@ -183,7 +306,8 @@ class XPTests(SafarTestCase):
 
     def test_undo_takes_the_xp_back_from_everyone(self):
         client = self.client_for(self.owner)
-        client.post(f"/api/activities/{self.a1.id}/complete/")
+        self.start(client)
+        self.complete(client, self.a1)
         client.post(f"/api/activities/{self.a1.id}/undo/")
 
         self.owner.refresh_from_db()
@@ -194,26 +318,29 @@ class XPTests(SafarTestCase):
         self.a1.refresh_from_db()
         self.assertEqual(self.a1.status, "planned")
         self.assertIsNone(self.a1.completed_by)
+        self.assertEqual(self.a1.xp_value, 0)
 
     def test_completing_twice_does_not_double_count(self):
         client = self.client_for(self.owner)
-        client.post(f"/api/activities/{self.a1.id}/complete/")
-        client.post(f"/api/activities/{self.a1.id}/complete/")
+        self.start(client)
+        self.complete(client, self.a1)
+        self.complete(client, self.a1)
 
         self.owner.refresh_from_db()
-        self.assertEqual(self.owner.xp, 5 + self.first_steps_bonus)
+        self.assertEqual(self.owner.xp, self.leg1 + self.first_steps_bonus)
 
     def test_undoing_the_last_stop_takes_back_the_completion_bonuses(self):
         client = self.client_for(self.owner)
+        self.start(client)
         for activity in (self.a1, self.a2, self.a3):
-            client.post(f"/api/activities/{activity.id}/complete/")
+            self.complete(client, activity)
         self.friend.refresh_from_db()
         before = self.friend.xp
 
         client.post(f"/api/activities/{self.a3.id}/undo/")
 
         self.friend.refresh_from_db()
-        self.assertEqual(self.friend.xp, before - 4 - DAY_COMPLETE_BONUS - TRIP_COMPLETE_BONUS)
+        self.assertEqual(self.friend.xp, before - self.leg3 - DAY_COMPLETE_BONUS - TRIP_COMPLETE_BONUS)
         self.trip.refresh_from_db()
         self.assertEqual(self.trip.status, "active")
 
@@ -230,7 +357,7 @@ class XPTests(SafarTestCase):
         self.assertEqual(level_from_xp(4_199), 7)
 
     def test_first_activity_unlocks_an_achievement(self):
-        response = self.client_for(self.owner).post(f"/api/activities/{self.a1.id}/complete/")
+        response = self.complete(self.client_for(self.owner), self.a1)
         titles = [badge["title"] for badge in response.data["unlocked"]]
         self.assertIn("First Steps", titles)
 
@@ -402,13 +529,15 @@ class LiveTripTests(SafarTestCase):
     def test_summary_counts_the_journey(self):
         client = self.client_for(self.owner)
         self.a1.place_name = "Baga Beach"
+        self.a1.latitude, self.a1.longitude = BAGA
         self.a1.save()
-        client.post(f"/api/activities/{self.a1.id}/complete/")
+        client.post(f"/api/trips/{self.trip.id}/start/", {"latitude": MUMBAI[0], "longitude": MUMBAI[1]})
+        client.post(f"/api/activities/{self.a1.id}/complete/", {"latitude": BAGA[0], "longitude": BAGA[1]})
 
         response = client.get(f"/api/trips/{self.trip.id}/summary/")
         self.assertEqual(response.data["activities_completed"], 1)
         self.assertEqual(response.data["locations"], 1)
-        self.assertEqual(response.data["xp"], 5)
+        self.assertEqual(response.data["xp"], leg_xp(MUMBAI, BAGA))
 
 
 class TrackTests(SafarTestCase):

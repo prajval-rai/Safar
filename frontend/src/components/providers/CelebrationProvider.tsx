@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import type { XPResult } from "@/lib/types";
+import { formatNumber } from "@/lib/utils";
 
 import { useAuth } from "./AuthProvider";
 
@@ -53,8 +54,8 @@ export function CelebrationProvider({ children }: { children: React.ReactNode })
       if (result.user) setUser(result.user);
 
       // Small, quiet reward for everyday actions.
-      if (result.xp_awarded) push(`+${result.xp_awarded} XP 🎉`, "xp");
-      if (result.xp_held) push(`🔒 ${result.xp_held} XP held — settle up to unlock it`, "info");
+      if (result.xp_awarded) push(`+${formatNumber(result.xp_awarded)} XP 🎉`, "xp");
+      if (result.xp_held) push(`🔒 ${formatNumber(result.xp_held)} XP held — settle up to unlock it`, "info");
       if (result.duplicate_photo) push("Added — but this photo was shared before, so no XP this time.", "info");
 
       for (const badge of result.unlocked ?? []) {

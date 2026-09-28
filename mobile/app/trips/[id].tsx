@@ -31,8 +31,9 @@ import {
   TRANSPORT_ICONS,
   TRANSPORT_LABELS,
   TRIP_TYPE_LABELS,
+  stopXpLabel,
 } from '@/lib/format';
-import { checkInStop, completeStop, isPinned } from '@/lib/geo';
+import { checkInStop, completeStop, getPosition, isPinned } from '@/lib/geo';
 import type { Activity, Day, TripDetail } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
@@ -70,7 +71,18 @@ export default function TripDetailScreen() {
   async function lifecycle(action: 'start' | 'reopen', message: string) {
     setLifecycleBusy(true);
     try {
-      await api(`/api/trips/${trip!.id}/${action}/`, { method: 'POST' });
+      // Where you are when you start is the start point: the first stop's
+      // distance XP is measured from here. Without it the trip still starts.
+      let body: object = {};
+      if (action === 'start') {
+        try {
+          const { latitude, longitude } = await getPosition();
+          body = { latitude, longitude };
+        } catch {
+          // No location — the first leg just earns nothing.
+        }
+      }
+      await api(`/api/trips/${trip!.id}/${action}/`, { method: 'POST', body });
       Alert.alert('', message);
       refresh();
     } catch (e) {
@@ -483,7 +495,7 @@ function ActivityCard({
             {activity.place_name ? ` · ${activity.place_name}` : ''}
           </Text>
         </View>
-        <Text style={{ color: colors.tint, fontWeight: '700', fontSize: 12 }}>+{activity.xp_value} XP</Text>
+        <Text style={{ color: colors.tint, fontWeight: '700', fontSize: 12 }}>{stopXpLabel(activity)}</Text>
       </View>
 
       {activity.status === 'completed' ? (

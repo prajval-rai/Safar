@@ -67,7 +67,6 @@ def _stop(hour, minute, title, category, place, cost, xp, description=""):
         "category": category,
         "place_name": place,
         "cost": cost,
-        "xp_value": xp,
         "description": description,
     }
 

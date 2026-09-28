@@ -128,7 +128,6 @@ class TrackViewSet(viewsets.ModelViewSet):
                         start_time=stop.start_time,
                         description=stop.description,
                         cost=stop.cost,
-                        xp_value=stop.xp_value,
                         order=stop.order,
                     )
 

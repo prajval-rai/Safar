@@ -18,6 +18,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
+import { getPosition } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
 import { useTripTheme } from "@/lib/tripTheme";
 import type { SettlePayload, TripDetail, TripStatus, User, XPResult } from "@/lib/types";
@@ -85,8 +86,10 @@ export default function TripDetailPage() {
     return fromUrl && fromUrl in TABS ? (fromUrl as TabId) : null;
   });
   const { data: trip, loading, error, reload } = useApi<TripDetail>(`/api/trips/${id}/`);
-  const { toast } = useCelebration();
+  const { toast, celebrate } = useCelebration();
+  const { setUser } = useAuth();
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   // While this trip is open, the page wears its destination's colours —
   // restored to your own the moment you leave.
   useTripTheme(trip?.theme);
@@ -110,7 +113,19 @@ export default function TripDetailPage() {
   async function lifecycle(action: "start" | "reopen", message: string) {
     setLifecycleBusy(true);
     try {
-      await api.post(`/api/trips/${trip!.id}/${action}/`);
+      // Where you are when you start is the start point: the first stop's
+      // distance XP is measured from here. Without it the trip still starts,
+      // it's just the first leg that earns nothing.
+      let body: object = {};
+      if (action === "start") {
+        try {
+          const { latitude, longitude } = await getPosition();
+          body = { latitude, longitude };
+        } catch {
+          toast("No location, so the first stop won't earn distance XP.", "error");
+        }
+      }
+      await api.post(`/api/trips/${trip!.id}/${action}/`, body);
       toast(message);
       reload();
     } catch (err) {
@@ -119,6 +134,30 @@ export default function TripDetailPage() {
       setLifecycleBusy(false);
     }
   }
+
+  async function finishTrip() {
+    setLifecycleBusy(true);
+    try {
+      const result = await api.post<XPResult>(`/api/trips/${trip!.id}/finish/`);
+      setUser(result.user);
+      celebrate(result);
+      setFinishing(false);
+      reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't finish the trip.", "error");
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
+
+  const stopsDone = trip.days.reduce(
+    (sum, day) => sum + day.activities.filter((a) => a.status === "completed").length,
+    0,
+  );
+  const stopsTotal = trip.days.reduce(
+    (sum, day) => sum + day.activities.filter((a) => a.status !== "skipped").length,
+    0,
+  );
 
   return (
     <div className="space-y-4">
@@ -151,11 +190,47 @@ export default function TripDetailPage() {
         </ButtonLink>
       ) : null}
 
+      {trip.can_finish ? (
+        <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="min-w-0">
+            <p className="font-bold text-ink">Done travelling?</p>
+            <p className="text-sm text-muted">
+              {stopsDone} of {stopsTotal} stops done. You can wrap the trip up now — the rest are skipped.
+            </p>
+          </div>
+          <Button variant="secondary" icon="🏁" onClick={() => setFinishing(true)} disabled={lifecycleBusy}>
+            Finish trip
+          </Button>
+        </div>
+      ) : null}
+
+      <Sheet
+        open={finishing}
+        onClose={() => setFinishing(false)}
+        title="Finish the trip now?"
+        description={`${stopsDone} of ${stopsTotal} stops are done.`}
+        footer={
+          <Button fullWidth size="lg" icon="🏁" onClick={finishTrip} disabled={lifecycleBusy}>
+            {lifecycleBusy ? "Finishing…" : "Finish trip"}
+          </Button>
+        }
+      >
+        <p className="text-sm text-muted">
+          The {stopsTotal - stopsDone} stop{stopsTotal - stopsDone === 1 ? "" : "s"} still planned will be marked skipped.
+          Everyone keeps the distance XP they&apos;ve earned, and gets the share of the trip-completion bonus that
+          matches the stops completed — about {formatNumber(Math.round((stopsDone / Math.max(stopsTotal, 1)) * 100))}%
+          of it. Undoing a stop later reopens the trip.
+        </p>
+      </Sheet>
+
       {trip.status === "planning" && canEdit ? (
         <div className="card flex flex-wrap items-center justify-between gap-3 border-brand/30 bg-brand-soft/40 p-4">
           <div className="min-w-0">
             <p className="font-bold text-ink">Ready to go?</p>
-            <p className="text-sm text-muted">Start the trip to switch on Live mode. You can only have one live trip at a time.</p>
+            <p className="text-sm text-muted">
+              Start the trip where you are now to switch on Live mode — distance XP counts from here to the first
+              stop, then stop to stop. You can only have one live trip at a time.
+            </p>
           </div>
           <Button size="lg" icon="🚀" onClick={() => lifecycle("start", "Trip started. Have a good one!")} disabled={lifecycleBusy}>
             {lifecycleBusy ? "Starting…" : "Start trip"}

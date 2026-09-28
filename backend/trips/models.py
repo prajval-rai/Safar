@@ -94,6 +94,19 @@ class Trip(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_trips"
     )
+    # Where the organiser was when they started the trip — the first leg of
+    # distance XP runs from here to the first stop (see rewards.services.distance_xp).
+    start_latitude = models.FloatField(null=True, blank=True)
+    start_longitude = models.FloatField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    # Completion XP actually paid per member / to the organiser. A trip the
+    # organiser finishes early pays a share of the full bonus, so undo has to
+    # know exactly what to take back.
+    completion_bonus = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    organizer_bonus = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    # True when the organiser ended the trip before every stop was done; the
+    # stops left over were marked skipped.
+    finished_early = models.BooleanField(default=False)
     # Set once the "starts tomorrow" reminder has gone out, so it's never
     # sent twice (see trips.management.commands.send_trip_reminders).
     day_before_reminder_sent = models.BooleanField(default=False)
@@ -130,7 +143,7 @@ class Trip(models.Model):
         return round(done / total * 100) if total else 0
 
     @property
-    def total_xp(self) -> int:
+    def total_xp(self):
         return (
             Activity.objects.filter(day__trip=self, status="completed").aggregate(
                 total=models.Sum("xp_value")
@@ -139,13 +152,25 @@ class Trip(models.Model):
         )
 
     @property
-    def planned_xp(self) -> int:
-        return (
-            Activity.objects.filter(day__trip=self).aggregate(total=models.Sum("xp_value"))[
-                "total"
-            ]
-            or 0
-        )
+    def start_point(self):
+        if self.start_latitude is None or self.start_longitude is None:
+            return None
+        return (self.start_latitude, self.start_longitude)
+
+    @property
+    def planned_xp(self):
+        """An estimate of the distance XP on offer: the whole route, from the
+        start point (once there is one) through every pinned stop in itinerary
+        order. What's actually paid depends on the order stops are really done."""
+        from rewards.services import route_xp
+
+        stops = Activity.objects.filter(
+            day__trip=self, latitude__isnull=False, longitude__isnull=False
+        ).exclude(status="skipped").order_by("day__index", "order", "start_time", "created_at")
+        points = [(a.latitude, a.longitude) for a in stops]
+        if self.start_point:
+            points.insert(0, self.start_point)
+        return route_xp(points)
 
     def current_day(self):
         """The day the traveller is on right now, or the first unfinished day."""
@@ -179,7 +204,7 @@ class TripMember(models.Model):
         return f"{self.user} in {self.trip}"
 
     @property
-    def xp_earned(self) -> int:
+    def xp_earned(self):
         """Everything this person earned on this trip — stops, day and trip
         bonuses, memories, check-ins — straight from their XP ledger."""
         return (
@@ -237,8 +262,11 @@ class Activity(models.Model):
     description = models.TextField(blank=True)
     notes = models.TextField(blank=True)
     cost = models.PositiveIntegerField(default=0)
-    # Set from the category on save (see rewards.services.stop_xp), never by the client.
-    xp_value = models.PositiveIntegerField(default=2)
+    # Distance XP this stop paid everyone: the leg from the previous completed
+    # stop (or the trip's start point) to here. Set on the server when the stop
+    # is completed, never by the client; 0 while it's still planned.
+    xp_value = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    leg_distance_km = models.FloatField(null=True, blank=True)
     booking_url = models.URLField(blank=True)
     order = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=12, choices=ACTIVITY_STATUS, default="planned")
@@ -275,17 +303,6 @@ class Activity(models.Model):
 
     def __str__(self) -> str:
         return self.title
-
-    def save(self, *args, **kwargs):
-        from rewards.services import stop_xp
-
-        # A finished stop keeps the value it paid out, so undo takes back exactly that.
-        if self.status != "completed":
-            self.xp_value = stop_xp(self.category)
-            fields = kwargs.get("update_fields")
-            if fields is not None and "xp_value" not in fields:
-                kwargs["update_fields"] = [*fields, "xp_value"]
-        super().save(*args, **kwargs)
 
     @property
     def trip_id_value(self):

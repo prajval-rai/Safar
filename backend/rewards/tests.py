@@ -1,6 +1,11 @@
-from django.test import TestCase
+import tempfile
+from decimal import Decimal
 
-# Create your tests here.
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from rewards.models import RewardClaim, RewardOffer
 
 
 class RewardRangeTests(TestCase):
@@ -16,10 +21,111 @@ class RewardRangeTests(TestCase):
             services.TRACK_PUBLISH_XP,
             services.TRIP_CREATE_XP,
             services.ORGANIZER_COMPLETE_BONUS,
-            *services.CATEGORY_XP.values(),
             *(row[4] for row in services.DEFAULT_ACHIEVEMENTS),
         ]
         for amount in constants:
             self.assertTrue(1 <= amount <= services.MAX_REWARD, amount)
         # The one penalty stays within the same size.
         self.assertTrue(-services.MAX_REWARD <= services.CANCEL_PENALTY < 0)
+
+
+class RewardCatalogTests(TestCase):
+    """Staff put rewards up with an image and rules; travellers claim them."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        self.staff = User.objects.create_user("staff", password="x", is_staff=True)
+        self.rich = User.objects.create_user("rich", password="x", xp=Decimal("120.50"))
+        self.poor = User.objects.create_user("poor", password="x", xp=Decimal("3.25"))
+        self.other = User.objects.create_user("other", password="x", xp=Decimal("500"))
+
+    def client_for(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def png(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        buffer = BytesIO()
+        Image.new("RGB", (4, 4), "orange").save(buffer, format="PNG")
+        return SimpleUploadedFile("reward.png", buffer.getvalue(), content_type="image/png")
+
+    def make_offer(self, **fields):
+        return RewardOffer.objects.create(
+            title=fields.pop("title", "Free chai"), xp_required=fields.pop("xp_required", 100), **fields
+        )
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_staff_upload_a_reward_with_an_image_and_rules(self):
+        response = self.client_for(self.staff).post(
+            "/api/rewards/catalog/",
+            {"title": "Trek gear voucher", "xp_required": "50.5", "max_claims": 2, "image": self.png()},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        offer = RewardOffer.objects.get()
+        self.assertEqual(offer.xp_required, Decimal("50.50"))
+        self.assertEqual(offer.max_claims, 2)
+        self.assertTrue(offer.image.name.startswith("rewards/"))
+
+    def test_travellers_cannot_create_or_change_rewards(self):
+        client = self.client_for(self.rich)
+        self.assertEqual(
+            client.post("/api/rewards/catalog/", {"title": "Hack", "xp_required": 1}).status_code, 403
+        )
+        offer = self.make_offer()
+        self.assertEqual(
+            client.patch(f"/api/rewards/catalog/{offer.id}/", {"xp_required": 0.01}).status_code, 403
+        )
+
+    def test_rules_must_make_sense(self):
+        client = self.client_for(self.staff)
+        self.assertEqual(
+            client.post("/api/rewards/catalog/", {"title": "x", "xp_required": 0, "max_claims": 1}).status_code, 400
+        )
+        self.assertEqual(
+            client.post("/api/rewards/catalog/", {"title": "x", "xp_required": 5, "max_claims": 0}).status_code, 400
+        )
+
+    def test_claiming_needs_enough_xp_and_does_not_spend_it(self):
+        offer = self.make_offer(xp_required=100)
+        blocked = self.client_for(self.poor).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("96.75 more XP", blocked.data["detail"])
+
+        ok = self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        self.assertEqual(ok.status_code, 201)
+        self.assertTrue(ok.data["claimed_by_me"])
+        self.rich.refresh_from_db()
+        self.assertEqual(self.rich.xp, Decimal("120.50"))
+
+    def test_only_as_many_people_as_the_rule_allows_and_once_each(self):
+        offer = self.make_offer(xp_required=10, max_claims=1)
+        self.assertEqual(self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/").status_code, 201)
+        again = self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        self.assertEqual(again.status_code, 400)
+        full = self.client_for(self.other).post(f"/api/rewards/catalog/{offer.id}/claim/")
+        self.assertEqual(full.status_code, 400)
+        self.assertIn("All claimed", full.data["detail"])
+        self.assertEqual(RewardClaim.objects.count(), 1)
+
+    def test_listing_shows_spots_left_and_only_staff_see_claimants(self):
+        offer = self.make_offer(xp_required=10, max_claims=3)
+        self.make_offer(title="Hidden", is_active=False)
+        self.client_for(self.rich).post(f"/api/rewards/catalog/{offer.id}/claim/")
+
+        mine = self.client_for(self.other).get("/api/rewards/catalog/").data
+        self.assertEqual([r["title"] for r in mine], ["Free chai"])
+        self.assertEqual(mine[0]["spots_left"], 2)
+        self.assertEqual(mine[0]["claimants"], [])
+        self.assertEqual(mine[0]["blocked_reason"], "")
+
+        staff = self.client_for(self.staff).get("/api/rewards/catalog/").data
+        self.assertEqual(len(staff), 2)
+        chai = next(r for r in staff if r["title"] == "Free chai")
+        self.assertEqual([c["username"] for c in chai["claimants"]], ["rich"])

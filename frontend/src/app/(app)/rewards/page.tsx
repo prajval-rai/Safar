@@ -4,20 +4,21 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { MotifDivider } from "@/components/art/Motif";
+import { RewardCatalog } from "@/components/rewards/RewardCatalog";
 import { Avatar, CartoonAvatar, Chip, ErrorNote, LoadingBlock, Progress, SegmentedControl } from "@/components/ui/Bits";
 import { Sheet } from "@/components/ui/Sheet";
 import { useApi } from "@/lib/hooks";
 import type { RewardsPayload, UserMini, XPRule } from "@/lib/types";
 import { cn, formatNumber, shortDate } from "@/lib/utils";
 
-type View = "achievements" | "activity" | "leaderboard";
+type View = "shop" | "achievements" | "activity" | "leaderboard";
 
 /**
  * Deliberately not a gaming dashboard: your level, how close the next one is,
  * what you've unlocked, and what earned you points. Nothing else.
  */
 export default function RewardsPage() {
-  const [view, setView] = useState<View>("achievements");
+  const [view, setView] = useState<View>("shop");
   const [rulesOpen, setRulesOpen] = useState(false);
   const { data, loading, error, reload } = useApi<RewardsPayload>("/api/rewards/me/");
 
@@ -70,12 +71,15 @@ export default function RewardsPage() {
           value={view}
           onChange={setView}
           options={[
+            { value: "shop", label: "Claim rewards" },
             { value: "achievements", label: "Achievements" },
             { value: "activity", label: "Recent XP" },
             { value: "leaderboard", label: "Leaderboard" },
           ]}
         />
       </div>
+
+      {view === "shop" ? <RewardCatalog myXp={user.xp} /> : null}
 
       {view === "achievements" ? (
         <ul className="grid gap-3 sm:grid-cols-2">

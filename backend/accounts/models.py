@@ -73,7 +73,8 @@ class User(AbstractUser):
     # For settling up trip expenses (name@bank). Only ever shown to people on
     # the same trip, never on a public profile.
     upi_id = models.CharField(max_length=100, blank=True)
-    xp = models.PositiveIntegerField(default=0)
+    # Two decimal places: distance XP comes in small fractions (see rewards.services.distance_xp).
+    xp = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default="saffron")
     color_mode = models.CharField(
         max_length=10,
@@ -122,7 +123,7 @@ class User(AbstractUser):
         return level_title(self.level)
 
     @property
-    def xp_into_level(self) -> int:
+    def xp_into_level(self):
         return self.xp - level_floor(self.level)
 
     @property

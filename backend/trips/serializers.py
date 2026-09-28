@@ -53,6 +53,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "notes",
             "cost",
             "xp_value",
+            "leg_distance_km",
             "booking_url",
             "order",
             "status",
@@ -65,6 +66,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "xp_value",
+            "leg_distance_km",
             "status",
             "completed_at",
             "completed_by",
@@ -103,7 +105,7 @@ class DaySerializer(serializers.ModelSerializer):
 
 class TripMemberSerializer(serializers.ModelSerializer):
     user = UserMiniSerializer(read_only=True)
-    xp_earned = serializers.IntegerField(read_only=True)
+    xp_earned = serializers.FloatField(read_only=True)
     progress_percent = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -115,7 +117,7 @@ class TripListSerializer(serializers.ModelSerializer):
     created_by = UserMiniSerializer(read_only=True)
     duration_days = serializers.IntegerField(read_only=True)
     progress_percent = serializers.IntegerField(read_only=True)
-    total_xp = serializers.IntegerField(read_only=True)
+    total_xp = serializers.FloatField(read_only=True)
     member_count = serializers.IntegerField(source="members.count", read_only=True)
     activity_count = serializers.SerializerMethodField()
     # Destination-based palette (see trips.regional_theme) — the same for
@@ -162,13 +164,14 @@ class TripListSerializer(serializers.ModelSerializer):
 class TripDetailSerializer(TripListSerializer):
     days = DaySerializer(many=True, read_only=True)
     members = TripMemberSerializer(many=True, read_only=True)
-    planned_xp = serializers.IntegerField(read_only=True)
+    planned_xp = serializers.FloatField(read_only=True)
     my_role = serializers.SerializerMethodField()
     # What leaving would cost you right now (negative XP), or null when you
     # can't leave: you're the owner, or the trip is already finished.
     leave_penalty = serializers.SerializerMethodField()
     # Completion XP held back from you until you've settled up on this trip.
     my_held_xp = serializers.SerializerMethodField()
+    can_finish = serializers.SerializerMethodField()
 
     class Meta(TripListSerializer.Meta):
         fields = TripListSerializer.Meta.fields + [
@@ -179,8 +182,21 @@ class TripDetailSerializer(TripListSerializer):
             "my_role",
             "leave_penalty",
             "my_held_xp",
+            "start_latitude",
+            "start_longitude",
+            "started_at",
+            "completion_bonus",
+            "organizer_bonus",
+            "finished_early",
+            "can_finish",
             "created_at",
         ]
+
+    def get_can_finish(self, obj) -> bool:
+        """The organiser can wrap the trip up any time after at least one stop is done."""
+        if obj.status not in ("planning", "active") or self.get_my_role(obj) not in ("owner", "admin"):
+            return False
+        return Activity.objects.filter(day__trip=obj, status="completed").exists()
 
     def get_my_role(self, obj) -> str | None:
         user = self.context["request"].user
@@ -351,7 +367,7 @@ class LiveTripSerializer(serializers.Serializer):
     completed_today = serializers.IntegerField()
     total_today = serializers.IntegerField()
     members = TripMemberSerializer(many=True)
-    my_trip_xp = serializers.IntegerField()
+    my_trip_xp = serializers.FloatField()
 
 
 class TripExperienceSerializer(serializers.ModelSerializer):

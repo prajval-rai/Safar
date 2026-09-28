@@ -203,133 +203,27 @@ class TravelMapTests(SocialTestCase):
         self.assertEqual(_stats(self.me)["areas_covered"], 3)
 
 
-class SecurityQuestionTests(SocialTestCase):
-    """Account recovery via a saved question/answer instead of email."""
+class PasswordLoginRemovedTests(SocialTestCase):
+    """Safar signs people in with Google only — there is no username/password
+    route in, and no password recovery to go with it."""
 
-    def setUp(self):
-        super().setUp()
-        # The reset endpoints are throttled by IP; start each test with a
-        # clean counter so tests can't fail each other by sharing a budget.
-        cache.clear()
-
-    def test_answers_match_regardless_of_case_or_spacing(self):
-        self.me.security_question = "pet_name"
-        self.me.set_security_answer("  Simba ")
-        self.me.save()
-        self.assertTrue(self.me.check_security_answer("simba"))
-        self.assertTrue(self.me.check_security_answer("SIMBA"))
-        self.assertFalse(self.me.check_security_answer("max"))
-
-    def test_the_raw_answer_is_never_stored(self):
-        self.me.set_security_answer("Simba")
-        self.assertNotIn("Simba", self.me.security_answer_hash)
-        self.assertNotIn("simba", self.me.security_answer_hash)
-
-    def test_setting_a_security_question_from_settings(self):
-        response = self.client_for(self.me).post(
-            "/api/auth/security-question/",
-            {"question": "pet_name", "answer": "Simba"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["has_security_question"])
-        self.assertEqual(response.data["security_question_label"], "What was the name of your first pet?")
-
-        self.me.refresh_from_db()
-        self.assertTrue(self.me.check_security_answer("simba"))
-
-    def test_signing_up_with_a_security_question(self):
-        response = APIClient().post(
-            "/api/auth/register/",
-            {
-                "username": "newbie",
-                "password": "correcthorsebattery9",
-                "display_name": "New Traveller",
-                "security_question": "birth_city",
-                "security_answer": "Pune",
-            },
-            format="json",
-        )
-        self.assertEqual(response.status_code, 201)
-        user = User.objects.get(username="newbie")
-        self.assertTrue(user.check_security_answer("pune"))
-
-    def test_signing_up_with_a_question_but_no_answer_is_rejected(self):
-        response = APIClient().post(
-            "/api/auth/register/",
-            {
-                "username": "newbie",
-                "password": "correcthorsebattery9",
-                "display_name": "New Traveller",
-                "security_question": "birth_city",
-            },
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-
-    def test_reset_lookup_does_not_reveal_whether_a_username_exists(self):
+    def test_password_endpoints_are_gone(self):
         client = APIClient()
-        # No question set for self.me at all yet.
-        no_question = client.post("/api/auth/reset/question/", {"username": "me"}, format="json")
-        unknown = client.post("/api/auth/reset/question/", {"username": "nobody-here"}, format="json")
-        self.assertEqual(no_question.data, unknown.data)
-        self.assertFalse(no_question.data["available"])
+        for path, body in [
+            ("/api/auth/register/", {"username": "newbie", "password": "correcthorsebattery9"}),
+            ("/api/auth/token/", {"username": "me", "password": "x"}),
+            ("/api/auth/reset/question/", {"username": "me"}),
+            ("/api/auth/reset/confirm/", {"username": "me", "answer": "a", "new_password": "b"}),
+        ]:
+            self.assertEqual(client.post(path, body, format="json").status_code, 404, path)
 
-    def test_reset_lookup_returns_the_question_once_set(self):
-        self.me.security_question = "favourite_food"
-        self.me.set_security_answer("Biryani")
-        self.me.save()
-        response = APIClient().post("/api/auth/reset/question/", {"username": "me"}, format="json")
-        self.assertTrue(response.data["available"])
-        self.assertEqual(response.data["question"], "What is your favourite food?")
+    def test_token_refresh_still_works_for_google_sessions(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
 
-    def test_reset_confirm_with_the_right_answer_changes_the_password(self):
-        self.me.security_question = "favourite_food"
-        self.me.set_security_answer("Biryani")
-        self.me.save()
-
-        response = APIClient().post(
-            "/api/auth/reset/confirm/",
-            {"username": "me", "answer": "biryani", "new_password": "correcthorsebattery9"},
-            format="json",
-        )
+        refresh = RefreshToken.for_user(self.me)
+        response = APIClient().post("/api/auth/token/refresh/", {"refresh": str(refresh)}, format="json")
         self.assertEqual(response.status_code, 200)
-
-        self.assertTrue(
-            APIClient()
-            .post("/api/auth/token/", {"username": "me", "password": "correcthorsebattery9"}, format="json")
-            .status_code
-            == 200
-        )
-
-    def test_reset_confirm_with_the_wrong_answer_is_rejected_and_password_unchanged(self):
-        self.me.security_question = "favourite_food"
-        self.me.set_security_answer("Biryani")
-        self.me.save()
-
-        response = APIClient().post(
-            "/api/auth/reset/confirm/",
-            {"username": "me", "answer": "pizza", "new_password": "correcthorsebattery9"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.me.refresh_from_db()
-        self.assertTrue(self.me.check_security_answer("biryani"))
-
-    def test_reset_confirm_for_an_unknown_username_gives_the_same_error_shape(self):
-        known_wrong = APIClient().post(
-            "/api/auth/reset/confirm/",
-            {"username": "bob", "answer": "whatever", "new_password": "correcthorsebattery9"},
-            format="json",
-        )
-        unknown = APIClient().post(
-            "/api/auth/reset/confirm/",
-            {"username": "nobody-here", "answer": "whatever", "new_password": "correcthorsebattery9"},
-            format="json",
-        )
-        self.assertEqual(known_wrong.status_code, 400)
-        self.assertEqual(unknown.status_code, 400)
-        self.assertEqual(known_wrong.data.keys(), unknown.data.keys())
+        self.assertIn("access", response.data)
 
 
 def google_claims(**overrides):

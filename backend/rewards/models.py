@@ -5,6 +5,7 @@ from django.db import models
 class XPTransaction(models.Model):
     KINDS = [
         ("activity", "Activity completed"),
+        ("distance", "Distance travelled"),
         ("day", "Day completed"),
         ("trip", "Trip completed"),
         ("photo", "Memory added"),
@@ -23,7 +24,7 @@ class XPTransaction(models.Model):
         on_delete=models.SET_NULL,
         related_name="xp_transactions",
     )
-    amount = models.IntegerField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
     kind = models.CharField(max_length=20, choices=KINDS, default="activity")
     reason = models.CharField(max_length=160)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -32,7 +33,7 @@ class XPTransaction(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.user} +{self.amount} ({self.reason})"
+        return f"{self.user} {self.amount:+} ({self.reason})"
 
 
 class Achievement(models.Model):
@@ -79,7 +80,7 @@ class HeldXP(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="held_xp")
     trip = models.ForeignKey("trips.Trip", on_delete=models.CASCADE, related_name="held_xp")
-    amount = models.PositiveIntegerField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
     kind = models.CharField(max_length=20, default="trip")
     reason = models.CharField(max_length=160)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -91,3 +92,44 @@ class HeldXP(models.Model):
     def __str__(self) -> str:
         state = "released" if self.released_at else "held"
         return f"{self.user} {self.amount} XP {state} ({self.reason})"
+
+
+class RewardOffer(models.Model):
+    """A real-world reward staff put up for travellers to claim — a picture,
+    how much XP you need to have earned, and how many people can claim it.
+    Claiming doesn't spend XP; it's a threshold, like an achievement."""
+
+    title = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    image = models.ImageField(upload_to="rewards/", null=True, blank=True)
+    xp_required = models.DecimalField(max_digits=10, decimal_places=2)
+    # How many people can claim it in total; once it's gone, it's gone.
+    max_claims = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["xp_required", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.xp_required} XP)"
+
+
+class RewardClaim(models.Model):
+    reward = models.ForeignKey(RewardOffer, on_delete=models.CASCADE, related_name="claims")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reward_claims"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["reward", "user"], name="one_claim_per_person"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} claimed {self.reward}"

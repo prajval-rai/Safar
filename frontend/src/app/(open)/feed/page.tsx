@@ -56,7 +56,7 @@ export default function FeedPage() {
             <b className="text-ink">Travelling somewhere?</b> Join Safar to plan trips with your people and share
             your own stories.
           </p>
-          <ButtonLink href="/signup" size="sm">
+          <ButtonLink href="/login" size="sm">
             Join Safar
           </ButtonLink>
         </section>

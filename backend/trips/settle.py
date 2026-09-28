@@ -68,11 +68,12 @@ def owes_money(balances: list[dict], user) -> bool:
     return any(b["user"].id == user.id and b["balance"] <= -1 for b in balances)
 
 
-def award_or_hold(trip, user, amount: int, reason: str, balances: list[dict]) -> int:
+def award_or_hold(trip, user, amount, reason: str, balances: list[dict]):
     """Completion XP: paid now if `user` doesn't owe anything, otherwise held
     until they settle. Returns what was paid now."""
-    from rewards.services import award_xp, hold_xp
+    from rewards.services import as_xp, award_xp, hold_xp
 
+    amount = as_xp(amount)
     if owes_money(balances, user):
         hold_xp(user, amount, reason, kind="trip", trip=trip)
         return 0
@@ -80,12 +81,15 @@ def award_or_hold(trip, user, amount: int, reason: str, balances: list[dict]) ->
     return amount
 
 
-def take_back(trip, user, amount: int, reason: str) -> None:
+def take_back(trip, user, amount, reason: str) -> None:
     """Undo a completion reward: drop it if it was still held, otherwise
     deduct it like any other reversal."""
     from rewards.models import HeldXP
-    from rewards.services import award_xp
+    from rewards.services import as_xp, award_xp
 
+    amount = as_xp(amount)
+    if not amount:
+        return
     held = HeldXP.objects.filter(user=user, trip=trip, released_at=None, amount=amount).first()
     if held:
         held.delete()
@@ -98,7 +102,7 @@ def release_if_settled(trip) -> None:
     held XP for anyone who no longer owes anything on this trip."""
     from notifications.services import notify
     from rewards.models import HeldXP
-    from rewards.services import release_held_xp
+    from rewards.services import format_xp, release_held_xp
 
     from .views import trip_expense_balances
 
@@ -114,7 +118,7 @@ def release_if_settled(trip) -> None:
             notify(
                 user,
                 "xp_released",
-                f"+{released} XP unlocked for {trip.title}",
+                f"+{format_xp(released)} XP unlocked for {trip.title}",
                 body="You're all settled up — your trip-completion XP is yours.",
                 trip=trip,
             )

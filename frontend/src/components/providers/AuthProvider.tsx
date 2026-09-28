@@ -18,7 +18,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/forgot-password"];
+const PUBLIC_ROUTES = ["/login"];
 // Open to everyone, signed in or not — an invite link, the Feed, or a shared
 // story someone opens before they have an account.
 const OPEN_ROUTE_PREFIXES = ["/join/", "/feed", "/p/"];

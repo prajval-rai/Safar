@@ -201,10 +201,10 @@ function JoinBar({ trip, signedIn }: { trip: InvitePreview; signedIn: boolean })
     }
   }
 
-  function goSignIn(path: "/login" | "/signup") {
+  function goSignIn() {
     // Come back to this invitation (not Home) once they're signed in.
     rememberReturnPath(here);
-    router.push(path);
+    router.push("/login");
   }
 
   let action: React.ReactNode;
@@ -228,14 +228,9 @@ function JoinBar({ trip, signedIn }: { trip: InvitePreview; signedIn: boolean })
     );
   } else {
     action = (
-      <div className="grid grid-cols-2 gap-2">
-        <Button size="lg" variant="secondary" onClick={() => goSignIn("/login")}>
-          Log in to join
-        </Button>
-        <Button size="lg" onClick={() => goSignIn("/signup")}>
-          Sign up &amp; join
-        </Button>
-      </div>
+      <Button size="lg" fullWidth onClick={goSignIn}>
+        Continue with Google to join
+      </Button>
     );
   }
 

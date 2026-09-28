@@ -107,6 +107,11 @@ AUTH_USER_MODEL = "accounts.User"
 # Without it, "Sign in with Google" is simply switched off (see accounts.views).
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
+# Distance XP (see rewards.services.distance_xp): XP per km travelled between
+# stops, and the most a single leg can pay. 0.01/km means 1000 km = 10 XP.
+DISTANCE_XP_PER_KM = os.environ.get("DISTANCE_XP_PER_KM", "0.01")
+DISTANCE_XP_LEG_CAP = os.environ.get("DISTANCE_XP_LEG_CAP", "10")
+
 # Web Push (real, lock-screen-capable notifications, delivered even with the
 # site closed — not the in-app bell, which is unrelated and always on).
 # VAPID_PRIVATE_KEY never leaves the server; VAPID_PUBLIC_KEY is also handed
@@ -153,12 +158,12 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    # XP is a 2-decimal amount; send it as a JSON number, not a string.
+    "COERCE_DECIMAL_TO_STRING": False,
     # Scoped limits for the unauthenticated endpoints, which is what actually
-    # stops machine-guessing: forgot-password (usernames/answers, see
-    # accounts.views.ResetAttemptThrottle) and the public invite preview
-    # (invite codes, see trips.views.InvitePreviewThrottle).
+    # stops machine-guessing: the public invite preview (invite codes, see
+    # trips.views.InvitePreviewThrottle).
     "DEFAULT_THROTTLE_RATES": {
-        "password_reset": "10/hour",
         "invite_preview": "60/hour",
         # Song search for trip soundtracks — generous, but stops runaway loops.
         "music_search": "300/hour",

@@ -88,7 +88,7 @@ async function refreshAccessToken(): Promise<string | null> {
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
-  /** Skip attaching the bearer token — for login/register. */
+  /** Skip attaching the bearer token — for Google sign-in. */
   anonymous?: boolean;
 }
 

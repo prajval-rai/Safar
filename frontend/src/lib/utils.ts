@@ -34,7 +34,8 @@ export function rupees(amount: number): string {
 }
 
 export function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-IN").format(value || 0);
+  // XP comes in 2-decimal amounts (distance XP), so never show more than that.
+  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value || 0);
 }
 
 /** "12 Nov" or "12 Nov 2026" when the year isn't the current one. */
@@ -221,4 +222,17 @@ export function daysBetween(start: string, end: string): number {
   const a = new Date(`${start}T00:00:00`).getTime();
   const b = new Date(`${end}T00:00:00`).getTime();
   return Math.round((b - a) / 86_400_000) + 1;
+}
+
+/** "850 m" or "412.3 km". */
+export function distanceLabel(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${formatNumber(Math.round(km * 10) / 10)} km`;
+}
+
+/** What a stop is worth: stops earn distance XP — the leg travelled to reach
+ *  them — so the amount is only known once the stop is completed. */
+export function stopXpLabel(activity: { status: string; xp_value: number; leg_distance_km: number | null }): string {
+  if (activity.status !== "completed") return "Distance XP";
+  const xp = `+${formatNumber(activity.xp_value)} XP`;
+  return activity.leg_distance_km != null ? `${xp} · ${distanceLabel(activity.leg_distance_km)}` : xp;
 }

@@ -8,9 +8,9 @@ import type { User } from "@/lib/types";
 
 /**
  * Google's own rendered button — Google, not us, draws it, so it always
- * matches whatever "Sign in with Google" is supposed to look like. Renders
- * nothing at all when NEXT_PUBLIC_GOOGLE_CLIENT_ID isn't set, so local dev
- * without it configured just quietly has one less option, not a broken one.
+ * matches whatever "Sign in with Google" is supposed to look like. It's the
+ * only way into Safar. Renders nothing when NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ * isn't set (the login page explains that instead).
  */
 export function GoogleSignInButton({
   onSignedIn,
@@ -59,8 +59,7 @@ export function GoogleSignInButton({
         setReady(true);
       })
       .catch(() => {
-        // No network, blocked script, etc. — the rest of the form (username
-        // + password) still works, so this fails silently rather than
+        // No network, blocked script, etc. — fails silently rather than
         // showing an error for a button nobody tried to use yet.
       });
 
@@ -73,12 +72,7 @@ export function GoogleSignInButton({
 
   return (
     <div className="mt-6">
-      <div className="flex items-center gap-3 text-xs font-semibold text-muted" role="separator">
-        <span className="h-px flex-1 bg-line" aria-hidden="true" />
-        or
-        <span className="h-px flex-1 bg-line" aria-hidden="true" />
-      </div>
-      <div className="mt-4 flex justify-center">
+      <div className="flex justify-center">
         {!ready ? <div className="h-11 w-full max-w-[320px] animate-pulse rounded-full bg-raised" /> : null}
         <div ref={buttonRef} className={ready ? "" : "hidden"} />
       </div>

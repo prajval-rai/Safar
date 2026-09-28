@@ -36,13 +36,15 @@ npm run dev
 
 Open <http://localhost:3000>.
 
-### Demo logins
+### Signing in
 
-| Username   | Password    | What they show                                |
-| ---------- | ----------- | --------------------------------------------- |
-| `prajwal`  | `safar1234` | A live trip, an upcoming one, a finished one  |
-| `rahul`    | `safar1234` | A fellow traveller on the same trips          |
-| `admin`    | `safar1234` | Django admin at <http://localhost:8000/admin> |
+Safar signs people in with **Google only** — there is no username/password
+login. Set `GOOGLE_CLIENT_ID` on the backend and `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+(web) / `EXPO_PUBLIC_GOOGLE_CLIENT_ID` (mobile) to the same OAuth client. The
+seeded demo travellers still exist for data, but you sign in as yourself; the
+`admin` superuser (password `safar1234`) is only for the Django admin at
+<http://localhost:8000/admin>. Give a Google account `is_staff` there to let it
+manage the reward catalog.
 
 The seeded **Jaipur Weekend** is happening *today*, so Live Trip mode has real
 data in it straight away.
@@ -196,14 +198,15 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 
 | Endpoint | What it does |
 | --- | --- |
-| `POST /api/auth/register/`, `POST /api/auth/token/` | Sign up, log in |
+| `POST /api/auth/google/`, `POST /api/auth/token/refresh/` | Sign in with Google (creates the account the first time), refresh the session |
 | `GET/PATCH /api/auth/me/` | Profile, including saved theme |
 | `GET /api/home/` | Everything the Home screen needs, in one request |
 | `GET/POST /api/trips/`, `GET/PATCH/DELETE /api/trips/{id}/` | Trips |
 | `POST /api/trips/{id}/generate-plan/` | Fill a day (or all of them) with a suggested plan |
 | `GET /api/trips/{id}/live/` | NOW / NEXT / TODAY / group, for Live Trip mode |
 | `GET /api/trips/{id}/summary/` | The trip completion screen |
-| `POST /api/trips/{id}/start/`, `/cancel/`, `/reopen/` | Trip status |
+| `POST /api/trips/{id}/start/`, `/cancel/`, `/reopen/` | Trip status — `start` takes the organiser's `latitude`/`longitude` as the distance-XP start point |
+| `POST /api/trips/{id}/finish/` | Organiser ends the trip early (after at least one stop); the rest are skipped and completion bonuses are paid pro rata |
 | `GET/POST /api/trips/{id}/experience/` | Your write-up of a finished trip |
 | `GET/POST /api/trips/{id}/expenses/`, `/checklist/`, `/memories/`, `/chat/`, `/members/` | The advanced sections |
 | `POST /api/trips/join/` | Join with an invite code |
@@ -211,6 +214,7 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 | `GET /api/explore/tracks/`, `POST .../{id}/like/`, `/save/`, `/use/` | Explore |
 | `POST /api/explore/tracks/from-trip/` | Publish a finished trip as a track |
 | `GET /api/rewards/me/`, `/leaderboard/` | XP, achievements, levels |
+| `GET/POST /api/rewards/catalog/`, `PATCH/DELETE .../{id}/`, `POST .../{id}/claim/` | Reward catalog: staff upload a reward image with the XP needed and how many people can claim it; travellers claim once (XP isn't spent) |
 
 Actions that earn XP return a common shape — the new user totals, `xp_awarded`,
 `day_completed`, `trip_completed` and any `unlocked` achievements — so the UI knows
@@ -223,9 +227,9 @@ Defined in one place, `backend/rewards/services.py`:
 | Action | XP |
 | --- | --- |
 | Plan a trip | +2 (organiser) |
-| Complete a stop (everyone on the trip) | 1–5 by category: adventure 5, sightseeing/nature 4, event/travel 3, food/shopping 2, stay/rest 1 |
+| Complete a stop (everyone on the trip) | Distance XP for the leg travelled to reach it — start point → first stop, then stop → stop: 0.01 XP/km (1000 km = 10 XP, 2 km = 0.02 XP), at most 10 per leg. Tune with `DISTANCE_XP_PER_KM` / `DISTANCE_XP_LEG_CAP` |
 | Finish every stop in a day (everyone) | +5 |
-| Finish the trip (everyone) | +10, and +10 more for the organiser |
+| Finish the trip (everyone) | +10, and +10 more for the organiser — or, if the organiser finishes early, that share of it (e.g. 1 of 3 stops done = 3.33) |
 | Write about a finished trip (shared to the Feed) | +10 |
 | Check in at a place | +1 |
 | Add a memory | +1 |
@@ -236,7 +240,7 @@ Defined in one place, `backend/rewards/services.py`:
 
 **Settle up to unlock:** if you still owe money on a trip when it finishes, its completion XP (and the organiser bonus) is held until you've paid back what you owe and it's confirmed; stop and day XP isn't affected.
 
-Every reward is between 1 and 10 XP. A stop's XP is set by the server from its category; clients can't set it. Levels get
+XP is kept to two decimal places, and no single reward is over 10 XP. A stop's XP is set by the server from the distance travelled; clients can't set it. Levels get
 steeper: moving from level *L* to *L+1* costs `25 × L × (L+1)` XP — 50, 150, 300, 500… —
 so level 3 takes about three trips and level 8 about 4,200 XP.
 

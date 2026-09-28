@@ -142,3 +142,13 @@ export const COVER_EMOJI: Record<string, string> = {
   city: '🏙️',
   road: '🛣️',
 };
+
+/** What a stop is worth: stops earn distance XP — the leg travelled to reach
+ *  them — so the amount is only known once the stop is completed. */
+export function stopXpLabel(activity: { status: string; xp_value: number; leg_distance_km: number | null }): string {
+  if (activity.status !== 'completed') return 'Distance XP';
+  const xp = `+${Number(activity.xp_value).toLocaleString('en-IN', { maximumFractionDigits: 2 })} XP`;
+  if (activity.leg_distance_km == null) return xp;
+  const km = activity.leg_distance_km;
+  return `${xp} · ${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`}`;
+}

@@ -12,9 +12,9 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  function go(path: "/login" | "/signup") {
+  function signIn() {
     rememberReturnPath(pathname);
-    router.push(path);
+    router.push("/login");
   }
 
   return (
@@ -28,11 +28,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
             SAFAR
           </Link>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => go("/login")}>
-              Log in
-            </Button>
-            <Button size="sm" onClick={() => go("/signup")}>
-              Sign up
+            <Button size="sm" onClick={signIn}>
+              Continue with Google
             </Button>
           </div>
         </div>

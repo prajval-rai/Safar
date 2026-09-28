@@ -9,11 +9,10 @@ import { PushToggle } from "@/components/settings/PushToggle";
 import { ProfileExtras } from "@/components/social/TravelProfile";
 import { Avatar, Chip, Progress } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
-import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
+import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
-import { useApi } from "@/lib/hooks";
-import type { SecurityQuestion, User } from "@/lib/types";
+import type { User } from "@/lib/types";
 import { formatNumber, shortDate } from "@/lib/utils";
 
 const AVATARS = ["🧳", "🏍️", "📸", "⛰️", "🌴", "🍛", "🚂", "🪂", "🧭", "🎒", "🛺", "🏕️"];
@@ -21,7 +20,6 @@ const AVATARS = ["🧳", "🏍️", "📸", "⛰️", "🌴", "🍛", "🚂", "�
 export default function ProfilePage() {
   const { user, setUser, signOut } = useAuth();
   const [editing, setEditing] = useState(false);
-  const [securityOpen, setSecurityOpen] = useState(false);
 
   if (!user) return null;
 
@@ -89,28 +87,6 @@ export default function ProfilePage() {
       </section>
 
       <section className="card p-5">
-        <h2 className="text-lg font-bold text-ink">Account recovery</h2>
-        <p className="mt-1 text-sm text-muted">
-          No email on file, so this is how you&apos;d get back in if you ever forget your password.
-        </p>
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-raised p-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink">
-              {user.has_security_question ? "Recovery question set" : "No recovery question yet"}
-            </p>
-            <p className="truncate text-xs text-muted">
-              {user.has_security_question
-                ? user.security_question_label
-                : "Set one so you can reset your password without an email."}
-            </p>
-          </div>
-          <Button variant="secondary" size="sm" onClick={() => setSecurityOpen(true)}>
-            {user.has_security_question ? "Change" : "Set up"}
-          </Button>
-        </div>
-      </section>
-
-      <section className="card p-5">
         <h2 className="text-lg font-bold text-ink">Notifications</h2>
         <p className="mt-1 text-sm text-muted">
           The bell icon always works. Turn this on for a real alert on this device — trip
@@ -128,15 +104,6 @@ export default function ProfilePage() {
         onSaved={(updated) => {
           setUser(updated);
           setEditing(false);
-        }}
-      />
-
-      <SecurityQuestionSheet
-        open={securityOpen}
-        onClose={() => setSecurityOpen(false)}
-        onSaved={(updated) => {
-          setUser(updated);
-          setSecurityOpen(false);
         }}
       />
     </div>
@@ -241,77 +208,6 @@ function EditProfileSheet({
             ))}
           </div>
         </fieldset>
-      </div>
-    </Sheet>
-  );
-}
-
-function SecurityQuestionSheet({
-  open,
-  onClose,
-  onSaved,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSaved: (user: User) => void;
-}) {
-  const { data: questions } = useApi<SecurityQuestion[]>("/api/auth/security-questions/");
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const { toast } = useCelebration();
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      const updated = await api.post<User>("/api/auth/security-question/", { question, answer });
-      toast("Recovery question saved.");
-      onSaved(updated);
-      setQuestion("");
-      setAnswer("");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't save that.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="Set your recovery question"
-      description="Used only to verify it's you if you ever forget your password."
-      footer={
-        <Button fullWidth size="lg" onClick={save} disabled={busy || !question || answer.trim().length < 2}>
-          {busy ? "Saving…" : "Save"}
-        </Button>
-      }
-    >
-      <div className="space-y-4">
-        {error ? (
-          <p role="alert" className="rounded-xl bg-danger-soft px-3.5 py-2.5 text-sm font-medium text-danger">
-            {error}
-          </p>
-        ) : null}
-        <SelectField
-          label="Question"
-          data-autofocus
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          options={[
-            { value: "", label: "Choose a question…" },
-            ...(questions ?? []).map((q) => ({ value: q.value, label: q.label })),
-          ]}
-        />
-        <TextField
-          label="Your answer"
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          hint="Case doesn't matter — just remember it the way you type it here."
-        />
       </div>
     </Sheet>
   );

@@ -51,9 +51,8 @@ export interface User extends UserMini {
   theme: ThemeId;
   color_mode: ColorMode;
   date_joined: string;
-  /** Whether a recovery question is set — never the question code or answer. */
-  has_security_question: boolean;
-  security_question_label: string;
+  /** Staff can put rewards up in the Rewards catalog. */
+  is_staff: boolean;
 }
 
 export type ActivityStatus = "planned" | "completed" | "skipped";
@@ -87,7 +86,10 @@ export interface Activity {
   description: string;
   notes: string;
   cost: number;
+  /** Distance XP this stop paid (2 decimals); 0 until it's completed. */
   xp_value: number;
+  /** Km travelled to reach it — from the previous stop or the trip's start point. */
+  leg_distance_km: number | null;
   booking_url: string;
   order: number;
   status: ActivityStatus;
@@ -166,6 +168,16 @@ export interface TripDetail extends Trip {
   leave_penalty: number | null;
   /** Completion XP held back from you until you've settled up on this trip. */
   my_held_xp: number;
+  /** Where the organiser started the trip — the first distance-XP leg begins here. */
+  start_latitude: number | null;
+  start_longitude: number | null;
+  started_at: string | null;
+  completion_bonus: number;
+  organizer_bonus: number;
+  /** The organiser ended it before every stop was done. */
+  finished_early: boolean;
+  /** You're the organiser and at least one stop is done, so you can wrap it up. */
+  can_finish: boolean;
   created_at: string;
 }
 
@@ -398,6 +410,9 @@ export interface XPResult {
   duplicate_photo?: boolean;
   unlocked?: { title: string; icon: string }[];
   activity?: Activity;
+  /** From finishing a trip early. */
+  stops_done?: number;
+  stops_total?: number;
 }
 
 export interface Destination {
@@ -474,10 +489,24 @@ export interface PickedPlace {
   photo_url?: string | null;
 }
 
-/** One option in the fixed catalog for account-recovery questions. */
-export interface SecurityQuestion {
-  value: string;
-  label: string;
+/** A reward staff put up — claim it once you have `xp_required` XP (not spent). */
+export interface RewardOffer {
+  id: number;
+  title: string;
+  description: string;
+  image: string | null;
+  xp_required: number;
+  /** How many people can claim it in total. */
+  max_claims: number;
+  is_active: boolean;
+  claimed_count: number;
+  spots_left: number;
+  claimed_by_me: boolean;
+  /** Why you can't claim it right now, or "" when you can. */
+  blocked_reason: string;
+  /** Who claimed it — only filled in for staff. */
+  claimants: (UserMini & { claimed_at: string })[];
+  created_at: string;
 }
 
 /** Someone in a followers / following list, or a search result. */

@@ -130,49 +130,8 @@ export function rows<T>(payload: Paginated<T> | T[] | undefined): T[] {
   return Array.isArray(payload) ? payload : payload.results;
 }
 
-export async function login(username: string, password: string): Promise<User> {
-  const res = await fetch(`${API_BASE}/api/auth/token/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new ApiError(
-      res.status === 401
-        ? "That username and password didn't match."
-        : friendlyMessage(data, res.status),
-      res.status,
-      data,
-    );
-  }
-  tokens.set(data.access, data.refresh);
-  return api.get<User>("/api/auth/me/");
-}
-
-export async function signup(payload: {
-  username: string;
-  password: string;
-  display_name: string;
-  email?: string;
-  home_city?: string;
-  avatar_emoji?: string;
-  security_question?: string;
-  security_answer?: string;
-}): Promise<User> {
-  const res = await fetch(`${API_BASE}/api/auth/register/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
-  tokens.set(data.access, data.refresh);
-  return data.user as User;
-}
-
-/** One button for both signup and login — the backend decides which one this
- *  Google account needs and returns the same shape either way. */
+/** The only way in: one button for both signup and login — the backend
+ *  decides which one this Google account needs and returns the same shape. */
 export async function loginWithGoogle(credential: string): Promise<User> {
   const res = await fetch(`${API_BASE}/api/auth/google/`, {
     method: "POST",
@@ -183,36 +142,4 @@ export async function loginWithGoogle(credential: string): Promise<User> {
   if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
   tokens.set(data.access, data.refresh);
   return data.user as User;
-}
-
-/**
- * The forgot-password flow — both steps are unauthenticated by nature (that's
- * the whole point), so these go straight through `fetch` rather than `api.*`,
- * same as `login`/`signup` above.
- */
-export async function fetchResetQuestion(
-  username: string,
-): Promise<{ available: boolean; question?: string }> {
-  const res = await fetch(`${API_BASE}/api/auth/reset/question/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username }),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
-  return data;
-}
-
-export async function confirmPasswordReset(payload: {
-  username: string;
-  answer: string;
-  new_password: string;
-}): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/auth/reset/confirm/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
 }

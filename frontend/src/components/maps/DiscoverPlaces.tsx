@@ -251,7 +251,7 @@ function PlaceCard({
       <div className="mt-auto flex items-center gap-2 pt-1">
         {addedInfo ? (
           <>
-            <span className="flex flex-1 items-center gap-1.5 text-sm font-semibold text-success">
+            <span className="flex flex-1 items-center gap-1.5 text-sm f ont-semibold text-success">
               <Check size={16} aria-hidden="true" /> Added · Day {addedInfo.dayIndex}
             </span>
             {canAdd ? (

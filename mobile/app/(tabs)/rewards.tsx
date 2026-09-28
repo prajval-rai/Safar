@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { RewardCatalog } from '@/components/RewardCatalog';
 import { EmptyState, ErrorState, Loading } from '@/components/ScreenState';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -9,8 +10,9 @@ import { shortDate } from '@/lib/format';
 import type { Achievement, LeaderboardRow, RewardsMe } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
-type RewardsView = 'achievements' | 'activity' | 'leaderboard';
+type RewardsView = 'shop' | 'achievements' | 'activity' | 'leaderboard';
 const VIEWS: { value: RewardsView; label: string }[] = [
+  { value: 'shop', label: 'Claim' },
   { value: 'achievements', label: 'Achievements' },
   { value: 'activity', label: 'Recent XP' },
   { value: 'leaderboard', label: 'Leaderboard' },
@@ -18,7 +20,7 @@ const VIEWS: { value: RewardsView; label: string }[] = [
 
 export default function RewardsScreen() {
   const colors = Colors[useColorScheme()];
-  const [view, setView] = useState<RewardsView>('achievements');
+  const [view, setView] = useState<RewardsView>('shop');
   const { data, loading, refreshing, error, refresh } = useFetch<RewardsMe>('/api/rewards/me/');
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
@@ -66,6 +68,8 @@ export default function RewardsScreen() {
           );
         })}
       </View>
+
+      {view === 'shop' ? <RewardCatalog myXp={user.xp} colors={colors} /> : null}
 
       {view === 'achievements' ? (
         data.achievements.map((a) => <AchievementRow key={a.code} achievement={a} colors={colors} />)

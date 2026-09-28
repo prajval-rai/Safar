@@ -7,16 +7,8 @@ interface AuthState {
   /** undefined while the stored session is still being checked, null once we know
    *  there isn't one. */
   user: User | undefined | null;
-  login: (username: string, password: string) => Promise<void>;
+  /** Google is the only way in — for new and returning travellers alike. */
   loginWithGoogle: (idToken: string) => Promise<void>;
-  register: (fields: {
-    username: string;
-    password: string;
-    email?: string;
-    display_name?: string;
-    home_city?: string;
-    avatar_emoji?: string;
-  }) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -74,30 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       user,
-      async login(username, password) {
-        const tokens = await api<{ access: string; refresh: string }>("/api/auth/token/", {
-          method: "POST",
-          body: { username, password },
-          anonymous: true,
-        });
-        await setTokens(tokens);
-        await loadUser();
-      },
       async loginWithGoogle(idToken) {
         // Same endpoint the web app's Google button posts to — one account,
-        // whichever way someone signs in with it.
+        // on either app.
         const data = await api<{ user: User; access: string; refresh: string }>("/api/auth/google/", {
           method: "POST",
           body: { credential: idToken },
-          anonymous: true,
-        });
-        await setTokens({ access: data.access, refresh: data.refresh });
-        setUser(data.user);
-      },
-      async register(fields) {
-        const data = await api<{ user: User; access: string; refresh: string }>("/api/auth/register/", {
-          method: "POST",
-          body: fields,
           anonymous: true,
         });
         await setTokens({ access: data.access, refresh: data.refresh });

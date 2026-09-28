@@ -29,6 +29,7 @@ import {
   mapsLink,
   rupees,
   shortDate,
+  stopXpLabel,
   timeWindow,
 } from "@/lib/utils";
 
@@ -324,7 +325,7 @@ function ActivityRow({
                 {[
                   activity.place_name,
                   activity.start_time ? clockTime(activity.start_time) : null,
-                  `+${activity.xp_value} XP`,
+                  stopXpLabel(activity),
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -554,7 +555,7 @@ function ActivityDetailSheet({
 
         <dl className="grid grid-cols-2 gap-3">
           <Detail label="When" value={timeWindow(activity)} />
-          <Detail label="Worth" value={`+${activity.xp_value} XP`} />
+          <Detail label="Worth" value={stopXpLabel(activity)} />
           {activity.place_name ? <Detail label="Where" value={activity.place_address || activity.place_name} /> : null}
           {activity.place_rating ? <Detail label="Google rating" value={`${activity.place_rating.toFixed(1)} / 5`} /> : null}
           {activity.cost ? <Detail label="Roughly" value={rupees(activity.cost)} /> : null}

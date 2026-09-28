@@ -1,11 +1,15 @@
 """XP and achievement rules live here so every endpoint awards points the same way."""
 
+from decimal import ROUND_HALF_UP, Decimal
+
+from django.conf import settings
 from django.db import models, transaction
 
 from .models import Achievement, UserAchievement, XPTransaction
 
-# XP is deliberately scarce: every single reward is between 1 and 10 XP
-# (MAX_REWARD), so a high level actually says something about how much you travel.
+# XP is deliberately scarce: every single reward is at most 10 XP (MAX_REWARD),
+# and distance XP comes in fractions, so a high level actually says something
+# about how much you travel.
 MAX_REWARD = 10
 DAY_COMPLETE_BONUS = 5
 TRIP_COMPLETE_BONUS = 10
@@ -36,23 +40,51 @@ def leave_penalty(trip) -> int:
         return LEAVE_PENALTY_PLANNING
     return 0
 
-# What a stop is worth, by the kind of stop. Effortful, out-of-the-way things
-# are worth more than eating or resting. Set on the server, never by the client.
-CATEGORY_XP = {
-    "adventure": 5,
-    "sightseeing": 4,
-    "nature": 4,
-    "event": 3,
-    "travel": 3,
-    "shopping": 2,
-    "food": 2,
-    "stay": 1,
-    "rest": 1,
-}
+# --- Distance XP --------------------------------------------------------------
+# A stop is worth the distance travelled to reach it: from the trip's start
+# point to the first stop, then from each stop to the next. XP is kept to two
+# decimal places, and it's small on purpose — at the default 0.01 XP per km,
+# 1000 km is 10 XP and 2 km is 0.02 XP. One leg can never pay more than
+# DISTANCE_XP_LEG_CAP, so a flight across the country isn't a jackpot.
+TWO_PLACES = Decimal("0.01")
+DISTANCE_XP_PER_KM = Decimal(str(getattr(settings, "DISTANCE_XP_PER_KM", "0.01")))
+DISTANCE_XP_LEG_CAP = Decimal(str(getattr(settings, "DISTANCE_XP_LEG_CAP", "10")))
 
 
-def stop_xp(category: str) -> int:
-    return CATEGORY_XP.get(category, 2)
+def as_xp(value) -> Decimal:
+    """Any number as an XP amount: a Decimal rounded to two places."""
+    return Decimal(str(value or 0)).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+
+
+def format_xp(value) -> str:
+    """10.00 → "10", 0.50 → "0.5", 2.25 → "2.25" — for messages people read."""
+    text = f"{as_xp(value):f}"
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def distance_xp(km) -> Decimal:
+    """XP for travelling `km` kilometres in one leg."""
+    if not km or km <= 0:
+        return Decimal("0.00")
+    return min(DISTANCE_XP_LEG_CAP, as_xp(Decimal(str(km)) * DISTANCE_XP_PER_KM))
+
+
+def route_xp(points) -> Decimal:
+    """Distance XP for a route through (lat, lng) points, leg by leg."""
+    from trips.geo import haversine_km
+
+    total = Decimal("0.00")
+    for (lat1, lng1), (lat2, lng2) in zip(points, points[1:]):
+        total += distance_xp(haversine_km(lat1, lng1, lat2, lng2))
+    return total
+
+
+def completion_share(done: int, total: int) -> Decimal:
+    """What fraction of a trip was actually done — a trip the organiser
+    finishes early pays that share of the completion bonuses."""
+    if not total:
+        return Decimal("1")
+    return Decimal(done) / Decimal(total)
 
 
 # The rulebook behind every number above, in the order they'd apply across a
@@ -66,10 +98,12 @@ XP_RULES = [
     },
     {
         "icon": "📍",
-        "title": "Complete a stop",
+        "title": "Travel the distance",
         "detail": (
-            "1–5 XP for everyone on the trip when the organiser marks a stop done at the place. "
-            "Adventures and sightseeing are worth the most; meals and rest the least."
+            f"{format_xp(DISTANCE_XP_PER_KM)} XP per km for everyone on the trip, counted leg by leg: "
+            "from where the trip was started to the first stop, then from each stop to the next. "
+            f"1000 km is {format_xp(distance_xp(1000))} XP, 2 km is {format_xp(distance_xp(2))} XP; "
+            f"one leg pays at most {format_xp(DISTANCE_XP_LEG_CAP)} XP."
         ),
     },
     {
@@ -93,7 +127,11 @@ XP_RULES = [
     {
         "icon": "🏁",
         "title": "Complete the whole trip",
-        "detail": f"+{TRIP_COMPLETE_BONUS} XP for everyone on the trip once its last stop is done.",
+        "detail": (
+            f"+{TRIP_COMPLETE_BONUS} XP for everyone on the trip once its last stop is done. "
+            "The organiser can also finish a trip early once one stop is done — then everyone "
+            "gets the share of the bonus that matches the share of stops completed."
+        ),
     },
     {
         "icon": "👑",
@@ -150,8 +188,9 @@ XP_RULES = [
 
 
 @transaction.atomic
-def award_xp(user, amount: int, reason: str, kind: str = "activity", trip=None):
+def award_xp(user, amount, reason: str, kind: str = "activity", trip=None):
     """Record an XP transaction and keep the denormalised user total in sync."""
+    amount = as_xp(amount)
     if not amount:
         return None
     txn = XPTransaction.objects.create(
@@ -162,15 +201,18 @@ def award_xp(user, amount: int, reason: str, kind: str = "activity", trip=None):
     return txn
 
 
-def hold_xp(user, amount: int, reason: str, kind: str = "trip", trip=None):
+def hold_xp(user, amount, reason: str, kind: str = "trip", trip=None):
     """Keep XP back instead of paying it (see HeldXP)."""
     from .models import HeldXP
 
+    amount = as_xp(amount)
+    if not amount:
+        return None
     return HeldXP.objects.create(user=user, trip=trip, amount=amount, kind=kind, reason=reason)
 
 
 @transaction.atomic
-def release_held_xp(user, trip) -> int:
+def release_held_xp(user, trip):
     """Pay out everything held for `user` on `trip`. Returns the XP released."""
     from django.utils import timezone
 
@@ -185,7 +227,7 @@ def release_held_xp(user, trip) -> int:
     return total
 
 
-def held_xp_total(user, trip) -> int:
+def held_xp_total(user, trip):
     from .models import HeldXP
 
     return (

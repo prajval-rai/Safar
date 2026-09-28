@@ -13,7 +13,7 @@ import { useApi } from "@/lib/hooks";
 import { OfflineQueuedError } from "@/lib/offlineQueue";
 import { useTripTheme } from "@/lib/tripTheme";
 import type { Activity, LiveTrip } from "@/lib/types";
-import { CATEGORY_ICONS, clockTime, formatNumber, mapsLink, timeWindow } from "@/lib/utils";
+import { CATEGORY_ICONS, clockTime, formatNumber, mapsLink, stopXpLabel, timeWindow } from "@/lib/utils";
 
 /**
  * Live Trip mode. While someone is actually out travelling they should see four
@@ -111,7 +111,7 @@ export default function LiveTripPage() {
                   {next.place_name ? ` · ${next.place_name}` : ""}
                 </p>
               </div>
-              <Chip tone="brand">+{next.xp_value} XP</Chip>
+              <Chip tone="brand">{stopXpLabel(next)}</Chip>
             </div>
           </section>
         ) : null}
@@ -231,7 +231,7 @@ function NowCard({
         <h2 id="now-heading" className="text-xs font-bold tracking-wide text-brand uppercase">
           <span aria-hidden="true">●</span> Now
         </h2>
-        <Chip tone="brand">+{activity.xp_value} XP</Chip>
+        <Chip tone="brand">{stopXpLabel(activity)}</Chip>
       </div>
 
       <p className="mt-3 text-2xl font-extrabold text-ink">

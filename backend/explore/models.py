@@ -43,7 +43,7 @@ class Track(models.Model):
         return TrackStop.objects.filter(track_day__track=self).count()
 
     @property
-    def total_xp(self) -> int:
+    def total_xp(self):
         return (
             TrackStop.objects.filter(track_day__track=self).aggregate(
                 total=models.Sum("xp_value")
@@ -75,7 +75,7 @@ class TrackStop(models.Model):
     start_time = models.TimeField(null=True, blank=True)
     description = models.TextField(blank=True)
     cost = models.PositiveIntegerField(default=0)
-    xp_value = models.PositiveIntegerField(default=2)
+    xp_value = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

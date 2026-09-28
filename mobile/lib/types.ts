@@ -87,7 +87,10 @@ export interface Activity {
   description: string;
   notes: string;
   cost: number;
+  /** Distance XP this stop paid (2 decimals); 0 until it's completed. */
   xp_value: number;
+  /** Km travelled to reach it — from the previous stop or the trip's start point. */
+  leg_distance_km: number | null;
   order: number;
   status: ActivityStatus;
   completed_at: string | null;
@@ -350,4 +353,21 @@ export interface PublicProfile {
   is_following: boolean;
   stats: { trips_completed: number; places_verified: number; tracks: number };
   achievements: { code: string; title: string; icon: string; description: string; unlocked_at: string }[];
+}
+
+/** A reward staff put up — claim it once you have `xp_required` XP (not spent). */
+export interface RewardOffer {
+  id: number;
+  title: string;
+  description: string;
+  image: string | null;
+  xp_required: number;
+  max_claims: number;
+  is_active: boolean;
+  claimed_count: number;
+  spots_left: number;
+  claimed_by_me: boolean;
+  /** Why you can't claim it right now, or "" when you can. */
+  blocked_reason: string;
+  created_at: string;
 }

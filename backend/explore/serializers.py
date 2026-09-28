@@ -80,7 +80,7 @@ class TrackListSerializer(serializers.ModelSerializer):
 
 class TrackDetailSerializer(TrackListSerializer):
     track_days = TrackDaySerializer(many=True, read_only=True)
-    total_xp = serializers.IntegerField(read_only=True)
+    total_xp = serializers.FloatField(read_only=True)
 
     class Meta(TrackListSerializer.Meta):
         fields = TrackListSerializer.Meta.fields + ["track_days", "total_xp"]

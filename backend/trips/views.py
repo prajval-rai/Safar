@@ -29,13 +29,16 @@ from rewards.services import (
     ORGANIZER_COMPLETE_BONUS,
     TRIP_COMPLETE_BONUS,
     TRIP_CREATE_XP,
+    as_xp,
     award_xp,
+    completion_share,
+    distance_xp,
     evaluate_achievements,
     leave_penalty,
 )
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
-from .geo import distance_from_stop
+from .geo import distance_from_stop, haversine_km, optional_point
 from .settle import award_or_hold, release_if_settled, suggested_transfers, take_back, upi_link
 from .regional_theme import DEFAULT_TRIP_THEME
 from .models import (
@@ -154,7 +157,7 @@ def require_organiser(trip, user, action="do this"):
     return member
 
 
-def trip_xp_for(trip, user) -> int:
+def trip_xp_for(trip, user):
     """Everything `user` has earned on `trip`, from their XP ledger."""
     return user.xp_transactions.filter(trip=trip).aggregate(total=Sum("amount"))["total"] or 0
 
@@ -165,6 +168,66 @@ def award_everyone(trip, amount, reason, kind):
     for user in users:
         award_xp(user, amount, reason, kind=kind, trip=trip)
     return users
+
+
+def previous_point(trip, exclude=None):
+    """Where the group last was: the most recently completed pinned stop, or
+    the trip's start point before any stop is done. None when neither is known."""
+    last = (
+        Activity.objects.filter(
+            day__trip=trip, status="completed", latitude__isnull=False, longitude__isnull=False
+        )
+        .exclude(pk=getattr(exclude, "pk", None))
+        .order_by("-completed_at")
+        .first()
+    )
+    if last:
+        return (last.latitude, last.longitude)
+    return trip.start_point
+
+
+def leg_km(trip, activity):
+    """Kilometres travelled to reach `activity`, or None when there's nothing to measure."""
+    origin = previous_point(trip, exclude=activity)
+    if origin is None or not has_pin(activity):
+        return None
+    return haversine_km(origin[0], origin[1], activity.latitude, activity.longitude)
+
+
+def complete_trip(trip, actor, members, share=None):
+    """Mark `trip` completed and pay the completion bonuses — the full bonus
+    when every stop was done, or `share` of it when the organiser finished
+    early. Returns (XP paid to `actor` now, XP held back from `actor`)."""
+    share = completion_share(1, 1) if share is None else share
+    member_bonus = as_xp(TRIP_COMPLETE_BONUS * share)
+    organiser_bonus = as_xp(ORGANIZER_COMPLETE_BONUS * share)
+    trip.status = "completed"
+    trip.completion_bonus = member_bonus
+    trip.organizer_bonus = organiser_bonus
+    trip.save(update_fields=["status", "completion_bonus", "organizer_bonus", "finished_early"])
+
+    paid = held = as_xp(0)
+    # Completion XP waits for anyone who still owes money on the trip.
+    balances = trip_expense_balances(trip)
+    for member in members:
+        paid_now = award_or_hold(trip, member, member_bonus, f"Completed {trip.title}", balances)
+        if member.id == actor.id:
+            paid += paid_now
+            held += member_bonus - paid_now
+    paid_now = award_or_hold(
+        trip, trip.created_by, organiser_bonus, f"Organised {trip.title} to completion", balances
+    )
+    if trip.created_by_id == actor.id:
+        paid += paid_now
+        held += organiser_bonus - paid_now
+    notify_many(
+        members,
+        "trip_completed",
+        f"{trip.title} is complete! 🎉",
+        body=expense_summary_line(trip),
+        trip=trip,
+    )
+    return paid, held
 
 
 _KEEP = object()
@@ -559,13 +622,22 @@ class TripViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def start(self, request, pk=None):
+        """Go live. The organiser's location right now (optional) becomes the
+        start point, and the first leg of distance XP runs from there."""
         trip = self.get_object()
         require_member(trip, request.user, editors_only=True)
+        point = optional_point(request.data)
         if trip.status == "active":
+            if point and trip.start_point is None:
+                trip.start_latitude, trip.start_longitude = point
+                trip.save(update_fields=["start_latitude", "start_longitude"])
             return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
         ensure_can_go_live(trip, request.user)
         trip.status = "active"
-        trip.save(update_fields=["status"])
+        trip.started_at = timezone.now()
+        if point:
+            trip.start_latitude, trip.start_longitude = point
+        trip.save(update_fields=["status", "started_at", "start_latitude", "start_longitude"])
         others = [m.user for m in trip.members.exclude(user=request.user).select_related("user")]
         notify_many(
             others,
@@ -576,6 +648,43 @@ class TripViewSet(viewsets.ModelViewSet):
             trip=trip,
         )
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def finish(self, request, pk=None):
+        """The organiser wraps the trip up before every stop is done — a 3-day
+        plan can end after a single stop if that's how it went. Stops still
+        planned are marked skipped, and the completion bonuses are paid in
+        proportion to the stops actually completed."""
+        trip = self.get_object()
+        require_organiser(trip, request.user, "finish the trip")
+        if trip.status in ("completed", "cancelled"):
+            raise ValidationError({"detail": "This trip is " + trip.status + "."})
+        activities = Activity.objects.filter(day__trip=trip)
+        done = activities.filter(status="completed").count()
+        if not done:
+            raise ValidationError({"detail": "Complete at least one stop before finishing the trip."})
+        total = activities.exclude(status="skipped").count()
+        left = activities.filter(status="planned").update(status="skipped")
+        trip.finished_early = left > 0
+        members = [m.user for m in trip.members.select_related("user")]
+        xp, xp_held = complete_trip(trip, request.user, members, completion_share(done, total))
+        for member in members:
+            evaluate_achievements(member, trip=trip)
+        request.user.refresh_from_db()
+        return Response(
+            xp_result(
+                request.user,
+                {
+                    "trip": TripListSerializer(trip, context=self.get_serializer_context()).data,
+                    "xp_awarded": xp,
+                    "xp_held": xp_held,
+                    "trip_completed": True,
+                    "stops_done": done,
+                    "stops_total": total,
+                },
+            )
+        )
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
@@ -983,8 +1092,10 @@ class ActivityViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def complete(self, request, pk=None):
         """The organiser marks a stop done for the whole group, and everyone on
-        the trip earns its XP. A pinned stop can only be completed from within
-        1 km of it — there's no way around that."""
+        the trip earns distance XP for the leg that got them here — from the
+        previous completed stop, or from the trip's start point for the first
+        one. A pinned stop can only be completed from within 1 km of it —
+        there's no way around that."""
         activity = self.get_object()
         trip = activity.day.trip
         require_organiser(trip, request.user, "mark stops as done")
@@ -999,8 +1110,11 @@ class ActivityViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "This trip is " + trip.status + "."})
 
         distance_km = distance_from_stop(activity, request.data) if has_pin(activity) else None
+        travelled_km = leg_km(trip, activity)
 
         activity.status = "completed"
+        activity.leg_distance_km = round(travelled_km, 3) if travelled_km is not None else None
+        activity.xp_value = distance_xp(travelled_km)
         activity.completed_at = timezone.now()
         activity.completed_by = request.user
         activity.verified_by_location = distance_km is not None
@@ -1012,11 +1126,20 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 "completed_by",
                 "verified_by_location",
                 "completed_distance_m",
+                "leg_distance_km",
+                "xp_value",
             ]
         )
 
         xp = activity.xp_value
-        members = award_everyone(trip, xp, f"Completed {activity.title}", "activity")
+        members = award_everyone(
+            trip,
+            xp,
+            f"Travelled {travelled_km:.1f} km to {activity.title}"
+            if travelled_km is not None
+            else f"Completed {activity.title}",
+            "distance",
+        )
 
         day = activity.day
         day_completed = day.is_complete
@@ -1028,32 +1151,13 @@ class ActivityViewSet(viewsets.ModelViewSet):
         xp_held = 0
         remaining = Activity.objects.filter(day__trip=trip, status="planned").count()
         if remaining == 0 and trip.status != "completed":
-            trip.status = "completed"
-            trip.save(update_fields=["status"])
             trip_completed = True
-            # Completion XP waits for anyone who still owes money on the trip.
-            balances = trip_expense_balances(trip)
-            for member in members:
-                paid_now = award_or_hold(trip, member, TRIP_COMPLETE_BONUS, f"Completed {trip.title}", balances)
-                if member.id == request.user.id:
-                    xp += paid_now
-                    xp_held += TRIP_COMPLETE_BONUS - paid_now
-            paid_now = award_or_hold(
-                trip, trip.created_by, ORGANIZER_COMPLETE_BONUS, f"Organised {trip.title} to completion", balances
-            )
-            if trip.created_by_id == request.user.id:
-                xp += paid_now
-                xp_held += ORGANIZER_COMPLETE_BONUS - paid_now
-            notify_many(
-                members,
-                "trip_completed",
-                f"{trip.title} is complete! 🎉",
-                body=expense_summary_line(trip),
-                trip=trip,
-            )
+            paid_now, xp_held = complete_trip(trip, request.user, members)
+            xp += paid_now
         elif trip.status == "planning":
             trip.status = "active"
-            trip.save(update_fields=["status"])
+            trip.started_at = trip.started_at or timezone.now()
+            trip.save(update_fields=["status", "started_at"])
 
         unlocked = []
         for member in members:
@@ -1087,22 +1191,31 @@ class ActivityViewSet(viewsets.ModelViewSet):
         if activity.status != "completed":
             return Response(xp_result(request.user, {"activity": ActivitySerializer(activity).data}))
         day = activity.day
-        day_was_complete = day.is_complete
         trip_was_complete = trip.status == "completed"
+        if trip_was_complete and trip.finished_early:
+            # Reopening an early-finished trip puts the stops it skipped back on
+            # the plan — before checking the day, since skipped stops never
+            # made a day complete (no day bonus was paid for them).
+            Activity.objects.filter(day__trip=trip, status="skipped").update(status="planned")
+            trip.finished_early = False
+        day_was_complete = day.is_complete
 
-        award_everyone(trip, -activity.xp_value, f"Undid {activity.title}", "activity")
+        award_everyone(trip, -activity.xp_value, f"Undid {activity.title}", "distance")
         if day_was_complete:
             award_everyone(trip, -DAY_COMPLETE_BONUS, f"Day {day.index} reopened", "day")
         if trip_was_complete:
             for m in trip.members.select_related("user"):
-                take_back(trip, m.user, TRIP_COMPLETE_BONUS, f"{trip.title} reopened")
-            take_back(trip, trip.created_by, ORGANIZER_COMPLETE_BONUS, f"{trip.title} reopened")
+                take_back(trip, m.user, trip.completion_bonus, f"{trip.title} reopened")
+            take_back(trip, trip.created_by, trip.organizer_bonus, f"{trip.title} reopened")
+            trip.completion_bonus = trip.organizer_bonus = 0
 
         activity.status = "planned"
         activity.completed_at = None
         activity.completed_by = None
         activity.verified_by_location = False
         activity.completed_distance_m = None
+        activity.leg_distance_km = None
+        activity.xp_value = 0
         activity.save(
             update_fields=[
                 "status",
@@ -1110,6 +1223,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 "completed_by",
                 "verified_by_location",
                 "completed_distance_m",
+                "leg_distance_km",
+                "xp_value",
             ]
         )
         if trip_was_complete:
@@ -1119,7 +1234,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 .exists()
             )
             trip.status = "planning" if others_live else "active"
-            trip.save(update_fields=["status"])
+            trip.save(update_fields=["status", "finished_early", "completion_bonus", "organizer_bonus"])
         request.user.refresh_from_db()
         return Response(
             xp_result(request.user, {"activity": ActivitySerializer(activity).data})

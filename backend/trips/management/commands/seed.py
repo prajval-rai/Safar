@@ -174,7 +174,7 @@ class Command(BaseCommand):
             evaluate_achievements(user)
 
         self.stdout.write(self.style.SUCCESS("\nSeeded Safar."))
-        self.stdout.write("  Log in as  prajwal / safar1234")
+        self.stdout.write("  Sign in with Google (demo travellers are data only)")
         self.stdout.write("  Admin at   /admin  (admin / safar1234)")
 
     # ------------------------------------------------------------------
