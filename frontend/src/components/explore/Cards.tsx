@@ -6,10 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/art/Motif";
-import { TripCover } from "@/components/art/TripCover";
 import { ShareStorySheet } from "@/components/explore/ShareStorySheet";
 import { SongPicker } from "@/components/explore/SongPicker";
 import { SoundtrackPlayer } from "@/components/explore/SoundtrackPlayer";
+import { TripAvatar } from "@/components/trip/TripCard";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -34,31 +34,39 @@ export function TrackCard({ track }: { track: Track }) {
     setLikes(result.likes_count);
   }
 
+  // Same shape as the My Trips card: chips, then the picture as a small circle
+  // beside the title (a circle shows the heart of a photo, not a cropped strip).
   return (
     <Link
       href={`/explore/${track.id}`}
       className="card flex h-full flex-col overflow-hidden rounded-[22px] transition-shadow hover:shadow-md"
     >
-      <TripCover
-        cover={track.cover_key}
-        image={track.cover_image || undefined}
-        alt={`${track.destination} illustration`}
-        rounded={false}
-        className="h-40 w-full"
-      />
-      <div className="flex flex-1 flex-col gap-2 p-5">
+      <div className="flex flex-1 flex-col gap-2.5 p-5">
         <div className="flex flex-wrap gap-1.5">
-          <Chip tone="brand">{track.days} days</Chip>
+          <Chip tone="brand">
+            {track.days} {track.days === 1 ? "day" : "days"}
+          </Chip>
           <Chip>{track.difficulty}</Chip>
           {track.estimated_cost ? <Chip>{rupees(track.estimated_cost)}</Chip> : null}
         </div>
-        <h3 className="text-base leading-snug font-bold text-ink">{track.title}</h3>
-        <p className="line-clamp-2 text-sm text-muted">{track.summary}</p>
+
+        <div className="flex items-center gap-3">
+          <TripAvatar trip={track} size={64} />
+          <div className="min-w-0">
+            <h3 className="truncate text-lg font-bold text-ink">{track.title}</h3>
+            <p className="truncate text-sm text-muted">
+              {track.destination}
+              {track.region ? `, ${track.region}` : ""}
+            </p>
+          </div>
+        </div>
+
+        {track.summary ? <p className="line-clamp-2 text-sm text-muted">{track.summary}</p> : null}
         {track.route.length ? (
           <p className="truncate text-xs text-muted">{track.route.join(" → ")}</p>
         ) : null}
 
-        <div className="mt-auto flex items-center gap-2 pt-2">
+        <div className="mt-auto flex items-center gap-2 border-t border-line pt-3">
           <Avatar user={track.author} size="sm" />
           <span className="min-w-0 flex-1 truncate text-xs text-muted">{track.author.name}</span>
           <button

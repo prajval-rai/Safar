@@ -2,6 +2,8 @@ from rest_framework import serializers
 
 from accounts.serializers import UserMiniSerializer
 
+from trips.models import STORY_MAX_CHARS
+
 from .models import PostLike, Track, TrackDay, TrackLike, TrackSave, TrackStop, TravelPost
 
 
@@ -146,8 +148,10 @@ class TravelPostSerializer(serializers.ModelSerializer):
         value = value.strip()
         if not value:
             raise serializers.ValidationError("Write something first.")
-        if len(value) > 1000:
-            raise serializers.ValidationError("Keep it under 1,000 characters.")
+        if len(value) > STORY_MAX_CHARS:
+            raise serializers.ValidationError(
+                f"That's longer than {STORY_MAX_CHARS:,} characters — split it into two posts."
+            )
         return value
 
     def get_can_open_trip(self, obj) -> bool:

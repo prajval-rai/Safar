@@ -12,9 +12,16 @@ import { api, ApiError, rows } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { Paginated, Song, TravelPost, Trip } from "@/lib/types";
 
-const MAX = 1000;
+/** Matches STORY_MAX_CHARS in backend/trips/models.py — roughly 8,000 words. */
+const MAX = 50_000;
 
-/** Write a short story or tip for the Feed — with or without a trip attached. */
+/** Write a story — a tip, a whole day, a whole trip — for the Feed, with or
+ *  without a trip attached. Long ones fold down to a few lines in the feed. */
+export function wordCount(text: string): string {
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  return `${words.toLocaleString("en-IN")} word${words === 1 ? "" : "s"}`;
+}
+
 export function WritePostSheet({
   open,
   onClose,
@@ -65,7 +72,7 @@ export function WritePostSheet({
       open={open}
       onClose={onClose}
       title="Write a post"
-      description="A story, a tip or a warning for the next traveller. Keep it short."
+      description="A quick tip or the story of your whole day — write as much as you like."
       footer={
         <Button fullWidth size="lg" onClick={submit} disabled={busy || !caption.trim()}>
           {busy ? "Posting…" : "Post"}
@@ -76,12 +83,12 @@ export function WritePostSheet({
         <TextAreaField
           label="What happened?"
           data-autofocus
-          rows={5}
+          rows={10}
           maxLength={MAX}
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
           placeholder="Reached Amer Fort at sunrise — no queue, no crowd, worth the 5 a.m. alarm."
-          hint={`${caption.length}/${MAX}`}
+          hint={wordCount(caption)}
         />
         <TextField
           label="Place (optional)"

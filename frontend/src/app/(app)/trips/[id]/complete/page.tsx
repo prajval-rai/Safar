@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { JaliPattern, MotifDivider } from "@/components/art/Motif";
 import { TripCover } from "@/components/art/TripCover";
+import { wordCount } from "@/components/explore/WritePostSheet";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Avatar, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -330,7 +331,7 @@ function PostSheet({
       open={open}
       onClose={onClose}
       title="Write a travel post"
-      description="One tip or story from the trip. Keep it short."
+      description="A tip, or the whole story of the trip — write as much as you like."
       footer={
         <Button fullWidth size="lg" onClick={post} disabled={busy || !caption.trim()}>
           {busy ? "Posting…" : "Post"}
@@ -344,6 +345,9 @@ function PostSheet({
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
           placeholder="Amer Fort before 9 AM = no queue, no heat."
+          rows={10}
+          maxLength={50_000}
+          hint={wordCount(caption)}
         />
         <TextField
           label="Where was this?"

@@ -268,8 +268,8 @@ function ExperiencePrompt({
           value={text}
           error={error ?? undefined}
           onChange={(e) => setText(e.target.value)}
-          maxLength={4000}
-          rows={6}
+          maxLength={50_000}
+          rows={10}
         />
         <div className="mt-4">
           <SongPicker value={song} onChange={setSong} />

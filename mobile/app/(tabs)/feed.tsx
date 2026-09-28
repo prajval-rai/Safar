@@ -303,18 +303,18 @@ function WritePostModal({ visible, onClose, onPosted }: { visible: boolean; onCl
         <Pressable style={[styles.modalSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
           <Text style={[styles.modalTitle, { color: colors.text }]}>Write a post</Text>
           <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 14 }}>
-            A story, a tip or a warning for the next traveller. Keep it short.
+            A quick tip or the story of your whole day — write as much as you like.
           </Text>
 
           <TextInput
             style={[styles.textarea, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
             value={caption}
-            onChangeText={(t) => setCaption(t.slice(0, 1000))}
+            onChangeText={(t) => setCaption(t.slice(0, 50000))}
             placeholder="Reached Amer Fort at sunrise — no queue, no crowd, worth the 5 a.m. alarm."
             placeholderTextColor={colors.muted}
             multiline
           />
-          <Text style={{ color: colors.muted, fontSize: 11, alignSelf: 'flex-end', marginTop: 4 }}>{caption.length}/1000</Text>
+          <Text style={{ color: colors.muted, fontSize: 11, alignSelf: 'flex-end', marginTop: 4 }}>{caption.trim() ? caption.trim().split(/\s+/).length : 0} words</Text>
 
           <Text style={styles.label}>Place (optional)</Text>
           <TextInput

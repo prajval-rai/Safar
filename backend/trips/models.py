@@ -7,6 +7,10 @@ from django.utils import timezone
 
 from .regional_theme import theme_for_trip
 
+# How long a travel story can be — a feed post or a trip write-up. ~8,000
+# words: room for a whole day, or a whole trip, told properly.
+STORY_MAX_CHARS = 50_000
+
 TRIP_TYPES = [
     ("weekend", "Weekend Getaway"),
     ("road", "Road Trip"),
@@ -494,7 +498,7 @@ class TripExperience(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trip_experiences"
     )
-    text = models.TextField(max_length=4000, blank=True)
+    text = models.TextField(max_length=STORY_MAX_CHARS, blank=True)
     skipped = models.BooleanField(default=False)
     # The write-up is also shared to the Feed as a travel post; editing it
     # updates that same post.
