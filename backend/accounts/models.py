@@ -95,6 +95,14 @@ class User(AbstractUser):
     # the leaderboard. Signing in again brings everything back. An account an
     # admin switched off has is_active False with this left empty, and stays off.
     deactivated_at = models.DateTimeField(null=True, blank=True)
+    # Their personal referral code (the ?ref= in their link), made the first
+    # time it's asked for — see accounts.referrals. Unlike the username it
+    # never changes, so a link shared once keeps working.
+    referral_code = models.CharField(max_length=12, unique=True, null=True, blank=True)
+    # Whoever's link they signed up with, if any. Set once, at signup only.
+    referred_by = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="referrals"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

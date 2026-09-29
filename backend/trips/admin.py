@@ -1,6 +1,16 @@
 from django.contrib import admin
 
-from .models import Activity, ChatMessage, ChecklistItem, Day, Expense, Memory, Trip, TripMember
+from .models import (
+    Activity,
+    ChatMessage,
+    ChecklistItem,
+    Day,
+    Expense,
+    Memory,
+    PastTripConfig,
+    Trip,
+    TripMember,
+)
 
 
 class DayInline(admin.TabularInline):
@@ -15,8 +25,8 @@ class MemberInline(admin.TabularInline):
 
 @admin.register(Trip)
 class TripAdmin(admin.ModelAdmin):
-    list_display = ["title", "destination", "start_date", "status", "created_by"]
-    list_filter = ["status", "trip_type", "region"]
+    list_display = ["title", "destination", "start_date", "status", "is_past", "review_status", "created_by"]
+    list_filter = ["status", "is_past", "review_status", "trip_type", "region"]
     search_fields = ["title", "destination"]
     inlines = [DayInline, MemberInline]
 
@@ -42,3 +52,14 @@ class ActivityAdmin(admin.ModelAdmin):
 admin.site.register([TripMember, Expense, ChecklistItem, Memory, ChatMessage])
 admin.site.site_header = "Safar admin"
 admin.site.site_title = "Safar"
+
+
+@admin.register(PastTripConfig)
+class PastTripConfigAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "enabled", "min_photos", "approval_xp", "story_xp", "updated_at"]
+
+    def has_add_permission(self, request):
+        return not PastTripConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -1,7 +1,8 @@
 """Following, public profiles and the travel map.
 
 Privacy rule used throughout: you always see your own trips; on anyone else's
-profile you only see trips they've marked public.
+profile you only see trips they've chosen to show on their profile map
+(TripMember.show_on_map — each traveller decides for their own profile).
 """
 
 from django.contrib.auth import get_user_model
@@ -27,10 +28,14 @@ def _target(username):
 def visible_trips(viewer, target):
     from trips.models import Trip
 
-    trips = Trip.objects.filter(members__user=target)
-    if viewer.pk != target.pk:
-        trips = trips.filter(is_public=True)
-    return trips.distinct()
+    if viewer.pk == target.pk:
+        trips = Trip.objects.filter(members__user=target)
+    else:
+        # One filter() call, so both conditions are about the same member row:
+        # the target's own choice to show this trip on their map.
+        trips = Trip.objects.filter(members__user=target, members__show_on_map=True)
+    # A past trip only shows once an admin has approved it.
+    return trips.exclude(is_past=True, review_status__in=["draft", "pending", "rejected"]).distinct()
 
 
 def follow_counts(user):

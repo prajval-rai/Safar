@@ -21,6 +21,10 @@ class UserSerializer(serializers.ModelSerializer):
     xp_for_next_level = serializers.IntegerField(read_only=True)
     level_progress = serializers.IntegerField(read_only=True)
     is_staff = serializers.BooleanField(read_only=True)
+    # Refer a friend (see accounts.referrals): your code, and how many people
+    # have joined with it.
+    referral_code = serializers.SerializerMethodField()
+    referral_count = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -45,11 +49,21 @@ class UserSerializer(serializers.ModelSerializer):
             "color_mode",
             "date_joined",
             "is_staff",
+            "referral_code",
+            "referral_count",
         ]
         # Email is read-only: it comes from Google, and Google sign-in matches
         # accounts by it — letting people set it would let them claim someone
         # else's future sign-in.
         read_only_fields = ["id", "email", "xp", "date_joined", "is_staff"]
+
+    def get_referral_code(self, obj) -> str:
+        from .referrals import referral_code_for
+
+        return referral_code_for(obj)
+
+    def get_referral_count(self, obj) -> int:
+        return obj.referrals.count()
 
     def validate_username(self, value: str) -> str:
         """Usernames are in profile links (/u/<username>), so keep them short,

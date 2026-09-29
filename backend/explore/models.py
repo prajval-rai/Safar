@@ -29,11 +29,20 @@ class Track(models.Model):
     source_trip = models.ForeignKey(
         "trips.Trip", null=True, blank=True, on_delete=models.SET_NULL, related_name="tracks"
     )
+    # A trip is published as a track once; "unpublishing" hides it (see
+    # explore.views.track_from_trip) rather than deleting its likes and saves.
     is_published = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["author", "source_trip"],
+                condition=models.Q(is_published=True, source_trip__isnull=False),
+                name="one_published_track_per_trip",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.title

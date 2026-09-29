@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .google_auth import get_or_create_google_user, verify_google_token
+from .referrals import apply_referral
 from .serializers import UserSerializer
 from .social import _people
 
@@ -23,13 +24,17 @@ def tokens_for(user):
 def google_login(request):
     """The only way in, for both signup and login: verify the ID token Google's
     own "Sign in with Google" button handed the frontend, then find or create
-    the matching Safar account and issue our own tokens."""
+    the matching Safar account and issue our own tokens. `ref` is the
+    referral code from the link they came in on, if any — it only counts when
+    this sign-in creates a brand-new account."""
     credential = request.data.get("credential")
     if not credential:
         return Response({"detail": "Missing Google credential."}, status=status.HTTP_400_BAD_REQUEST)
 
     claims = verify_google_token(credential)
     user, created = get_or_create_google_user(claims)
+    if created and request.data.get("ref"):
+        apply_referral(user, str(request.data["ref"]))
     return Response(
         {"user": UserSerializer(user).data, "created": created, **tokens_for(user)},
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,

@@ -20,6 +20,9 @@ MEMORY_XP = 1
 EXPERIENCE_XP = 10
 TRACK_PUBLISH_XP = 10
 TRIP_CREATE_XP = 2
+# Referring a friend: paid to the referrer when someone creates their Safar
+# account from their referral link — once per new account (see accounts.referrals).
+REFERRAL_XP = 10
 # The organiser earns this on top of TRIP_COMPLETE_BONUS once their trip is
 # fully done — a reward for the initiative of planning it and for being the
 # one who ticks every stop off for the group.
@@ -140,6 +143,15 @@ XP_RULES = [
             f"+{TRIP_COMPLETE_BONUS} XP for everyone on the trip once its last stop is done. "
             "The organiser can also finish a trip early once one stop is done — then everyone "
             "gets the share of the bonus that matches the share of stops completed."
+        ),
+    },
+    {
+        "kind": "earn",
+        "icon": "🤝",
+        "title": "Refer a friend",
+        "detail": (
+            f"+{REFERRAL_XP} XP when someone joins Safar for the first time with your referral "
+            "link. Find your link on the Rewards screen."
         ),
     },
     {
@@ -308,6 +320,7 @@ def _stats(user) -> dict:
     """Every number an achievement can be measured against."""
     from accounts.models import Follow
     from trips.models import Activity, Memory, Trip
+    from trips.past import counts_for_stats
 
     # No-XP trips (too close to home) don't count towards anything either —
     # otherwise achievements would be a back door to the XP they don't pay.
@@ -321,7 +334,9 @@ def _stats(user) -> dict:
         "trips_completed": finished.count(),
         "activities_completed": done.count(),
         # Only first-time photos count — re-uploading one picture doesn't add up.
-        "photos_uploaded": Memory.objects.filter(user=user, is_original=True, trip__no_xp=False).count(),
+        "photos_uploaded": Memory.objects.filter(user=user, is_original=True, trip__no_xp=False)
+        .exclude(trip__is_past=True)
+        .count(),
         "places_visited": done.exclude(place_name="")
         .values("place_name")
         .distinct()
@@ -330,7 +345,8 @@ def _stats(user) -> dict:
         "tracks_published": user.tracks.filter(is_published=True)
         .exclude(source_trip__no_xp=True)
         .count(),
-        "states_visited": Trip.objects.filter(members__user=user, no_xp=False)
+        # A past trip only counts once an admin has approved it.
+        "states_visited": Trip.objects.filter(counts_for_stats(), members__user=user, no_xp=False)
         .exclude(region="")
         .values("region")
         .distinct()

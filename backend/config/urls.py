@@ -10,6 +10,7 @@ from accounts import views as accounts_views
 from explore import views as explore_views
 from notifications import views as notifications_views
 from rewards import views as rewards_views
+from trips import past as past_trips
 from trips import views as trips_views
 
 router = DefaultRouter()
@@ -52,6 +53,14 @@ urlpatterns = [
     path("api/rewards/admin/overview/", rewards_views.admin_overview, name="rewards_admin_overview"),
     path("api/rewards/admin/claims/", rewards_views.admin_claims, name="rewards_admin_claims"),
     path("api/rewards/admin/claims/<int:pk>/", rewards_views.admin_update_claim, name="rewards_admin_claim"),
+    path("api/past-trips/config/", past_trips.past_trip_config, name="past_trip_config"),
+    path("api/admin/past-trips/", past_trips.admin_past_trips, name="admin_past_trips"),
+    path("api/admin/past-trips/<uuid:pk>/", past_trips.admin_past_trip_detail, name="admin_past_trip"),
+    path(
+        "api/admin/past-trips/<uuid:pk>/review/",
+        past_trips.admin_review_past_trip,
+        name="admin_past_trip_review",
+    ),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
     path("api/music/search/", explore_views.music_search, name="music_search"),
     path("api/notifications/", notifications_views.notification_list, name="notification_list"),

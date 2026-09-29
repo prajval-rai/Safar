@@ -29,6 +29,9 @@ class Notification(models.Model):
         ("achievement_unlocked", "Achievement unlocked"),
         ("reward_claimed", "Someone claimed a reward (admins)"),
         ("reward_update", "Your reward claim was handled"),
+        ("past_trip_submitted", "A past trip is waiting for review (admins)"),
+        ("past_trip_reviewed", "Your past trip was reviewed"),
+        ("referral_joined", "Someone joined with your referral link"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

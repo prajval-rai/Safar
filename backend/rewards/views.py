@@ -280,6 +280,8 @@ class RewardAdminSerializer(RewardOfferSerializer):
 def admin_overview(request):
     """Everything the admin page opens on: totals, every reward (hidden ones
     too) with its claim counts."""
+    from trips.past import pending_count as past_trips_pending
+
     rewards = RewardOffer.objects.prefetch_related("claims")
     claims = RewardClaim.objects.all()
     return Response(
@@ -291,6 +293,8 @@ def admin_overview(request):
                 "pending": claims.filter(status="pending").count(),
                 "delivered": claims.filter(status="delivered").count(),
                 "rejected": claims.filter(status="rejected").count(),
+                # Past trips waiting for an admin (see trips.past).
+                "past_trips_pending": past_trips_pending(),
             },
             "rewards": RewardAdminSerializer(rewards, many=True, context={"request": request}).data,
         }

@@ -152,11 +152,37 @@ class TrackViewSet(viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def track_from_trip(request):
-    """'Turn your journey into a track others can follow.'"""
+    """'Turn your journey into a track others can follow' — an on/off switch.
+
+    A trip becomes one track per person, ever. The first time it's switched on
+    the track is created (and pays XP); after that, switching it off hides that
+    same track and switching it back on shows it again — never a second copy,
+    and never a second lot of XP. Send {"trip": id, "published": false} to hide it."""
     trip_id = request.data.get("trip")
     trip = Trip.objects.filter(pk=trip_id, members__user=request.user).first()
     if not trip:
         raise ValidationError({"trip": "We couldn't find that trip in your list."})
+    publish = str(request.data.get("published", True)).lower() not in {"false", "0", ""}
+
+    existing = (
+        Track.objects.select_for_update()
+        .filter(author=request.user, source_trip=trip)
+        .order_by("-is_published", "created_at")
+        .first()
+    )
+    if existing or not publish:
+        if existing and existing.is_published != publish:
+            existing.is_published = publish
+            existing.save(update_fields=["is_published"])
+        request.user.refresh_from_db()
+        return Response(
+            {
+                "track": TrackDetailSerializer(existing, context={"request": request}).data if existing else None,
+                "xp_awarded": 0,
+                "user": UserSerializer(request.user).data,
+                "unlocked": [],
+            }
+        )
 
     route = []
     for day in trip.days.prefetch_related("activities"):

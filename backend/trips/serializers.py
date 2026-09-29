@@ -158,8 +158,11 @@ class TripListSerializer(serializers.ModelSerializer):
             "theme",
             # Too close to where it was planned or started from: earns no XP.
             "no_xp",
+            # Logged after the fact, and where its review stands (see trips.past).
+            "is_past",
+            "review_status",
         ]
-        read_only_fields = ["no_xp"]
+        read_only_fields = ["no_xp", "is_past", "review_status"]
 
     def get_activity_count(self, obj) -> int:
         return Activity.objects.filter(day__trip=obj).count()
@@ -184,6 +187,12 @@ class TripDetailSerializer(TripListSerializer):
     can_finish = serializers.SerializerMethodField()
     # People asked to come who haven't answered yet (organisers see them in People).
     pending_invites = serializers.SerializerMethodField()
+    # For a past trip: its review, and what's still needed to submit it.
+    past_trip = serializers.SerializerMethodField()
+    # The track you made from this trip, if any: {id, is_published}.
+    my_track = serializers.SerializerMethodField()
+    # Whether this trip shows on your own public profile map.
+    my_show_on_map = serializers.SerializerMethodField()
 
     class Meta(TripListSerializer.Meta):
         fields = TripListSerializer.Meta.fields + [
@@ -202,6 +211,9 @@ class TripDetailSerializer(TripListSerializer):
             "finished_early",
             "can_finish",
             "pending_invites",
+            "past_trip",
+            "my_track",
+            "my_show_on_map",
             "created_at",
         ]
 
@@ -210,6 +222,21 @@ class TripDetailSerializer(TripListSerializer):
         if obj.status not in ("planning", "active") or self.get_my_role(obj) not in ("owner", "admin"):
             return False
         return Activity.objects.filter(day__trip=obj, status="completed").exists()
+
+    def get_my_show_on_map(self, obj) -> bool:
+        user = self.context["request"].user
+        member = next((m for m in obj.members.all() if m.user_id == user.id), None)
+        return bool(member and member.show_on_map)
+
+    def get_my_track(self, obj) -> dict | None:
+        user = self.context["request"].user
+        track = obj.tracks.filter(author=user).order_by("-is_published", "created_at").first()
+        return {"id": str(track.id), "is_published": track.is_published} if track else None
+
+    def get_past_trip(self, obj) -> dict | None:
+        from .past import past_trip_info
+
+        return past_trip_info(obj)
 
     def get_pending_invites(self, obj) -> list[dict]:
         pending = obj.invites.filter(status="pending").select_related("user")
@@ -264,6 +291,7 @@ class TripCreateSerializer(serializers.ModelSerializer):
             "transport",
             "budget_per_person",
             "is_public",
+            "is_past",
             "invite_usernames",
         ]
         read_only_fields = ["id"]
@@ -392,7 +420,7 @@ class TripExperienceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TripExperience
-        fields = ["id", "trip", "user", "text", "created_at", "updated_at"]
+        fields = ["id", "trip", "user", "text", "is_public", "created_at", "updated_at"]
         read_only_fields = ["trip"]
 
     def validate_text(self, value):

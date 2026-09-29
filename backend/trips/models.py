@@ -65,6 +65,16 @@ ACTIVITY_STATUS = [
 ]
 
 
+# Where a trip logged after the fact ("I've already been") stands with the
+# admins. Empty for every ordinary trip, which never goes through review.
+PAST_REVIEW_STATUS = [
+    ("draft", "Draft"),
+    ("pending", "Waiting for review"),
+    ("approved", "Approved"),
+    ("rejected", "Rejected"),
+]
+
+
 def make_join_code() -> str:
     return secrets.token_hex(3).upper()
 
@@ -118,6 +128,23 @@ class Trip(models.Model):
     # Set once the "starts tomorrow" reminder has gone out, so it's never
     # sent twice (see trips.management.commands.send_trip_reminders).
     day_before_reminder_sent = models.BooleanField(default=False)
+    # A past trip: somewhere the traveller has already been, logged afterwards
+    # with its itinerary, photos and story. It's never started or run live —
+    # it's submitted for review instead, and an admin approving it is what
+    # marks it completed (see trips.past).
+    is_past = models.BooleanField(default=False)
+    review_status = models.CharField(max_length=10, choices=PAST_REVIEW_STATUS, blank=True)
+    # Shown to the traveller — why it was turned down, or a word on approval.
+    review_note = models.CharField(max_length=300, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_trips",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -225,10 +252,19 @@ class TripMember(models.Model):
     # were last pushed about chat, so a burst of messages is one alert, not ten.
     chat_seen_at = models.DateTimeField(null=True, blank=True)
     chat_pushed_at = models.DateTimeField(null=True, blank=True)
+    # Whether this trip shows on *this traveller's* public profile map — each
+    # person on the trip decides for their own profile. Someone joining starts
+    # from the trip's own setting (Trip.is_public).
+    show_on_map = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("trip", "user")
         ordering = ["joined_at"]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.show_on_map:
+            self.show_on_map = self.trip.is_public
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.user} in {self.trip}"
@@ -500,6 +536,8 @@ class TripExperience(models.Model):
     )
     text = models.TextField(max_length=STORY_MAX_CHARS, blank=True)
     skipped = models.BooleanField(default=False)
+    # Shared to the Feed as a travel post, or kept to the trip's own members.
+    is_public = models.BooleanField(default=True)
     # The write-up is also shared to the Feed as a travel post; editing it
     # updates that same post.
     post = models.OneToOneField(
@@ -518,3 +556,48 @@ class TripExperience(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} on {self.trip}"
+
+
+class PastTripConfig(models.Model):
+    """The rules for logging a past trip, set by admins from the admin page
+    (or the Django admin). There's only ever one row — see `current()`."""
+
+    # Switch the whole feature off: nobody can start a new past trip or
+    # submit one (anything already waiting can still be reviewed).
+    enabled = models.BooleanField(default=True)
+    # Photos from the trip the traveller has to add before submitting —
+    # the proof an admin looks at.
+    min_photos = models.PositiveIntegerField(default=3)
+    max_photos = models.PositiveIntegerField(default=30)
+    # Stops the itinerary needs before it can be submitted.
+    min_stops = models.PositiveIntegerField(default=1)
+    # Whether a written story is required, and how long it has to be.
+    require_story = models.BooleanField(default=False)
+    min_story_chars = models.PositiveIntegerField(default=10)
+    # Whether a story may be shared to the public Feed at all.
+    allow_public_story = models.BooleanField(default=True)
+    # How far back a past trip may be (days before today it ended).
+    max_age_days = models.PositiveIntegerField(default=3650)
+    # XP paid when an admin approves: for the trip, and for its story.
+    approval_xp = models.DecimalField(max_digits=6, decimal_places=2, default=5)
+    story_xp = models.DecimalField(max_digits=6, decimal_places=2, default=5)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "past trip settings"
+        verbose_name_plural = "past trip settings"
+
+    def __str__(self) -> str:
+        return "Past trip settings"
+
+    @classmethod
+    def current(cls) -> "PastTripConfig":
+        config, _ = cls.objects.get_or_create(pk=1)
+        return config
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)

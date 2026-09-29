@@ -39,6 +39,7 @@ from rewards.services import (
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
 from .geo import distance_from_stop, haversine_km, optional_point, too_close_for_xp
+from .past import block_if_locked, block_if_past, submit_for_review, validate_past_dates, withdraw_review
 from .settle import award_or_hold, release_if_settled, suggested_transfers, take_back, upi_link
 from .regional_theme import DEFAULT_TRIP_THEME
 from .models import (
@@ -48,6 +49,7 @@ from .models import (
     Day,
     Expense,
     Memory,
+    PastTripConfig,
     Settlement,
     Trip,
     TripExperience,
@@ -149,6 +151,8 @@ def require_member(trip, user, editors_only=False):
         raise PermissionDenied("You're not part of this trip.")
     if editors_only and member.role == "member":
         raise PermissionDenied("Only the trip owner or a co-planner can do this.")
+    if editors_only:
+        block_if_locked(trip)
     return member
 
 
@@ -259,6 +263,17 @@ def share_experience_to_feed(experience, soundtrack=_KEEP):
     experience.save(update_fields=["post"])
 
 
+def unshare_experience(experience):
+    """A story made private comes off the Feed; making it public again shares
+    it as a new post."""
+    from explore.models import TravelPost
+
+    if experience.post_id:
+        TravelPost.objects.filter(pk=experience.post_id).delete()
+        experience.post = None
+        experience.save(update_fields=["post"])
+
+
 def photo_fingerprint(image, image_url: str) -> str:
     """SHA-256 of an uploaded photo's bytes, or of its link when it's a URL.
     Empty when there's no photo at all (a caption-only memory earns nothing)."""
@@ -312,6 +327,8 @@ class TripViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         invites = serializer.validated_data.pop("invite_usernames", [])
+        if serializer.validated_data.get("is_past"):
+            return self._create_past(serializer)
         trip = serializer.save(created_by=self.request.user, no_xp=getattr(self, "_no_xp", False))
         TripMember.objects.create(trip=trip, user=self.request.user, role="owner")
 
@@ -334,6 +351,22 @@ class TripViewSet(viewsets.ModelViewSet):
         award_xp(self.request.user, TRIP_CREATE_XP, f"Planned {trip.title}", kind="trip", trip=trip)
         self._created_trip = trip
 
+    def _create_past(self, serializer):
+        """A trip that already happened: logged by one person, never run live,
+        and it earns nothing until an admin approves it (see trips.past)."""
+        config = PastTripConfig.current()
+        if not config.enabled:
+            raise ValidationError({"detail": "Past trips aren't being accepted right now."})
+        data = serializer.validated_data
+        validate_past_dates(data.get("start_date"), data.get("end_date"), config)
+        trip = serializer.save(created_by=self.request.user, review_status="draft", no_xp=False)
+        TripMember.objects.create(trip=trip, user=self.request.user, role="owner")
+        for offset in range(trip.duration_days):
+            Day.objects.create(
+                trip=trip, index=offset + 1, date=trip.start_date + timedelta(days=offset)
+            )
+        self._created_trip = trip
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -352,11 +385,17 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self._created_trip
         detail = TripDetailSerializer(trip, context=self.get_serializer_context())
         payload = dict(detail.data)
-        payload["xp_awarded"] = 0 if trip.no_xp else TRIP_CREATE_XP
+        payload["xp_awarded"] = 0 if trip.no_xp or trip.is_past else TRIP_CREATE_XP
         return Response(payload, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
-        require_member(self.get_object(), self.request.user, editors_only=True)
+        trip = self.get_object()
+        require_member(trip, self.request.user, editors_only=True)
+        # A trip is past or it isn't — that's decided when it's created.
+        serializer.validated_data.pop("is_past", None)
+        if trip.is_past:
+            data = serializer.validated_data
+            validate_past_dates(data.get("start_date", trip.start_date), data.get("end_date", trip.end_date))
         trip = serializer.save()
         self._resync_days(trip)
 
@@ -446,6 +485,8 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self.get_object()
         if request.method == "POST":
             require_member(trip, request.user, editors_only=True)
+            if trip.is_past:
+                raise ValidationError({"detail": "A past trip is logged by one person, so it can't take invites."})
             from django.contrib.auth import get_user_model
 
             User = get_user_model()
@@ -602,6 +643,8 @@ class TripViewSet(viewsets.ModelViewSet):
         mine = trip.experiences.filter(user=request.user).first()
         if request.method == "GET":
             return Response(TripExperienceSerializer(mine).data if mine and not mine.skipped else None)
+        if trip.is_past:
+            return self._past_experience(request, trip, mine)
         if trip.status != "completed":
             raise ValidationError({"detail": "You can write about a trip once it's finished."})
         first = mine is None or mine.skipped
@@ -614,7 +657,10 @@ class TripViewSet(viewsets.ModelViewSet):
 
             song = soundtrack_for(str(request.data.get("song_id") or ""))
         experience = serializer.save(trip=trip, user=request.user, skipped=False)
-        share_experience_to_feed(experience, soundtrack=song)
+        if experience.is_public:
+            share_experience_to_feed(experience, soundtrack=song)
+        else:
+            unshare_experience(experience)
         awarded = 0
         if first:
             awarded = EXPERIENCE_XP
@@ -624,6 +670,57 @@ class TripViewSet(viewsets.ModelViewSet):
             {**serializer.data, **xp_result(request.user, {"xp_awarded": awarded})},
             status=status.HTTP_201_CREATED if first else status.HTTP_200_OK,
         )
+
+    def _past_experience(self, request, trip, mine):
+        """The story of a past trip, written while logging it. It stays on the
+        trip until an admin approves it — only then is it shared to the Feed
+        (when public) and paid for (see trips.past.approve)."""
+        if trip.created_by_id != request.user.id:
+            raise PermissionDenied("Only the person who logged this trip can write its story.")
+        block_if_locked(trip)
+        serializer = TripExperienceSerializer(mine, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        is_public = serializer.validated_data.get("is_public", True)
+        if is_public and not PastTripConfig.current().allow_public_story:
+            raise ValidationError({"is_public": "Stories from past trips can't be public right now."})
+        experience = serializer.save(trip=trip, user=request.user, skipped=False)
+        return Response(
+            {**serializer.data, **xp_result(request.user, {"xp_awarded": 0})},
+            status=status.HTTP_201_CREATED if mine is None else status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="profile-map")
+    def profile_map(self, request, pk=None):
+        """Show this trip on your own public profile map, or hide it — any
+        traveller on the trip, for their own profile, at any stage (a past
+        trip under review included). {"show": true | false}"""
+        trip = self.get_object()
+        member = require_member(trip, request.user)
+        show = str(request.data.get("show", True)).lower() not in {"false", "0", ""}
+        member.show_on_map = show
+        member.save(update_fields=["show_on_map"])
+        if member.role == "owner" and trip.is_public != show:
+            # The organiser's choice is also the trip's own: the default for
+            # anyone joining later, and whether shared posts show the trip.
+            trip.is_public = show
+            trip.save(update_fields=["is_public"])
+        return Response({"show_on_map": show})
+
+    # --- Past trips: sending one for review ----------------------------------
+
+    @action(detail=True, methods=["post"], url_path="submit-review")
+    def submit_review(self, request, pk=None):
+        """Send a past trip to the admins. Every admin is notified."""
+        trip = self.get_object()
+        submit_for_review(trip, request.user)
+        return Response(TripDetailSerializer(trip, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="withdraw-review")
+    def withdraw_from_review(self, request, pk=None):
+        """Take a past trip back out of the queue to change something."""
+        trip = self.get_object()
+        withdraw_review(trip, request.user)
+        return Response(TripDetailSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"], url_path="experience/skip")
     def skip_experience(self, request, pk=None):
@@ -640,6 +737,7 @@ class TripViewSet(viewsets.ModelViewSet):
         """Go live. The organiser's location right now (optional) becomes the
         start point, and the first leg of distance XP runs from there."""
         trip = self.get_object()
+        block_if_past(trip, "start a trip")
         require_member(trip, request.user, editors_only=True)
         point = optional_point(request.data)
         if trip.status == "active":
@@ -676,6 +774,7 @@ class TripViewSet(viewsets.ModelViewSet):
         planned are marked skipped, and the completion bonuses are paid in
         proportion to the stops actually completed."""
         trip = self.get_object()
+        block_if_past(trip, "finish a trip")
         require_organiser(trip, request.user, "finish the trip")
         if trip.status in ("completed", "cancelled"):
             raise ValidationError({"detail": "This trip is " + trip.status + "."})
@@ -713,6 +812,7 @@ class TripViewSet(viewsets.ModelViewSet):
         but if the trip had already started, the organiser who calls it off
         pays a small XP penalty; cancelling one still in planning is free."""
         trip = self.get_object()
+        block_if_past(trip, "cancel a trip")
         require_member(trip, request.user, editors_only=True)
         if trip.status == "completed":
             raise ValidationError({"detail": "A finished trip can't be cancelled."})
@@ -742,6 +842,7 @@ class TripViewSet(viewsets.ModelViewSet):
     def reopen(self, request, pk=None):
         """Put a cancelled trip back to planning."""
         trip = self.get_object()
+        block_if_past(trip, "reopen a trip")
         require_member(trip, request.user, editors_only=True)
         if trip.status != "cancelled":
             raise ValidationError({"detail": "Only a cancelled trip can be reopened."})
@@ -967,6 +1068,13 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self.get_object()
         require_member(trip, request.user)
         if request.method == "POST":
+            if trip.is_past:
+                block_if_locked(trip)
+                config = PastTripConfig.current()
+                if trip.memories.count() >= config.max_photos:
+                    raise ValidationError(
+                        {"detail": f"A past trip can have {config.max_photos} photos at most."}
+                    )
             serializer = MemorySerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             fingerprint = photo_fingerprint(
@@ -976,9 +1084,11 @@ class TripViewSet(viewsets.ModelViewSet):
             # anyone, on any trip — is still added, just without XP.
             original = bool(fingerprint) and not Memory.objects.filter(content_hash=fingerprint).exists()
             serializer.save(trip=trip, user=request.user, content_hash=fingerprint, is_original=original)
-            awarded = MEMORY_XP if original else 0
+            # A past trip's photos are its proof for review, not XP — the trip
+            # is paid for as a whole once it's approved.
+            awarded = MEMORY_XP if original and not trip.is_past else 0
             award_xp(request.user, awarded, "Added a photo", kind="photo", trip=trip)
-            unlocked = evaluate_achievements(request.user, trip=trip) if original else []
+            unlocked = evaluate_achievements(request.user, trip=trip) if awarded else []
             request.user.refresh_from_db()
             return Response(
                 {
@@ -998,6 +1108,20 @@ class TripViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED,
             )
         return Response(MemorySerializer(trip.memories.select_related("user"), many=True).data)
+
+    @action(detail=True, methods=["delete"], url_path=r"memories/(?P<memory_id>[^/.]+)")
+    def remove_memory(self, request, pk=None, memory_id=None):
+        """Take a photo back off a past trip that's still being put together.
+        (Photos on a regular trip earned XP when added, so they stay.)"""
+        trip = self.get_object()
+        if not trip.is_past:
+            raise ValidationError({"detail": "Photos can only be removed from a past trip you're still logging."})
+        block_if_locked(trip)
+        memory = get_object_or_404(Memory, pk=memory_id, trip=trip)
+        if memory.user_id != request.user.id:
+            raise PermissionDenied("You can only remove your own photos.")
+        memory.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get", "post"])
     def chat(self, request, pk=None):
@@ -1082,6 +1206,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
     def checkin(self, request, pk=None):
         activity = self.get_object()
         require_member(activity.day.trip, request.user)
+        block_if_past(activity.day.trip, "check in")
         if activity.day.trip.status == "cancelled":
             raise ValidationError({"detail": "This trip was cancelled."})
         if activity.checked_in_at:
@@ -1118,6 +1243,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         activity = self.get_object()
         trip = activity.day.trip
         require_organiser(trip, request.user, "mark stops as done")
+        block_if_past(trip, "tick stops off")
         if activity.status == "completed":
             return Response(
                 xp_result(request.user, {"activity": ActivitySerializer(activity).data})
@@ -1207,6 +1333,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         activity = self.get_object()
         trip = activity.day.trip
         require_organiser(trip, request.user, "undo a stop")
+        block_if_past(trip, "undo a stop")
         if activity.status != "completed":
             return Response(xp_result(request.user, {"activity": ActivitySerializer(activity).data}))
         day = activity.day
@@ -1462,6 +1589,8 @@ def join_trip(request):
     if not trip:
         raise ValidationError({"code": "That invite code didn't match any trip."})
     already = trip.members.filter(user=request.user).exists()
+    if not already and trip.is_past:
+        raise ValidationError({"code": "That's a past trip, so it can't be joined."})
     if not already and trip.status in ("completed", "cancelled"):
         raise ValidationError({"code": f"This trip is {trip.status}, so it can't be joined any more."})
     _, created = TripMember.objects.get_or_create(trip=trip, user=request.user)
@@ -1572,9 +1701,10 @@ def home_feed(request):
     upcoming = mine.filter(status="planning", end_date__gte=today).order_by("start_date")[:4]
     past = mine.filter(status="completed").order_by("-end_date")[:4]
 
-    # The most recent finished trip this traveller hasn't written about yet.
+    # The most recent finished trip this traveller hasn't written about yet. A
+    # past trip's story is written while logging it, so it's never asked about.
     to_review = (
-        mine.filter(status="completed")
+        mine.filter(status="completed", is_past=False)
         .exclude(experiences__user=user)
         .order_by("-end_date")
         .first()

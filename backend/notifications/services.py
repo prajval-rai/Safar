@@ -35,11 +35,12 @@ def _tag(trip=None, track=None) -> str | None:
     return None
 
 
-def notify(user, kind, title, *, actor=None, body="", trip=None, track=None):
+def notify(user, kind, title, *, actor=None, body="", trip=None, track=None, url=None):
     """Create a notification for `user`, and — on whatever devices they've
     turned it on for, website or mobile app — a real push alongside it.
     Silently does nothing if `actor` is `user` themselves; you don't need
-    telling that you joined your own trip or used your own track."""
+    telling that you joined your own trip or used your own track. `url`
+    overrides where the website push opens (e.g. the admin page)."""
     if actor is not None and actor.pk == user.pk:
         return None
     note = Notification.objects.create(
@@ -48,20 +49,21 @@ def notify(user, kind, title, *, actor=None, body="", trip=None, track=None):
     # An invitee isn't on the trip yet, so its page would be a dead end — the
     # push opens the invites list instead.
     invite = kind == "trip_invite"
-    web_url = "/?invites=1" if invite else _open_url(trip=trip, track=track)
+    web_url = url or ("/?invites=1" if invite else _open_url(trip=trip, track=track))
     push_to_user(user, title, body, url=web_url, tag=_tag(trip=trip, track=track))
     push_to_expo_tokens(
         list(user.expo_push_tokens.values_list("token", flat=True)),
         title,
         body,
-        url="/" if invite else _open_url_mobile(trip=trip, track=track),
+        # The app has no admin page, so an overridden link opens Home there.
+        url="/" if invite or url else _open_url_mobile(trip=trip, track=track),
     )
     return note
 
 
-def notify_many(users, kind, title, *, actor=None, body="", trip=None, track=None):
+def notify_many(users, kind, title, *, actor=None, body="", trip=None, track=None, url=None):
     for user in users:
-        notify(user, kind, title, actor=actor, body=body, trip=trip, track=track)
+        notify(user, kind, title, actor=actor, body=body, trip=trip, track=track, url=url)
 
 
 # --- Group chat ---------------------------------------------------------------------
