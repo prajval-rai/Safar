@@ -117,10 +117,32 @@ data in it straight away.
 
 **After**
 - Trip completion screen with the route, the numbers and your crew
-- Home asks "How was <trip>?" with the XP you earned on it; the write-up goes to the Feed
+- Home asks "How was <trip>?" with the XP you earned on it; the write-up goes to the Feed,
+  or stays on the trip if you untick *Share it publicly*
 - Publish the trip as a **track** others can copy into their own trips
 - A **soundtrack** for the trip — a song searched from Apple Music, with a preview player
 - A **story card** image to share to Instagram
+
+**Past trips** — "I've already been"
+- *Log a past trip* (My Trips → `/trips/past/new`): destination, dates, kind of trip
+- Then, on the trip page: the day-by-day itinerary, **photos from the trip** (the proof an
+  admin checks; required) and, optionally, your story — public on the Feed or private
+- *Submit for review* once the checklist is ticked off; **every admin is notified**. It's
+  locked while waiting (*Withdraw* to change something)
+- An admin **approves** it — it becomes a completed trip, its public story goes to the Feed
+  and approval XP is paid — or **rejects** it with a note; the traveller fixes it and sends
+  it again
+- A past trip is one person's record: it can't be started, run live, joined or invited to,
+  and its photos earn no XP on their own
+- The rules are set by admins (see below): on/off, photos needed and allowed, stops needed,
+  story required and how long, public stories allowed, how far back, XP for the trip and story
+
+**Profile map**
+- Every trip's *Settings* has **Show this trip on my profile map** — each traveller on the trip
+  chooses for their own profile, whatever their role (`POST /api/trips/{id}/profile-map/`).
+  It's also asked when planning a trip and when logging a past one; a past trip appears only
+  once it's approved
+- *Publish as a track* is an on/off switch too — one track per trip, hidden rather than deleted
 
 **Explore, Feed and people**
 - Tracks: browse, like, save and use (copy into a new trip of your own)
@@ -130,6 +152,9 @@ data in it straight away.
 - India achievement map with a share card (see below)
 
 **Rewards**
+- **Refer a friend, +10 XP**: your referral link is on the Rewards screen. When someone creates
+  their Safar account from it for the first time, you get +10 XP and a notification — once per
+  new account; existing accounts signing in again don't count
 - XP for distance, check-ins, photos, days, trips, write-ups, tracks and achievements — and
   XP cuts for leaving or cancelling trips and for undone stops (see [XP rules](#xp-rules))
 - Levels, 13 achievements, a leaderboard with a podium
@@ -147,6 +172,9 @@ data in it straight away.
 **Admin** (staff only)
 - `/manage` — add and edit rewards with a picture, and hand over claims
   (pending → delivered / rejected, with a note)
+- `/manage?tab=past` — the past-trip review queue: photos, itinerary and story side by side,
+  approve or reject with a note. *Past trip rules* edits the settings above (also in the Django
+  admin as *Past trip settings*)
 - The Django admin at `/admin`
 
 ---
@@ -340,6 +368,10 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 | `GET /api/rewards/me/`, `/leaderboard/` | XP, achievements, levels and the XP rulebook |
 | `GET/POST /api/rewards/catalog/`, `PATCH/DELETE .../{id}/`, `POST .../{id}/claim/` | Reward catalog: staff upload a reward image with the XP needed and how many people can claim it; travellers claim once (XP isn't spent) |
 | `GET /api/rewards/admin/overview/`, `/admin/claims/`, `PATCH .../claims/{id}/` | Admin page: handle reward claims |
+| `POST /api/trips/` with `is_past: true`, `POST /api/trips/{id}/submit-review/`, `/withdraw-review/`, `DELETE /api/trips/{id}/memories/{memory_id}/` | Log a past trip, send it for review, take it back; remove a photo while drafting |
+| `POST /api/auth/google/` with `ref` | Referral: a brand-new account made with someone's code pays them +10 XP; `referral_code` / `referral_count` come back on `/api/auth/me/` |
+| `GET/PATCH /api/past-trips/config/` | Past-trip rules — anyone reads, admins change |
+| `GET /api/admin/past-trips/`, `GET .../{id}/`, `POST .../{id}/review/` | Admin review queue: `{"decision": "approve" \| "reject", "note": "…"}` |
 | `GET /api/notifications/`, `/unread-count/`, `POST /read-all/`, `/{id}/read/` | The notification bell |
 | `/api/push/config/`, `/subscribe/`, `/unsubscribe/`, `/expo/register/`, `/expo/unregister/` | Web Push and Expo push sign-up |
 

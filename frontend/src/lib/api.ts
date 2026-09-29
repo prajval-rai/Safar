@@ -1,5 +1,6 @@
 "use client";
 
+import { clearReferral, pendingReferral } from "./referral";
 import type { Paginated, User } from "./types";
 
 export const API_BASE =
@@ -141,13 +142,16 @@ export function rows<T>(payload: Paginated<T> | T[] | undefined): T[] {
 /** The only way in: one button for both signup and login — the backend
  *  decides which one this Google account needs and returns the same shape. */
 export async function loginWithGoogle(credential: string): Promise<User> {
+  // A friend's referral code, if they came in on one (see lib/referral).
+  const ref = pendingReferral();
   const res = await fetch(`${API_BASE}/api/auth/google/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential }),
+    body: JSON.stringify(ref ? { credential, ref } : { credential }),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(friendlyMessage(data, res.status), res.status, data);
+  clearReferral();
   tokens.set(data.access, data.refresh);
   return data.user as User;
 }

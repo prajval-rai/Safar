@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, CircleCheck,
-  CircleX, Compass, LayoutGrid, Lightbulb, Plus } from "lucide-react";
+  CircleX, Compass, History, LayoutGrid, Lightbulb, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/art/Motif";
@@ -12,7 +12,11 @@ import { rows } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { Paginated, Trip } from "@/lib/types";
 
-type Filter = "active" | "planning" | "completed" | "cancelled" | "all";
+type Filter = "active" | "planning" | "completed" | "cancelled" | "past" | "all";
+
+/** A past trip still being logged or reviewed — it isn't upcoming, and it
+ *  isn't completed until an admin approves it. */
+const inReview = (t: Trip) => t.is_past && t.review_status !== "approved";
 
 const ICON = { size: 18, strokeWidth: 1.9 } as const;
 
@@ -24,7 +28,8 @@ export default function TripsPage() {
   const counts = useMemo(
     () => ({
       active: all.filter((t) => t.status === "active").length,
-      planning: all.filter((t) => t.status === "planning").length,
+      planning: all.filter((t) => t.status === "planning" && !inReview(t)).length,
+      past: all.filter(inReview).length,
       completed: all.filter((t) => t.status === "completed").length,
       cancelled: all.filter((t) => t.status === "cancelled").length,
       all: all.length,
@@ -34,7 +39,12 @@ export default function TripsPage() {
 
   // Land on Active when something is live, otherwise show everything.
   const current: Filter = filter ?? (counts.active > 0 ? "active" : "all");
-  const trips = current === "all" ? all : all.filter((t) => t.status === current);
+  const trips =
+    current === "all"
+      ? all
+      : current === "past"
+        ? all.filter(inReview)
+        : all.filter((t) => t.status === current && !inReview(t));
 
   return (
     <div className="space-y-6">
@@ -45,15 +55,26 @@ export default function TripsPage() {
             Every journey you&apos;re planning, on, or have wrapped up.
           </p>
         </div>
-        <ButtonLink
-          href="/trips/new"
-          variant="secondary"
-          size="lg"
-          icon={<Compass {...ICON} />}
-          className="hidden rounded-2xl sm:inline-flex"
-        >
-          Plan a Trip
-        </ButtonLink>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink
+            href="/trips/past/new"
+            variant="ghost"
+            size="lg"
+            icon={<History {...ICON} />}
+            className="rounded-2xl"
+          >
+            Log a past trip
+          </ButtonLink>
+          <ButtonLink
+            href="/trips/new"
+            variant="secondary"
+            size="lg"
+            icon={<Compass {...ICON} />}
+            className="hidden rounded-2xl sm:inline-flex"
+          >
+            Plan a Trip
+          </ButtonLink>
+        </div>
       </header>
 
       <div className="hide-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -65,6 +86,9 @@ export default function TripsPage() {
             { value: "active", label: "Active", icon: <Compass {...ICON} />, count: loading ? undefined : counts.active },
             { value: "planning", label: "Upcoming", icon: <CalendarClock {...ICON} />, count: loading ? undefined : counts.planning },
             { value: "completed", label: "Completed", icon: <CircleCheck {...ICON} />, count: loading ? undefined : counts.completed },
+            ...(counts.past > 0
+              ? [{ value: "past" as const, label: "Logged", icon: <History {...ICON} />, count: counts.past }]
+              : []),
             ...(counts.cancelled > 0
               ? [{ value: "cancelled" as const, label: "Cancelled", icon: <CircleX {...ICON} />, count: counts.cancelled }]
               : []),

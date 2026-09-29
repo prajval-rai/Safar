@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { PastTripRules, PastTripsPanel } from "@/components/admin/PastTripReview";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { RewardEditor } from "@/components/rewards/RewardEditor";
@@ -16,7 +17,8 @@ import { useApi } from "@/lib/hooks";
 import type { AdminClaim, AdminOverview, AdminReward, ClaimStatus } from "@/lib/types";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 
-type Tab = "claims" | "rewards";
+type Tab = "claims" | "rewards" | "past" | "rules";
+const TABS: Tab[] = ["claims", "rewards", "past", "rules"];
 type StatusFilter = ClaimStatus | "all";
 
 const STATUS_STYLE: Record<ClaimStatus, { label: string; className: string }> = {
@@ -26,13 +28,23 @@ const STATUS_STYLE: Record<ClaimStatus, { label: string; className: string }> = 
 };
 
 /**
- * The admin's desk: every reward (hidden ones too) and every claim on them.
- * Only admins (is_staff) get here — everyone else sees a polite dead end,
- * and the API refuses them regardless.
+ * The admin's desk: every reward (hidden ones too) and every claim on them,
+ * plus the past trips travellers have sent in for review and the rules
+ * those are held to. Only admins (is_staff) get here — everyone else sees a
+ * polite dead end, and the API refuses them regardless.
  */
 export default function ManagePage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>("claims");
+  // `?tab=past` opens the review queue straight from a notification.
+  const [tab, setTabState] = useState<Tab>(() => {
+    if (typeof window === "undefined") return "claims";
+    const fromUrl = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+    return fromUrl && TABS.includes(fromUrl) ? fromUrl : "claims";
+  });
+  const setTab = (next: Tab) => {
+    setTabState(next);
+    window.history.replaceState(null, "", `?tab=${next}`);
+  };
   const [rewardFilter, setRewardFilter] = useState<number | null>(null);
   const { data, loading, error, reload } = useApi<AdminOverview>(
     user?.is_staff ? "/api/rewards/admin/overview/" : null,
@@ -67,7 +79,7 @@ export default function ManagePage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-ink sm:text-3xl">Admin</h1>
-          <p className="text-sm text-muted">Rewards, and everyone who&apos;s claimed them.</p>
+          <p className="text-sm text-muted">Rewards and their claims, and past trips waiting for review.</p>
         </div>
       </header>
 
@@ -86,11 +98,17 @@ export default function ManagePage() {
           options={[
             { value: "claims", label: "Claims", count: stats.pending || undefined },
             { value: "rewards", label: "Rewards", count: stats.rewards },
+            { value: "past", label: "Past trips", count: stats.past_trips_pending || undefined },
+            { value: "rules", label: "Past trip rules" },
           ]}
         />
       </div>
 
-      {tab === "claims" ? (
+      {tab === "past" ? (
+        <PastTripsPanel onChanged={reload} />
+      ) : tab === "rules" ? (
+        <PastTripRules />
+      ) : tab === "claims" ? (
         <ClaimsPanel
           rewards={rewards}
           rewardFilter={rewardFilter}
@@ -415,7 +433,7 @@ function HandleClaimSheet({
   onDone: () => void;
 }) {
   const { toast } = useCelebration();
-  const [note, setNote] = useState(claim.admin_note);
+  const [note, setNote] = useState(   claim.admin_note);
   const [busy, setBusy] = useState(false);
   const copy = HANDLE_COPY[to];
 

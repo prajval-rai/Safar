@@ -1,14 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { JaliPattern } from "@/components/art/Motif";
 import { Logo } from "@/components/brand/Logo";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { GOOGLE_CLIENT_ID } from "@/lib/googleIdentity";
+import { rememberReferralFromUrl } from "@/lib/referral";
 import { returnPath } from "@/lib/returnPath";
+
+const noSubscription = () => () => {};
 
 /** Safar signs everyone in with Google — one button for new and returning
  *  travellers alike; the backend creates the account the first time. */
@@ -16,6 +19,13 @@ export default function LoginPage() {
   const router = useRouter();
   const { setUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  // Came in on a friend's referral link? Keep the code for the sign-in. Read
+  // in the browser only — the server render never knows about it.
+  const referred = useSyncExternalStore(
+    noSubscription,
+    () => Boolean(rememberReferralFromUrl()),
+    () => false,
+  );
 
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
@@ -44,6 +54,13 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-muted">
             Continue with Google — new here or coming back, it&apos;s the same one tap.
           </p>
+
+          {referred ? (
+            <p className="mt-4 rounded-xl bg-brand-soft px-3.5 py-2.5 text-sm font-medium text-brand">
+              <span aria-hidden="true">🤝 </span>A friend invited you to Safar. Join now and they earn XP for bringing you
+              along.
+            </p>
+          ) : null}
 
           {error ? (
             <p role="alert" className="mt-6 rounded-xl bg-danger-soft px-3.5 py-2.5 text-sm font-medium text-danger">

@@ -8,24 +8,53 @@ import { Avatar, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
-import { ApiError, mediaSrc, request } from "@/lib/api";
+import { ApiError, api, mediaSrc, request } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { Memory, TripDetail, XPResult } from "@/lib/types";
 import { shortDate } from "@/lib/utils";
 
-export function TripMemories({ trip }: { trip: TripDetail }) {
+export function TripMemories({ trip, onChanged }: { trip: TripDetail; onChanged?: () => void }) {
   const { data, loading, error, reload } = useApi<Memory[]>(`/api/trips/${trip.id}/memories/`);
   const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const { toast } = useCelebration();
+  const past = trip.past_trip;
+  // A past trip's photos are its proof: added while drafting, then frozen for review.
+  const canAdd = !past || (past.editable && trip.my_role === "owner" && (data?.length ?? 0) < past.max_photos);
+
+  async function remove(memory: Memory) {
+    setRemoving(memory.id);
+    try {
+      await api.del(`/api/trips/${trip.id}/memories/${memory.id}/`);
+      toast("Photo removed.");
+      reload();
+      onChanged?.();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't remove that.", "error");
+    } finally {
+      setRemoving(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
+      {past && past.review_status !== "approved" ? (
+        <p className="rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
+          <span aria-hidden="true">🔎 </span>
+          These photos are what an admin checks before approving the trip. Add real ones from the trip (you in
+          them helps) and at least {past.requirements.find((r) => r.key === "photos")?.need ?? 1}. Up to{" "}
+          {past.max_photos}.
+        </p>
+      ) : null}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
-          {data?.length ?? 0} {data?.length === 1 ? "memory" : "memories"} from this trip
+          {data?.length ?? 0} {past ? (data?.length === 1 ? "photo" : "photos") : data?.length === 1 ? "memory" : "memories"} from this trip
         </p>
-        <Button size="sm" icon="📸" onClick={() => setAdding(true)}>
-          Add a memory
-        </Button>
+        {canAdd ? (
+          <Button size="sm" icon="📸" onClick={() => setAdding(true)}>
+            {past ? "Add a photo" : "Add a memory"}
+          </Button>
+        ) : null}
       </div>
 
       {loading && !data ? <LoadingBlock /> : null}
@@ -54,9 +83,20 @@ export function TripMemories({ trip }: { trip: TripDetail }) {
                   <p className="text-sm font-semibold text-ink">{memory.caption || "Untitled"}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <Avatar user={memory.user} size="sm" />
-                    <span className="text-xs text-muted">
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted">
                       {memory.user.name} · {shortDate(memory.created_at.slice(0, 10))}
                     </span>
+                    {past?.editable && trip.my_role === "owner" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => remove(memory)}
+                        disabled={removing === memory.id}
+                        aria-label={`Remove ${memory.caption || "this photo"}`}
+                      >
+                        {removing === memory.id ? "Removing…" : "Remove"}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </li>
@@ -66,8 +106,12 @@ export function TripMemories({ trip }: { trip: TripDetail }) {
           <EmptyState
             emoji="📸"
             title="No photos yet."
-            line="Add one as you go — they all end up in your trip story at the end."
-            action={<Button onClick={() => setAdding(true)}>Add a memory</Button>}
+            line={
+              past
+                ? "Add photos from the trip — they're how an admin knows you were there."
+                : "Add one as you go — they all end up in your trip story at the end."
+            }
+            action={canAdd ? <Button onClick={() => setAdding(true)}>{past ? "Add a photo" : "Add a memory"}</Button> : undefined}
           />
         )
       ) : null}
@@ -79,6 +123,7 @@ export function TripMemories({ trip }: { trip: TripDetail }) {
         onSaved={() => {
           setAdding(false);
           reload();
+          onChanged?.();
         }}
       />
     </div>
@@ -102,6 +147,8 @@ function AddMemorySheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { celebrate, toast } = useCelebration();
+  // A past trip needs real photos; a caption alone isn't proof of anything.
+  const past = trip.is_past;
 
   function pick(selected: File | null) {
     setFile(selected);
@@ -137,9 +184,9 @@ function AddMemorySheet({
       open={open}
       onClose={onClose}
       title="Add a memory"
-      description="A photo and a line about it. Worth +15 XP."
+      description={past ? "A photo from the trip and a line about it." : "A photo and a line about it. Worth +15 XP."}
       footer={
-        <Button fullWidth size="lg" onClick={save} disabled={busy || (!caption.trim() && !file)}>
+        <Button fullWidth size="lg" onClick={save} disabled={busy || (past ? !file : !caption.trim() && !file)}>
           {busy ? "Saving…" : "Save memory"}
         </Button>
       }
@@ -165,7 +212,9 @@ function AddMemorySheet({
                   📷
                 </span>
                 <span className="text-sm font-semibold text-ink">Choose a photo</span>
-                <span className="text-xs text-muted">Optional — a caption alone works too</span>
+                <span className="text-xs text-muted">
+                  {past ? "Required for a past trip" : "Optional — a caption alone works too"}
+                </span>
               </>
             )}
           </label>

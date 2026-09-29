@@ -715,7 +715,7 @@ function StepKind({
                 className="mt-1 h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
               />
               <span>
-                <span className="block text-sm font-semibold text-ink">Show on my public profile</span>
+                <span className="block text-sm font-semibold text-ink">Show this trip on my profile map</span>
                 <span className="block text-xs text-muted">
                   When the trip is finished, followers can see the area you covered on your profile map.
                 </span>

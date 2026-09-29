@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/art/Motif";
 import { TripCover } from "@/components/art/TripCover";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
+import { InviteFriendsCard } from "@/components/social/InviteFriends";
+import { ShareToFeedToggle } from "@/components/trip/PastTripPanel";
 import { TripCard, TripTile } from "@/components/trip/TripCard";
 import { Chip, ErrorNote, LoadingBlock, Progress, SectionHeader, StatTile } from "@/components/ui/Bits";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -124,6 +126,8 @@ export default function HomePage() {
         />
       ) : null}
 
+      <InviteFriendsCard />
+
       <JoinSheet open={joinOpen} onClose={() => setJoinOpen(false)} />
     </div>
   );
@@ -188,6 +192,7 @@ function ExperiencePrompt({
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [song, setSong] = useState<Song | null>(null);
+  const [isPublic, setIsPublic] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { celebrate, toast } = useCelebration();
@@ -199,6 +204,7 @@ function ExperiencePrompt({
       celebrate(
         await api.post<XPResult>(`/api/trips/${trip.id}/experience/`, {
           text: text.trim(),
+          is_public: isPublic,
           ...(song ? { song_id: song.id } : {}),
         }),
       );
@@ -273,6 +279,9 @@ function ExperiencePrompt({
         />
         <div className="mt-4">
           <SongPicker value={song} onChange={setSong} />
+        </div>
+        <div className="mt-4">
+          <ShareToFeedToggle checked={isPublic} onChange={setIsPublic} />
         </div>
       </Sheet>
     </>

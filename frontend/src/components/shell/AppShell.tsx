@@ -26,6 +26,7 @@ import {
   UserPlus,
   User as UserIcon,
   XCircle,
+  History,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -302,11 +303,16 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   achievement_unlocked: Trophy,
   reward_claimed: Gift,
   reward_update: Gift,
+  past_trip_submitted: ShieldCheck,
+  past_trip_reviewed: History,
+  referral_joined: UserPlus,
 };
 
 function notificationHref(note: Notification): string | null {
   // An invitee isn't on the trip yet — the invites sheet opens instead.
   if (note.kind === "trip_invite") return null;
+  // Admins aren't on the trip — the review queue on the admin page opens.
+  if (note.kind === "past_trip_submitted") return "/manage?tab=past";
   if (note.trip_id) {
     // Money and chat notifications open the trip straight on that tab.
     const money = note.kind === "settle_paid" || note.kind === "settle_confirmed";
@@ -314,7 +320,8 @@ function notificationHref(note: Notification): string | null {
     return `/trips/${note.trip_id}${tab}`;
   }
   if (note.track_id) return `/explore/${note.track_id}`;
-  if (note.kind === "new_follower" && note.actor) return `/u/${note.actor.username}`;
+  if ((note.kind === "new_follower" || note.kind === "referral_joined") && note.actor)
+    return `/u/${note.actor.username}`;
   if (note.kind === "reward_claimed") return "/manage";
   if (note.kind === "reward_update") return "/rewards";
   return null;

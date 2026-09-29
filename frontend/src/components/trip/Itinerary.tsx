@@ -132,6 +132,7 @@ export function Itinerary({ trip, onChanged, canEdit }: Props) {
                     previous={index > 0 ? day.activities[index - 1] : null}
                     isLast={index === day.activities.length - 1}
                     canEdit={canEdit}
+                    pastTrip={trip.is_past}
                     myId={user?.id}
                     dayCount={trip.days.length}
                     onOpen={() => setDetail(activity)}
@@ -196,6 +197,7 @@ export function Itinerary({ trip, onChanged, canEdit }: Props) {
         key={detail?.id ?? "none"}
         activity={detail}
         canEdit={canEdit}
+        pastTrip={trip.is_past}
         myId={user?.id}
         members={trip.members}
         dayCount={trip.days.length}
@@ -217,6 +219,7 @@ function ActivityRow({
   previous,
   isLast,
   canEdit,
+  pastTrip,
   myId,
   dayCount,
   onOpen,
@@ -228,6 +231,8 @@ function ActivityRow({
   previous: Activity | null;
   isLast: boolean;
   canEdit: boolean;
+  /** A trip logged after the fact: its stops are a record, not ticked off live. */
+  pastTrip: boolean;
   myId?: number;
   dayCount: number;
   onOpen: () => void;
@@ -343,7 +348,7 @@ function ActivityRow({
           </button>
 
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            {!done && canEdit ? (
+            {!done && canEdit && !pastTrip ? (
               <Button size="sm" onClick={complete} disabled={busy} icon="✓">
                 Mark as completed
               </Button>
@@ -386,6 +391,7 @@ function ActivityRow({
 function ActivityDetailSheet({
   activity,
   canEdit,
+  pastTrip,
   myId,
   members,
   dayCount,
@@ -395,6 +401,7 @@ function ActivityDetailSheet({
 }: {
   activity: Activity | null;
   canEdit: boolean;
+  pastTrip: boolean;
   myId?: number;
   members: TripMember[];
   dayCount: number;
@@ -503,7 +510,7 @@ function ActivityDetailSheet({
       title={activity.title}
       description={`${CATEGORY_LABELS[activity.category]} · ${timeWindow(activity)}`}
       footer={
-        done ? (
+        pastTrip ? null : done ? (
           canEdit ? (
             <Button variant="secondary" fullWidth onClick={() => act(() => api.post<XPResult>(`/api/activities/${activity.id}/undo/`), "Marked as not done.")} disabled={busy}>
               Mark as not done
@@ -538,7 +545,7 @@ function ActivityDetailSheet({
           <p className="text-[15px] leading-relaxed text-ink">{activity.description}</p>
         ) : null}
 
-        {!done && isPinned(activity) ? (
+        {!done && !pastTrip && isPinned(activity) ? (
           <p className="rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
             <span aria-hidden="true">📍</span> This stop is pinned on the map. Be within 1 km of it to
             check in or mark it complete — we&apos;ll ask for your location. The organiser marks it

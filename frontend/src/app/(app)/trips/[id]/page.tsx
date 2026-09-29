@@ -8,6 +8,7 @@ import { TripCover } from "@/components/art/TripCover";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Itinerary } from "@/components/trip/Itinerary";
+import { PastTripPanel, reviewBadge } from "@/components/trip/PastTripPanel";
 import { TripChecklist } from "@/components/trip/TripChecklist";
 import { TripChat, TripExpenses } from "@/components/trip/TripExtras";
 import { TripMap } from "@/components/trip/TripMap";
@@ -61,6 +62,11 @@ const TAB_ORDER: Record<TripStatus, TabId[]> = {
   cancelled: ["overview", "itinerary", "people", "expenses", "chat", "map", "memories", "checklist", "settings"],
 };
 
+/** A past trip is one person's record of somewhere they've been: no chat,
+ *  money, people or packing — just the plan, the photos and the map. */
+const PAST_ORDER: TabId[] = ["overview", "itinerary", "memories", "map", "settings"];
+const PAST_APPROVED_ORDER: TabId[] = ["memories", "overview", "itinerary", "map", "settings"];
+
 /** A finished solo trip has nobody to settle with, so it leads with the photos. */
 const SOLO_COMPLETED_ORDER: TabId[] = [
   "memories",
@@ -100,10 +106,18 @@ export default function TripDetailPage() {
   if (error && !trip) return <ErrorNote message={error} onRetry={reload} />;
   if (!trip) return null;
 
-  const canEdit = trip.my_role === "owner" || trip.my_role === "admin";
-  const badge = statusBadge(trip.status);
-  const order =
-    trip.status === "completed" && trip.member_count < 2 ? SOLO_COMPLETED_ORDER : TAB_ORDER[trip.status];
+  const isOrganiser = trip.my_role === "owner" || trip.my_role === "admin";
+  // A past trip under review (or approved) stays exactly as it was sent.
+  const locked = trip.is_past && !trip.past_trip?.editable;
+  const canEdit = isOrganiser && !locked;
+  const badge = trip.past_trip ? reviewBadge(trip.past_trip.review_status) : statusBadge(trip.status);
+  const order = trip.is_past
+    ? trip.status === "completed"
+      ? PAST_APPROVED_ORDER
+      : PAST_ORDER
+    : trip.status === "completed" && trip.member_count < 2
+      ? SOLO_COMPLETED_ORDER
+      : TAB_ORDER[trip.status];
   const tab: TabId = picked ?? order[0];
   const setTab = (next: TabId) => {
     setPicked(next);
@@ -175,6 +189,11 @@ export default function TripDetailPage() {
           <Chip tone={trip.status === "active" ? "success" : "brand"} className="w-fit bg-white/95">
             <span aria-hidden="true">{badge.mark}</span> {badge.label}
           </Chip>
+          {trip.is_past ? (
+            <Chip tone="neutral" className="w-fit bg-white/95">
+              <span aria-hidden="true">🕰️</span> Past trip
+            </Chip>
+          ) : null}
           {trip.no_xp ? (
             <Chip tone="warn" className="w-fit bg-white/95">
               <span aria-hidden="true">🏠</span> Close to home · No XP
@@ -227,7 +246,9 @@ export default function TripDetailPage() {
         </p>
       </Sheet>
 
-      {trip.status === "planning" && canEdit ? (
+      {trip.past_trip ? <PastTripPanel trip={trip} onChanged={reload} onGo={setTab} /> : null}
+
+      {trip.status === "planning" && canEdit && !trip.is_past ? (
         <div className="card flex flex-wrap items-center justify-between gap-3 border-brand/30 bg-brand-soft/40 p-4">
           <div className="min-w-0">
             <p className="font-bold text-ink">Ready to go?</p>
@@ -293,11 +314,11 @@ export default function TripDetailPage() {
         {tab === "people" ? (
           <TripPeople trip={trip} onChanged={reload} canEdit={canEdit} />
         ) : null}
-        {tab === "memories" ? <TripMemories trip={trip} /> : null}
+        {tab === "memories" ? <TripMemories trip={trip} onChanged={reload} /> : null}
         {tab === "expenses" ? <TripExpenses trip={trip} /> : null}
         {tab === "checklist" ? <TripChecklist trip={trip} /> : null}
         {tab === "chat" ? <TripChat trip={trip} /> : null}
-        {tab === "settings" ? <TripSettings trip={trip} onChanged={reload} canEdit={canEdit} /> : null}
+        {tab === "settings" ? <TripSettings trip={trip} onChanged={reload} canEdit={isOrganiser} /> : null}
       </div>
 
     </div>
@@ -400,9 +421,11 @@ function Overview({
   onGo: (tab: TabId) => void;
   onChanged: () => void;
 }) {
-  const nextUp = trip.days
-    .flatMap((day) => day.activities.map((a) => ({ ...a, date: day.date })))
-    .find((a) => a.status === "planned");
+  const nextUp = trip.is_past
+    ? undefined
+    : trip.days
+        .flatMap((day) => day.activities.map((a) => ({ ...a, date: day.date })))
+        .find((a) => a.status === "planned");
 
   const completed = trip.days.reduce(
     (sum, day) => sum + day.activities.filter((a) => a.status === "completed").length,
@@ -411,6 +434,7 @@ function Overview({
 
   return (
     <div className="space-y-4">
+      {trip.is_past && trip.status !== "completed" ? null : (
       <section className="card p-4">
         <Progress
           value={trip.progress_percent}
@@ -422,12 +446,17 @@ function Overview({
           {formatNumber(trip.total_xp)} XP earned so far
         </p>
       </section>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile emoji="📅" value={trip.duration_days} label="Days" />
         <StatTile emoji="📍" value={trip.activity_count} label="Activities" />
         <StatTile emoji="👥" value={trip.member_count} label="Travelling" />
-        <StatTile emoji="⭐" value={formatNumber(trip.planned_xp)} label="XP on offer" />
+        {trip.is_past ? (
+          <StatTile emoji="📸" value={trip.past_trip?.photo_count ?? 0} label="Photos" />
+        ) : (
+          <StatTile emoji="⭐" value={formatNumber(trip.planned_xp)} label="XP on offer" />
+        )}
       </div>
 
       <BudgetCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
@@ -462,7 +491,7 @@ function Overview({
               <span className="text-sm font-semibold text-ink">{member.user.name}</span>
             </span>
           ))}
-          {canEdit ? (
+          {canEdit && !trip.is_past ? (
             <Button size="sm" variant="ghost" onClick={() => onGo("people")}>
               + Invite
             </Button>
@@ -608,15 +637,19 @@ function TripSettings({
   if (!canEdit) {
     return (
       <div className="space-y-4">
+        <ProfileMapSetting trip={trip} onChanged={onChanged} />
         <div className="card p-6 text-center">
           <p className="text-sm text-muted">
-            Only the organiser and co-planners can change trip settings.
+            Only the organiser and co-planners can change the rest of the trip settings.
           </p>
         </div>
         <LeaveTripSection trip={trip} />
       </div>
     );
   }
+
+  // A past trip under review (or approved) can't be changed.
+  const locked = trip.is_past && !trip.past_trip?.editable;
 
   async function save() {
     setBusy(true);
@@ -631,27 +664,20 @@ function TripSettings({
     }
   }
 
-  async function setPublic(value: boolean) {
+  /** One track per trip: switching this on publishes it (XP the first time
+   *  only), switching it off hides that same track — never a second copy. */
+  async function setTrackPublished(value: boolean) {
+    setBusy(true);
     try {
-      await api.patch(`/api/trips/${trip.id}/`, { is_public: value });
-      toast(value ? "This trip will show on your profile map." : "This trip is now private.");
+      const result = await api.post<{ track: { id: string } | null; xp_awarded: number; user: XPResult["user"] }>(
+        "/api/explore/tracks/from-trip/",
+        { trip: trip.id, published: value },
+      );
+      if (result.xp_awarded) celebrate({ user: result.user, xp_awarded: result.xp_awarded });
+      else toast(value ? "Your track is public again." : "Track hidden — it's no longer in Explore.");
       onChanged();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : "Couldn't change that.", "error");
-    }
-  }
-
-  async function publishTrack() {
-    setBusy(true);
-    try {
-      const result = await api.post<{ track: { id: string }; xp_awarded: number; user: XPResult["user"] }>(
-        "/api/explore/tracks/from-trip/",
-        { trip: trip.id },
-      );
-      celebrate({ user: result.user, xp_awarded: result.xp_awarded });
-      router.push(`/explore/${result.track.id}`);
-    } catch (err) {
-      toast(err instanceof ApiError ? err.message : "Couldn't publish that.", "error");
     } finally {
       setBusy(false);
     }
@@ -685,6 +711,19 @@ function TripSettings({
 
   return (
     <div className="space-y-4">
+      <ProfileMapSetting trip={trip} onChanged={onChanged} />
+
+      {locked ? (
+        <div className="card p-6 text-center">
+          <p className="text-sm text-muted">
+            {trip.past_trip?.review_status === "pending"
+              ? "This trip is waiting for review, so its settings are locked. Withdraw it (at the top of the page) to change anything."
+              : "This past trip has been approved, so it stays as it was checked."}
+          </p>
+        </div>
+      ) : null}
+
+      {!locked ? (
       <section className="card space-y-4 p-4">
         <h2 className="text-sm font-bold text-muted">Basics</h2>
         <TextField
@@ -720,31 +759,16 @@ function TripSettings({
           Save changes
         </Button>
       </section>
+      ) : null}
 
-      <section className="card space-y-3 p-4">
-        <h2 className="text-sm font-bold text-muted">Who can see this trip</h2>
-        <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
-          <input
-            type="checkbox"
-            defaultChecked={trip.is_public}
-            onChange={(e) => void setPublic(e.target.checked)}
-            className="mt-1 h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
-          />
-          <span>
-            <span className="block text-[15px] font-semibold text-ink">Show on my public profile</span>
-            <span className="block text-sm text-muted">
-              Once it&apos;s finished, its area and the places you actually visited appear on your
-              profile map for anyone who follows you. Turn this off to keep the trip private.
-            </span>
-          </span>
-        </label>
-      </section>
 
       {trip.status === "completed" ? (
         <section className="card space-y-3 p-4">
           <h2 className="text-sm font-bold text-muted">Trip status</h2>
           <p className="text-sm text-muted">
-            This trip finished because every stop on the itinerary was completed.
+            {trip.is_past
+              ? "An admin checked and approved this past trip."
+              : "This trip finished because every stop on the itinerary was completed."}
           </p>
           <ButtonLink href={`/trips/${trip.id}/complete`} variant="secondary" fullWidth icon="🏆">
             See your trip story
@@ -752,17 +776,34 @@ function TripSettings({
         </section>
       ) : null}
 
+      {!trip.is_past || trip.status === "completed" ? (
       <section className="card space-y-3 p-4">
         <h2 className="text-sm font-bold text-muted">Share this journey</h2>
-        <p className="text-sm text-muted">
-          Turn your journey into a track others can follow. Worth +10 XP.
-        </p>
-        <Button variant="accent" fullWidth icon="🧭" onClick={publishTrack} disabled={busy}>
-          Publish as a track
-        </Button>
+        <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={Boolean(trip.my_track?.is_published)}
+            disabled={busy}
+            onChange={(e) => void setTrackPublished(e.target.checked)}
+            className="mt-1 h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
+          />
+          <span>
+            <span className="block text-[15px] font-semibold text-ink">Publish as a track</span>
+            <span className="block text-sm text-muted">
+              Others can find it in Explore and follow your route.
+              {trip.my_track ? " Turn this off to hide it." : " Worth +10 XP the first time."}
+            </span>
+          </span>
+        </label>
+        {trip.my_track?.is_published ? (
+          <ButtonLink href={`/explore/${trip.my_track.id}`} variant="secondary" size="sm" icon="🧭">
+            View your track
+          </ButtonLink>
+        ) : null}
       </section>
+      ) : null}
 
-      {trip.status === "planning" || trip.status === "active" ? (
+      {!trip.is_past && (trip.status === "planning" || trip.status === "active") ? (
         <section className="card space-y-3 border-danger/25 p-4">
           <h2 className="text-sm font-bold text-danger">Cancel this trip</h2>
           <p className="text-sm text-muted">
@@ -930,5 +971,54 @@ function LeaveTripSection({ trip }: { trip: TripDetail }) {
         </ul>
       </Sheet>
     </>
+  );
+}
+
+/** "Show on my profile map" — every traveller on the trip decides this for
+ *  their own profile, whatever their role, even while a past trip is locked
+ *  for review. */
+function ProfileMapSetting({ trip, onChanged }: { trip: TripDetail; onChanged: () => void }) {
+  const { toast } = useCelebration();
+  const [shown, setShown] = useState(trip.my_show_on_map);
+  const [busy, setBusy] = useState(false);
+
+  async function change(value: boolean) {
+    setShown(value);
+    setBusy(true);
+    try {
+      await api.post(`/api/trips/${trip.id}/profile-map/`, { show: value });
+      toast(value ? "This trip will show on your profile map." : "Taken off your profile map.");
+      onChanged();
+    } catch (err) {
+      setShown(!value);
+      toast(err instanceof ApiError ? err.message : "Couldn't change that.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const waiting = trip.is_past && trip.status !== "completed";
+  return (
+    <section className="card space-y-3 p-4">
+      <h2 className="text-sm font-bold text-muted">Profile map</h2>
+      <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={shown}
+          disabled={busy}
+          onChange={(e) => void change(e.target.checked)}
+          className="mt-1 h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
+        />
+        <span>
+          <span className="block text-[15px] font-semibold text-ink">Show this trip on my profile map</span>
+          <span className="block text-sm text-muted">
+            {waiting
+              ? "Once an admin approves it, its area and places appear on your public profile map."
+              : "Once it's finished, its area and the places you actually visited appear on your public profile map."}{" "}
+            Untick to keep it off your profile. Only your own profile changes — everyone on the trip chooses for themselves.
+          </span>
+        </span>
+      </label>
+    </section>
   );
 }

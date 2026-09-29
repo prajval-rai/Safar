@@ -53,6 +53,9 @@ export interface User extends UserMini {
   date_joined: string;
   /** Staff can put rewards up in the Rewards catalog. */
   is_staff: boolean;
+  /** Refer a friend: your code (the ?ref= in your link), and how many joined with it. */
+  referral_code: string;
+  referral_count: number;
 }
 
 export type ActivityStatus = "planned" | "completed" | "skipped";
@@ -158,6 +161,104 @@ export interface Trip {
   theme: ThemeId;
   /** Within 10 km of where it was planned or started from — earns no XP. */
   no_xp: boolean;
+  /** Logged after the fact ("I've already been") — reviewed by an admin, never run live. */
+  is_past: boolean;
+  /** Where a past trip's review stands; "" for an ordinary trip. */
+  review_status: PastReviewStatus | "";
+}
+
+export type PastReviewStatus = "draft" | "pending" | "approved" | "rejected";
+
+/** One rule a past trip has to meet before it can be sent for review. */
+export interface PastRequirement {
+  key: "photos" | "stops" | "story";
+  label: string;
+  done: boolean;
+  have: number;
+  need: number;
+}
+
+/** The past-trip block of a trip's detail — null for an ordinary trip. */
+export interface PastTripInfo {
+  review_status: PastReviewStatus;
+  review_note: string;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: UserMini | null;
+  requirements: PastRequirement[];
+  photo_count: number;
+  max_photos: number;
+  has_story: boolean;
+  story_public: boolean;
+  allow_public_story: boolean;
+  approval_xp: number | string;
+  story_xp: number | string;
+  /** Draft or rejected: the traveller can still change it. */
+  editable: boolean;
+}
+
+/** The admin-set rules for logging past trips. */
+export interface PastTripConfig {
+  enabled: boolean;
+  min_photos: number;
+  max_photos: number;
+  min_stops: number;
+  require_story: boolean;
+  min_story_chars: number;
+  allow_public_story: boolean;
+  max_age_days: number;
+  approval_xp: number | string;
+  story_xp: number | string;
+  updated_by: UserMini | null;
+  updated_at: string;
+}
+
+/** A past trip as the admin review queue sees it. */
+export interface AdminPastTrip {
+  id: string;
+  title: string;
+  destination: string;
+  region: string;
+  summary: string;
+  cover_key: CoverKey;
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  trip_type: string;
+  transport: string;
+  budget_per_person: number;
+  created_by: UserMini;
+  review_status: PastReviewStatus;
+  review_note: string;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: UserMini | null;
+  stop_count: number;
+  photo_count: number;
+  photos: { id: string; url: string; caption: string }[];
+  /** Filled in on the detail endpoint only. */
+  days: {
+    index: number;
+    date: string;
+    title: string;
+    notes: string;
+    stops: {
+      id: string;
+      title: string;
+      category: ActivityCategory;
+      place_name: string;
+      start_time: string | null;
+      notes: string;
+      cost: number;
+    }[];
+  }[];
+  story: { text: string; is_public: boolean } | null;
+  created_at: string;
+}
+
+export interface AdminPastTripPage {
+  counts: { pending: number; approved: number; rejected: number };
+  results: AdminPastTrip[];
 }
 
 export interface TripDetail extends Trip {
@@ -182,6 +283,12 @@ export interface TripDetail extends Trip {
   can_finish: boolean;
   /** People asked to come who haven't answered yet. */
   pending_invites: { id: number; user: UserMini }[];
+  /** For a past trip: its review, and what's still needed to submit it. */
+  past_trip: PastTripInfo | null;
+  /** The track you made from this trip (one per trip), or null. */
+  my_track: { id: string; is_published: boolean } | null;
+  /** Whether this trip shows on your own public profile map. */
+  my_show_on_map: boolean;
   created_at: string;
 }
 
@@ -428,6 +535,8 @@ export interface TripExperience {
   trip: string;
   user: UserMini;
   text: string;
+  /** Shared to the Feed, or kept to the trip. */
+  is_public: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -492,7 +601,10 @@ export type NotificationKind =
   | "new_follower"
   | "achievement_unlocked"
   | "reward_claimed"
-  | "reward_update";
+  | "reward_update"
+  | "past_trip_submitted"
+  | "past_trip_reviewed"
+  | "referral_joined";
 
 export interface Notification {
   id: string;
@@ -577,6 +689,8 @@ export interface AdminOverview {
     pending: number;
     delivered: number;
     rejected: number;
+    /** Past trips waiting for an admin to review them. */
+    past_trips_pending: number;
   };
   rewards: AdminReward[];
 }

@@ -10,7 +10,7 @@ import {
   dateRange,
   formatNumber,
   relativeDays,
-  statusBadge,
+  tripBadge,
 } from "@/lib/utils";
 
 /**
@@ -37,7 +37,7 @@ export function TripAvatar({ trip, size = 56 }: { trip: Pick<Trip, "cover_key" |
  * along, and how much XP.
  */
 export function TripCard({ trip }: { trip: Trip }) {
-  const badge = statusBadge(trip.status);
+  const badge = tripBadge(trip);
 
   return (
     <Link
@@ -97,7 +97,9 @@ export function TripCard({ trip }: { trip: Trip }) {
               value={trip.progress_percent}
               size="sm"
               label={
-                trip.status === "planning"
+                trip.is_past && trip.status === "planning"
+                  ? "Logged after the trip"
+                  : trip.status === "planning"
                   ? relativeDays(trip.start_date)
                   : `${trip.progress_percent}% complete`
               }
@@ -115,7 +117,7 @@ export function TripCard({ trip }: { trip: Trip }) {
 
 /** Vertical card for the My Trips grid: big cover on top, facts underneath. */
 export function TripGridCard({ trip }: { trip: Trip }) {
-  const badge = statusBadge(trip.status);
+  const badge = tripBadge(trip);
 
   return (
     <Link
@@ -155,7 +157,9 @@ export function TripGridCard({ trip }: { trip: Trip }) {
               value={trip.progress_percent}
               size="sm"
               label={
-                trip.status === "planning"
+                trip.is_past && trip.status === "planning"
+                  ? "Logged after the trip"
+                  : trip.status === "planning"
                   ? relativeDays(trip.start_date)
                   : `${trip.progress_percent}% complete`
               }

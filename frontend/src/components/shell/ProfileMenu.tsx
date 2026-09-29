@@ -1,11 +1,12 @@
 "use client";
 
-import { AtSign, ChevronRight, LogOut, ShieldCheck, Trophy, User as UserIcon } from "lucide-react";
+import { AtSign, ChevronRight, LogOut, ShieldCheck, Trophy, User as UserIcon, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
+import { InviteFriendsSheet, REFERRAL_XP } from "@/components/social/InviteFriends";
 import { Avatar, Progress } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
@@ -25,6 +26,7 @@ export function ProfileMenu() {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Close on a click outside the menu or on Escape.
@@ -101,6 +103,21 @@ export function ProfileMenu() {
             >
               <AtSign size={18} aria-hidden="true" className="text-muted" /> Change username
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={ITEM}
+              onClick={() => {
+                close();
+                setInviting(true);
+              }}
+            >
+              <UserPlus size={18} aria-hidden="true" className="text-muted" />
+              <span className="flex-1">Invite friends</span>
+              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand">
+                +{REFERRAL_XP} XP
+              </span>
+            </button>
             <Link href="/rewards" role="menuitem" className={ITEM} onClick={close}>
               <Trophy size={18} aria-hidden="true" className="text-muted" /> Rewards
             </Link>
@@ -135,6 +152,7 @@ export function ProfileMenu() {
 
       {/* Keyed on the username so it starts fresh after a change. */}
       <UsernameSheet key={user.username} user={user} open={renaming} onClose={() => setRenaming(false)} />
+      <InviteFriendsSheet open={inviting} onClose={() => setInviting(false)} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Activity, ActivityCategory, CoverKey, TripStatus } from "./types";
+import type { Activity, ActivityCategory, CoverKey, Trip, TripStatus } from "./types";
 
 export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -167,6 +167,17 @@ export function statusBadge(status: TripStatus): { label: string; mark: string }
   if (status === "active") return { label: "Happening now", mark: "●" };
   if (status === "cancelled") return { label: "Cancelled", mark: "✕" };
   return { label: "Planning", mark: "○" };
+}
+
+/** The badge a trip card shows: its status, or — for a past trip that isn't
+ *  approved yet — where its review stands. */
+export function tripBadge(trip: Pick<Trip, "status" | "is_past" | "review_status">): { label: string; mark: string } {
+  if (trip.is_past && trip.review_status !== "approved") {
+    if (trip.review_status === "pending") return { label: "In review", mark: "⏳" };
+    if (trip.review_status === "rejected") return { label: "Needs changes", mark: "!" };
+    return { label: "Past trip · draft", mark: "✎" };
+  }
+  return statusBadge(trip.status);
 }
 
 export const COVER_LABELS: Record<CoverKey, string> = {

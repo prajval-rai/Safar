@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { MotifDivider } from "@/components/art/Motif";
 import { RewardCatalog } from "@/components/rewards/RewardCatalog";
+import { InviteFriendsCard } from "@/components/social/InviteFriends";
 import { Avatar, CartoonAvatar, Chip, ErrorNote, LoadingBlock, Progress, SegmentedControl } from "@/components/ui/Bits";
 import { Sheet } from "@/components/ui/Sheet";
 import { useApi } from "@/lib/hooks";
@@ -77,6 +78,8 @@ export default function RewardsPage() {
           How XP is earned — and how it gets cut →
         </button>
       </section>
+
+      <InviteFriendsCard />
 
       <XPRulesSheet
         open={rulesOpen}
