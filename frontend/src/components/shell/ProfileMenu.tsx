@@ -92,6 +92,22 @@ export function ProfileMenu() {
           </div>
 
           <div className="border-t border-line pt-1.5">
+            {/* First, and highlighted: the one thing here that earns you XP. */}
+            <button
+              type="button"
+              role="menuitem"
+              className={cn(ITEM, "bg-brand-soft/60 hover:bg-brand-soft")}
+              onClick={() => {
+                close();
+                setInviting(true);
+              }}
+            >
+              <UserPlus size={18} aria-hidden="true" className="text-brand" />
+              <span className="flex-1">Invite friends</span>
+              <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-on-brand">
+                +{REFERRAL_XP} XP
+              </span>
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -102,21 +118,6 @@ export function ProfileMenu() {
               }}
             >
               <AtSign size={18} aria-hidden="true" className="text-muted" /> Change username
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={ITEM}
-              onClick={() => {
-                close();
-                setInviting(true);
-              }}
-            >
-              <UserPlus size={18} aria-hidden="true" className="text-muted" />
-              <span className="flex-1">Invite friends</span>
-              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand">
-                +{REFERRAL_XP} XP
-              </span>
             </button>
             <Link href="/rewards" role="menuitem" className={ITEM} onClick={close}>
               <Trophy size={18} aria-hidden="true" className="text-muted" /> Rewards

@@ -46,6 +46,8 @@ export default function HomePage() {
 
       {data.live_trip ? <LiveTripBanner trip={data.live_trip} /> : null}
 
+      <InviteFriendsCard />
+
       {data.experience_prompt ? (
         <ExperiencePrompt
           key={data.experience_prompt.trip.id}
@@ -126,8 +128,6 @@ export default function HomePage() {
         />
       ) : null}
 
-      <InviteFriendsCard />
-
       <JoinSheet open={joinOpen} onClose={() => setJoinOpen(false)} />
     </div>
   );
@@ -177,7 +177,8 @@ function LiveTripBanner({ trip }: { trip: Trip }) {
   );
 }
 
-/** Once a trip is over, a small pop-up floats in asking how it went. Tapping it
+/** Once a trip is over, a card on Home asks how it went — part of the page,
+ *  not floating over it, so it never covers anything. Tapping it
  *  opens a sheet to write about the trip — or skip, which means we never ask
  *  about that trip again. */
 function ExperiencePrompt({
@@ -236,7 +237,7 @@ function ExperiencePrompt({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="animate-rise fixed right-4 bottom-24 left-4 z-40 flex items-center gap-3 rounded-2xl border border-brand/40 bg-surface p-3 text-left shadow-xl sm:right-8 sm:bottom-8 sm:left-auto sm:w-96"
+          className="card animate-rise flex w-full items-center gap-3 border-brand/40 p-3 text-left hover:bg-raised"
         >
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xl" aria-hidden="true">
             📝

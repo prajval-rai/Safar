@@ -7,6 +7,9 @@
 
 const KEY = "safar.ref";
 
+/** XP for each friend who joins with your link (rewards.services.REFERRAL_XP). */
+export const REFERRAL_XP = 10;
+
 export function rememberReferralFromUrl(): string | null {
   if (typeof window === "undefined") return null;
   const code = new URLSearchParams(window.location.search).get("ref")?.trim().toUpperCase();
