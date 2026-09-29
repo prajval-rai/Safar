@@ -104,6 +104,10 @@ class Trip(models.Model):
     budget_per_person = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=20, choices=TRIP_STATUS, default="planning")
     is_public = models.BooleanField(default=False)
+    # Listed under Explore → Open trips, where anyone signed in can join it
+    # without the code (see explore.views.open_trips). Only while it's upcoming
+    # or under way — a finished, cancelled or past trip is never listed.
+    open_to_join = models.BooleanField(default=False)
     join_code = models.CharField(max_length=12, unique=True, default=make_join_code)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_trips"

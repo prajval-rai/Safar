@@ -41,6 +41,12 @@ class NotificationTestCase(TestCase):
         Day.objects.create(trip=trip, index=1, date=trip.start_date)
         return trip
 
+    def make_finished_trip(self, owner):
+        trip = self.make_trip(owner)
+        trip.status = "completed"
+        trip.save()
+        return trip
+
     # --- trip member added ------------------------------------------------
 
     def test_adding_a_member_notifies_them(self):
@@ -171,7 +177,7 @@ class NotificationTestCase(TestCase):
 
     def test_publishing_a_track_notifies_followers(self):
         Follow.objects.create(follower=self.ann, following=self.me)
-        trip = self.make_trip(self.me)
+        trip = self.make_finished_trip(self.me)
 
         response = self.client_for(self.me).post(
             "/api/explore/tracks/from-trip/", {"trip": str(trip.id)}, format="json"
@@ -182,7 +188,7 @@ class NotificationTestCase(TestCase):
         self.assertEqual(note.actor_id, self.me.id)
 
     def test_publishing_a_track_does_not_notify_non_followers(self):
-        trip = self.make_trip(self.me)
+        trip = self.make_finished_trip(self.me)
         self.client_for(self.me).post(
             "/api/explore/tracks/from-trip/", {"trip": str(trip.id)}, format="json"
         )

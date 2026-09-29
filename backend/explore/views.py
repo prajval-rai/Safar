@@ -163,6 +163,10 @@ def track_from_trip(request):
     if not trip:
         raise ValidationError({"trip": "We couldn't find that trip in your list."})
     publish = str(request.data.get("published", True)).lower() not in {"false", "0", ""}
+    # A track is a route someone actually travelled — so only a finished trip.
+    # (Hiding one is always allowed.)
+    if publish and trip.status != "completed":
+        raise ValidationError({"detail": "Complete the trip first — only finished trips can be published as tracks."})
 
     existing = (
         Track.objects.select_for_update()
@@ -248,6 +252,104 @@ def track_from_trip(request):
         },
         status=status.HTTP_201_CREATED,
     )
+
+
+# --- Open trips ------------------------------------------------------------------
+# Upcoming or live trips their organisers opened to anyone (Trip.open_to_join),
+# listed in Explore apart from tracks: a track is a finished route to copy, an
+# open trip is a real trip you can join and travel with its crew.
+
+
+def _open_trip_row(trip, request, member_ids) -> dict:
+    from accounts.serializers import UserMiniSerializer
+
+    return {
+        "id": str(trip.id),
+        "title": trip.title,
+        "destination": trip.destination,
+        "region": trip.region,
+        "summary": trip.summary,
+        "cover_key": trip.cover_key,
+        "cover_image": trip.display_cover(request),
+        "theme": trip.theme,
+        "status": trip.status,
+        "start_date": trip.start_date,
+        "end_date": trip.end_date,
+        "duration_days": trip.duration_days,
+        "trip_type": trip.trip_type,
+        "transport": trip.transport,
+        "budget_per_person": trip.budget_per_person,
+        "member_count": trip.member_total,
+        "stop_count": trip.stop_total,
+        "organiser": UserMiniSerializer(trip.created_by).data,
+        "is_member": trip.id in member_ids,
+    }
+
+
+def _open_trips():
+    from django.utils import timezone
+
+    return (
+        Trip.objects.filter(
+            open_to_join=True,
+            is_past=False,
+            status__in=["planning", "active"],
+            end_date__gte=timezone.localdate(),
+            created_by__is_active=True,
+        )
+        .select_related("created_by")
+        .annotate(
+            member_total=Count("members", distinct=True),
+            stop_total=Count("days__activities", distinct=True),
+        )
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def open_trips(request):
+    """Trips anyone can join, soonest first. ?q= searches title and place."""
+    from django.db.models import Q
+
+    trips = _open_trips()
+    query = (request.query_params.get("q") or "").strip()
+    if query:
+        trips = trips.filter(
+            Q(title__icontains=query) | Q(destination__icontains=query) | Q(region__icontains=query)
+        )
+    trips = list(trips.order_by("start_date")[:60])
+    member_ids = set(
+        TripMember.objects.filter(user=request.user, trip__in=trips).values_list("trip_id", flat=True)
+    )
+    return Response([_open_trip_row(t, request, member_ids) for t in trips])
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def join_open_trip(request, pk):
+    """Join an open trip straight from Explore — no code needed."""
+    trip = _open_trips().filter(pk=pk).first()
+    if not trip:
+        raise ValidationError({"detail": "This trip isn't open to join any more."})
+    from django.utils import timezone
+
+    from trips.models import TripInvite
+
+    _, created = TripMember.objects.get_or_create(trip=trip, user=request.user)
+    TripInvite.objects.filter(trip=trip, user=request.user, status="pending").update(
+        status="accepted", responded_at=timezone.now()
+    )
+    if created:
+        organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
+        notify_many(
+            organisers,
+            "trip_joined",
+            f"{request.user.name} joined {trip.title}",
+            actor=request.user,
+            body="They found your open trip in Explore.",
+            trip=trip,
+        )
+    return Response({"id": str(trip.id), "joined": created}, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class TravelPostViewSet(viewsets.ModelViewSet):

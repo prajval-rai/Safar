@@ -101,7 +101,10 @@ XP_RULES = [
         "kind": "earn",
         "icon": "🧭",
         "title": "Plan a trip",
-        "detail": f"+{TRIP_CREATE_XP} XP for starting a new trip as its organiser.",
+        "detail": (
+            f"+{TRIP_CREATE_XP} XP for the organiser once the trip is marked complete with at least "
+            "one planned stop done. Creating a trip on its own earns nothing."
+        ),
     },
     {
         "kind": "earn",

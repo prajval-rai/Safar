@@ -161,6 +161,7 @@ class TripListSerializer(serializers.ModelSerializer):
             # Logged after the fact, and where its review stands (see trips.past).
             "is_past",
             "review_status",
+            "open_to_join",
         ]
         read_only_fields = ["no_xp", "is_past", "review_status"]
 
@@ -292,6 +293,7 @@ class TripCreateSerializer(serializers.ModelSerializer):
             "budget_per_person",
             "is_public",
             "is_past",
+            "open_to_join",
             "invite_usernames",
         ]
         read_only_fields = ["id"]

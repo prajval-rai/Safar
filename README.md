@@ -119,7 +119,7 @@ data in it straight away.
 - Trip completion screen with the route, the numbers and your crew
 - Home asks "How was <trip>?" with the XP you earned on it; the write-up goes to the Feed,
   or stays on the trip if you untick *Share it publicly*
-- Publish the trip as a **track** others can copy into their own trips
+- Publish the trip as a **track** others can copy into their own trips — only once it's completed
 - A **soundtrack** for the trip — a song searched from Apple Music, with a preview player
 - A **story card** image to share to Instagram
 
@@ -145,7 +145,9 @@ data in it straight away.
 - *Publish as a track* is an on/off switch too — one track per trip, hidden rather than deleted
 
 **Explore, Feed and people**
-- Tracks: browse, like, save and use (copy into a new trip of your own)
+- Explore has two sections: **Tracks** (finished routes — browse, like, save and use one as a new
+  trip) and **Open trips** (upcoming trips whose organiser ticked *Let anyone join* in Settings —
+  anyone can join without the code, and the organisers are notified)
 - **Feed** of travel posts with likes and an Everyone / Following filter; a post detail page
 - Public post pages at `/p/<id>` — anyone can open them, signed in or not
 - Follow travellers; profiles at `/u/<username>`; *Find travellers to follow*

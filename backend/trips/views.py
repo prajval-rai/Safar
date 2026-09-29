@@ -226,6 +226,7 @@ def complete_trip(trip, actor, members, share=None):
     if trip.created_by_id == actor.id:
         paid += paid_now
         held += organiser_bonus - paid_now
+    paid += pay_planning_xp(trip, actor)
     notify_many(
         members,
         "trip_completed",
@@ -234,6 +235,21 @@ def complete_trip(trip, actor, members, share=None):
         trip=trip,
     )
     return paid, held
+
+
+def pay_planning_xp(trip, actor):
+    """TRIP_CREATE_XP for the organiser — earned by taking the trip, not by
+    creating it: paid when it's completed with at least one planned stop done.
+    Once per trip, so undoing and finishing again never pays twice. Returns
+    what `actor` got."""
+    organiser = trip.created_by
+    done = Activity.objects.filter(day__trip=trip, status="completed").exists()
+    already = organiser.xp_transactions.filter(trip=trip, reason=f"Planned {trip.title}").exists()
+    if not done or already:
+        return as_xp(0)
+    if award_xp(organiser, TRIP_CREATE_XP, f"Planned {trip.title}", kind="trip", trip=trip) and organiser.pk == actor.pk:
+        return as_xp(TRIP_CREATE_XP)
+    return as_xp(0)
 
 
 _KEEP = object()
@@ -346,9 +362,8 @@ class TripViewSet(viewsets.ModelViewSet):
                 friend = User.objects.filter(username__iexact=username.strip()).first()
                 if friend and friend != self.request.user:
                     send_invite(trip, friend, self.request.user)
-        # Rewards taking the initiative to plan something, not just finishing it
-        # (award_xp skips it for a no-XP trip).
-        award_xp(self.request.user, TRIP_CREATE_XP, f"Planned {trip.title}", kind="trip", trip=trip)
+        # No XP for creating a trip: planning a trip nobody takes would be free
+        # XP. The organiser's planning XP comes once it's completed (complete_trip).
         self._created_trip = trip
 
     def _create_past(self, serializer):
@@ -357,6 +372,7 @@ class TripViewSet(viewsets.ModelViewSet):
         config = PastTripConfig.current()
         if not config.enabled:
             raise ValidationError({"detail": "Past trips aren't being accepted right now."})
+        serializer.validated_data["open_to_join"] = False
         data = serializer.validated_data
         validate_past_dates(data.get("start_date"), data.get("end_date"), config)
         trip = serializer.save(created_by=self.request.user, review_status="draft", no_xp=False)
@@ -385,7 +401,7 @@ class TripViewSet(viewsets.ModelViewSet):
         trip = self._created_trip
         detail = TripDetailSerializer(trip, context=self.get_serializer_context())
         payload = dict(detail.data)
-        payload["xp_awarded"] = 0 if trip.no_xp or trip.is_past else TRIP_CREATE_XP
+        payload["xp_awarded"] = 0
         return Response(payload, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
@@ -393,6 +409,12 @@ class TripViewSet(viewsets.ModelViewSet):
         require_member(trip, self.request.user, editors_only=True)
         # A trip is past or it isn't — that's decided when it's created.
         serializer.validated_data.pop("is_past", None)
+        if serializer.validated_data.get("open_to_join") and (
+            trip.is_past or trip.status in ("completed", "cancelled")
+        ):
+            raise ValidationError(
+                {"open_to_join": "Only an upcoming or live trip can be opened for anyone to join."}
+            )
         if trip.is_past:
             data = serializer.validated_data
             validate_past_dates(data.get("start_date", trip.start_date), data.get("end_date", trip.end_date))

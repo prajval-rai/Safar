@@ -165,6 +165,31 @@ export interface Trip {
   is_past: boolean;
   /** Where a past trip's review stands; "" for an ordinary trip. */
   review_status: PastReviewStatus | "";
+  /** Listed in Explore → Open trips, where anyone can join without the code. */
+  open_to_join: boolean;
+}
+
+/** An upcoming or live trip anyone can join, as Explore → Open trips lists it. */
+export interface OpenTrip {
+  id: string;
+  title: string;
+  destination: string;
+  region: string;
+  summary: string;
+  cover_key: CoverKey;
+  cover_image: string;
+  theme: ThemeId;
+  status: TripStatus;
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  trip_type: string;
+  transport: string;
+  budget_per_person: number;
+  member_count: number;
+  stop_count: number;
+  organiser: UserMini;
+  is_member: boolean;
 }
 
 export type PastReviewStatus = "draft" | "pending" | "approved" | "rejected";

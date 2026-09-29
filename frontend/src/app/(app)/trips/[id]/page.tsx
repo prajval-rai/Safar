@@ -664,6 +664,19 @@ function TripSettings({
     }
   }
 
+  async function setOpenToJoin(value: boolean) {
+    setBusy(true);
+    try {
+      await api.patch(`/api/trips/${trip.id}/`, { open_to_join: value });
+      toast(value ? "Open to join — it's in Explore now." : "Taken out of Explore. Only invites and the code work now.");
+      onChanged();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't change that.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** One track per trip: switching this on publishes it (XP the first time
    *  only), switching it off hides that same track — never a second copy. */
   async function setTrackPublished(value: boolean) {
@@ -776,9 +789,35 @@ function TripSettings({
         </section>
       ) : null}
 
+      {/* Two different things in Explore: an open trip is one people can join
+          now; a track is the finished route, for others to copy later. */}
+      {!trip.is_past && (trip.status === "planning" || trip.status === "active") ? (
+        <section className="card space-y-3 p-4">
+          <h2 className="text-sm font-bold text-muted">Open to join</h2>
+          <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={trip.open_to_join}
+              disabled={busy}
+              onChange={(e) => void setOpenToJoin(e.target.checked)}
+              className="mt-1 h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
+            />
+            <span>
+              <span className="block text-[15px] font-semibold text-ink">Let anyone join this trip</span>
+              <span className="block text-sm text-muted">
+                It shows in Explore → Open trips, where any traveller can join without the code. You&apos;re told
+                when someone does. It drops off once the trip is finished.
+              </span>
+            </span>
+          </label>
+        </section>
+      ) : null}
+
       {!trip.is_past || trip.status === "completed" ? (
       <section className="card space-y-3 p-4">
-        <h2 className="text-sm font-bold text-muted">Share this journey</h2>
+        <h2 className="text-sm font-bold text-muted">Publish your track</h2>
+        {/* Only a finished trip can become a track — but a published one can always be hidden. */}
+        {trip.status === "completed" || trip.my_track?.is_published ? (
         <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -790,11 +829,20 @@ function TripSettings({
           <span>
             <span className="block text-[15px] font-semibold text-ink">Publish as a track</span>
             <span className="block text-sm text-muted">
-              Others can find it in Explore and follow your route.
+              Your finished route shows in Explore → Tracks for others to copy.
               {trip.my_track ? " Turn this off to hide it." : " Worth +10 XP the first time."}
             </span>
           </span>
         </label>
+        ) : (
+          <p className="flex items-start gap-3 text-sm text-muted">
+            <span aria-hidden="true" className="mt-0.5 text-base">🔒</span>
+            <span>
+              <span className="block text-[15px] font-semibold text-ink">Publish as a track</span>
+              Complete the trip first — only a route you&apos;ve actually travelled can be published. Worth +10 XP.
+            </span>
+          </p>
+        )}
         {trip.my_track?.is_published ? (
           <ButtonLink href={`/explore/${trip.my_track.id}`} variant="secondary" size="sm" icon="🧭">
             View your track

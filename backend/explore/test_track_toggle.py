@@ -7,6 +7,11 @@ URL = "/api/explore/tracks/from-trip/"
 
 
 class TrackToggleTests(SafarTestCase):
+    def setUp(self):
+        super().setUp()
+        self.trip.status = "completed"
+        self.trip.save()
+
     def publish(self, published=True, user=None):
         return self.client_for(user or self.owner).post(
             URL, {"trip": str(self.trip.id), "published": published}, format="json"

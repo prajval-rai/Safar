@@ -179,11 +179,8 @@ export default function NewTripPage() {
       });
       setTrip(created);
       setStep(5);
-      // A small reward just for taking the initiative to plan something —
-      // separate from the bigger bonus that lands once it's actually done.
-      if (created.xp_awarded) {
-        toast(`Trip planned — +${created.xp_awarded} XP for taking the initiative.`);
-      }
+      // Planning alone earns nothing — the XP comes once the trip is completed.
+      if (!created.no_xp) toast("Trip planned! Complete it — with at least one stop done — to earn XP.");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create the trip.");
     } finally {

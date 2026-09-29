@@ -168,11 +168,11 @@ class XPTests(SafarTestCase):
         response = self.complete(client, self.a3)
 
         self.assertTrue(response.data["trip_completed"])
-        # leg + its day bonus + the trip bonus + the organiser bonus,
-        # since self.owner (who tapped the last stop) is also the organiser.
+        # leg + its day bonus + the trip bonus + the organiser bonus + the
+        # planning XP, since self.owner (who tapped the last stop) organised it.
         self.assertEqual(
             Decimal(str(response.data["xp_awarded"])),
-            self.leg3 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS,
+            self.leg3 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS + TRIP_CREATE_XP,
         )
         self.trip.refresh_from_db()
         self.assertEqual(self.trip.status, "completed")
@@ -193,7 +193,7 @@ class XPTests(SafarTestCase):
         member = TripMember.objects.get(trip=self.trip, user=self.friend)
         organiser = TripMember.objects.get(trip=self.trip, user=self.owner)
         self.assertEqual(member.xp_earned, group_xp)
-        self.assertEqual(organiser.xp_earned, group_xp + ORGANIZER_COMPLETE_BONUS)
+        self.assertEqual(organiser.xp_earned, group_xp + ORGANIZER_COMPLETE_BONUS + TRIP_CREATE_XP)
         self.assertEqual(member.progress_percent, 100)
 
     def test_client_cannot_set_what_a_stop_is_worth(self):
@@ -287,7 +287,7 @@ class XPTests(SafarTestCase):
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.xp, before)
 
-    def test_creating_a_trip_rewards_the_initiative(self):
+    def test_creating_a_trip_earns_nothing_until_it_is_completed(self):
         response = self.client_for(self.owner).post(
             "/api/trips/",
             {
@@ -300,10 +300,28 @@ class XPTests(SafarTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["xp_awarded"], TRIP_CREATE_XP)
-
+        self.assertEqual(response.data["xp_awarded"], 0)
         self.owner.refresh_from_db()
-        self.assertEqual(self.owner.xp, TRIP_CREATE_XP)
+        self.assertEqual(self.owner.xp, 0)
+
+    def test_planning_xp_is_paid_once_on_completion(self):
+        client = self.client_for(self.owner)
+        self.start(client)
+        for activity in (self.a1, self.a2, self.a3):
+            self.complete(client, activity)
+        planned = self.owner.xp_transactions.filter(reason=f"Planned {self.trip.title}")
+        self.assertEqual(planned.count(), 1)
+        self.assertEqual(planned.first().amount, TRIP_CREATE_XP)
+        # Only the organiser gets it.
+        self.assertFalse(self.friend.xp_transactions.filter(reason__startswith="Planned ").exists())
+        # Undo the last stop and finish again: still paid just once.
+        client.post(f"/api/activities/{self.a3.id}/undo/")
+        self.complete(client, self.a3)
+        self.assertEqual(planned.count(), 1)
+
+    def test_a_cancelled_trip_never_pays_planning_xp(self):
+        self.client_for(self.owner).post(f"/api/trips/{self.trip.id}/cancel/")
+        self.assertFalse(self.owner.xp_transactions.filter(reason__startswith="Planned ").exists())
 
     def test_undo_takes_the_xp_back_from_everyone(self):
         client = self.client_for(self.owner)
@@ -542,6 +560,21 @@ class LiveTripTests(SafarTestCase):
 
 
 class TrackTests(SafarTestCase):
+    def setUp(self):
+        super().setUp()
+        # Only a finished trip can become a track.
+        self.trip.status = "completed"
+        self.trip.save()
+
+    def test_an_unfinished_trip_cannot_be_published(self):
+        self.trip.status = "planning"
+        self.trip.save()
+        response = self.client_for(self.owner).post(
+            "/api/explore/tracks/from-trip/", {"trip": str(self.trip.id)}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Complete the trip", response.data["detail"])
+
     def test_publishing_a_trip_as_a_track_and_reusing_it(self):
         client = self.client_for(self.owner)
 
@@ -636,7 +669,6 @@ class DestinationPlanningTests(SafarTestCase):
         response = self.create_trip(planner_latitude=19.2183, planner_longitude=72.9781)
         self.assertEqual(response.status_code, 201)
         self.assertFalse(response.data["no_xp"])
-        self.assertEqual(response.data["xp_awarded"], TRIP_CREATE_XP)
 
     def test_starting_a_trip_next_to_its_destination_makes_it_no_xp(self):
         trip_id = self.create_trip().data["id"]
