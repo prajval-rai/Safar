@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
-import type { TripDetail, TripMember, UserMini } from "@/lib/types";
-import { formatNumber } from "@/lib/utils";
+import { useApi } from "@/lib/hooks";
+import type { TripDetail, TripJoinRequest, TripMember, UserMini } from "@/lib/types";
+import { formatNumber, relativeTime } from "@/lib/utils";
 
 const ROLE_LABELS = { owner: "Organiser", admin: "Co-planner", member: "Traveller" };
 
@@ -64,6 +65,8 @@ export function TripPeople({
           ) : null}
         </div>
       </div>
+
+      {canEdit ? <JoinRequests tripId={trip.id} onChanged={onChanged} /> : null}
 
       {/* A table on wide screens; the same rows become cards on phones. */}
       <div className="card hidden overflow-hidden md:block">
@@ -299,5 +302,70 @@ function InviteSheet({
         </section>
       ) : null}
     </Sheet>
+  );
+}
+
+/** Travellers who found this trip in Explore and asked to come along.
+ *  Organisers let them in or turn them down; hidden when nobody's waiting. */
+function JoinRequests({ tripId, onChanged }: { tripId: string; onChanged: () => void }) {
+  const { data, set } = useApi<TripJoinRequest[]>(`/api/trips/${tripId}/join-requests/`);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const { toast } = useCelebration();
+
+  async function answer(request: TripJoinRequest, decision: "approve" | "decline") {
+    setBusyId(request.id);
+    try {
+      await api.post(`/api/trips/${tripId}/join-requests/${request.id}/${decision}/`);
+      set((data ?? []).filter((r) => r.id !== request.id));
+      if (decision === "approve") {
+        toast(`${request.user.name} is on the trip.`);
+        onChanged();
+      } else {
+        toast(`Declined ${request.user.name}'s request.`);
+      }
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't answer that request.", "error");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!data?.length) return null;
+
+  return (
+    <section className="card p-4" aria-labelledby="join-requests-heading">
+      <h2 id="join-requests-heading" className="flex items-center gap-2 text-sm font-bold text-ink">
+        Requests to join
+        <Chip tone="brand">{data.length}</Chip>
+      </h2>
+      <ul className="mt-2 divide-y divide-[var(--line)]">
+        {data.map((request) => (
+          <li key={request.id} className="flex flex-wrap items-center gap-3 py-3">
+            <span className="flex min-w-0 flex-1 items-center gap-3">
+              <Avatar user={request.user} size="sm" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-ink">{request.user.name}</span>
+                <span className="block truncate text-xs text-muted">
+                  @{request.user.username} · asked {relativeTime(request.created_at)}
+                </span>
+              </span>
+            </span>
+            <span className="flex gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busyId === request.id}
+                onClick={() => void answer(request, "decline")}
+              >
+                Decline
+              </Button>
+              <Button size="sm" disabled={busyId === request.id} onClick={() => void answer(request, "approve")}>
+                Approve
+              </Button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

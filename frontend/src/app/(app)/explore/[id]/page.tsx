@@ -44,8 +44,8 @@ export default function TrackDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/explore" className="inline-block text-sm font-semibold text-muted hover:text-ink">
-        <span aria-hidden="true">←</span> Explore
+      <Link href="/tracks" className="inline-block text-sm font-semibold text-muted hover:text-ink">
+        <span aria-hidden="true">←</span> Tracks
       </Link>
 
       <TripCover

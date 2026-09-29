@@ -255,12 +255,12 @@ def track_from_trip(request):
 
 
 # --- Open trips ------------------------------------------------------------------
-# Upcoming or live trips their organisers opened to anyone (Trip.open_to_join),
-# listed in Explore apart from tracks: a track is a finished route to copy, an
-# open trip is a real trip you can join and travel with its crew.
+# Upcoming trips their organisers opened to anyone (Trip.open_to_join), listed in
+# Explore. Nobody walks straight in: joining sends a request an organiser
+# approves from the trip's People tab. Finished routes live under Tracks.
 
 
-def _open_trip_row(trip, request, member_ids) -> dict:
+def _open_trip_row(trip, request, member_ids, request_status) -> dict:
     from accounts.serializers import UserMiniSerializer
 
     return {
@@ -283,18 +283,21 @@ def _open_trip_row(trip, request, member_ids) -> dict:
         "stop_count": trip.stop_total,
         "organiser": UserMiniSerializer(trip.created_by).data,
         "is_member": trip.id in member_ids,
+        # "pending" / "declined" once you've asked; null if you haven't.
+        "request_status": request_status.get(trip.id),
     }
 
 
 def _open_trips():
+    """Only trips that haven't started yet — a live trip's crew is already on the road."""
     from django.utils import timezone
 
     return (
         Trip.objects.filter(
             open_to_join=True,
             is_past=False,
-            status__in=["planning", "active"],
-            end_date__gte=timezone.localdate(),
+            status="planning",
+            start_date__gte=timezone.localdate(),
             created_by__is_active=True,
         )
         .select_related("created_by")
@@ -308,8 +311,10 @@ def _open_trips():
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def open_trips(request):
-    """Trips anyone can join, soonest first. ?q= searches title and place."""
+    """Upcoming trips anyone can ask to join, soonest first. ?q= searches title and place."""
     from django.db.models import Q
+
+    from trips.models import TripJoinRequest
 
     trips = _open_trips()
     query = (request.query_params.get("q") or "").strip()
@@ -321,35 +326,57 @@ def open_trips(request):
     member_ids = set(
         TripMember.objects.filter(user=request.user, trip__in=trips).values_list("trip_id", flat=True)
     )
-    return Response([_open_trip_row(t, request, member_ids) for t in trips])
+    request_status = dict(
+        TripJoinRequest.objects.filter(user=request.user, trip__in=trips)
+        .exclude(status="approved")
+        .values_list("trip_id", "status")
+    )
+    return Response([_open_trip_row(t, request, member_ids, request_status) for t in trips])
 
 
-@api_view(["POST"])
+@api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def join_open_trip(request, pk):
-    """Join an open trip straight from Explore — no code needed."""
+    """Ask to join an open trip from Explore — an organiser approves it.
+    DELETE withdraws a request that's still pending."""
+    from django.utils import timezone
+
+    from trips.models import TripJoinRequest
+
+    if request.method == "DELETE":
+        TripJoinRequest.objects.filter(trip_id=pk, user=request.user, status="pending").delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     trip = _open_trips().filter(pk=pk).first()
     if not trip:
         raise ValidationError({"detail": "This trip isn't open to join any more."})
-    from django.utils import timezone
+    if TripMember.objects.filter(trip=trip, user=request.user).exists():
+        return Response({"id": str(trip.id), "status": "member"}, status=status.HTTP_200_OK)
 
-    from trips.models import TripInvite
+    join_request, created = TripJoinRequest.objects.get_or_create(trip=trip, user=request.user)
+    if not created:
+        if join_request.status == "pending":
+            return Response({"id": str(trip.id), "status": "pending"}, status=status.HTTP_200_OK)
+        if join_request.status == "declined":
+            raise ValidationError({"detail": "The organiser turned down your request for this trip."})
+        # An old approval whose member later left — asking again starts over.
+        join_request.status = "pending"
+        join_request.responded_at = None
+        join_request.responded_by = None
+        join_request.created_at = timezone.now()
+        join_request.save(update_fields=["status", "responded_at", "responded_by", "created_at"])
 
-    _, created = TripMember.objects.get_or_create(trip=trip, user=request.user)
-    TripInvite.objects.filter(trip=trip, user=request.user, status="pending").update(
-        status="accepted", responded_at=timezone.now()
+    organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
+    notify_many(
+        organisers,
+        "join_request",
+        f"{request.user.name} wants to join {trip.title}",
+        actor=request.user,
+        body="They found your open trip in Explore. Approve or decline from the People tab.",
+        trip=trip,
+        url=f"/trips/{trip.id}?tab=people",
     )
-    if created:
-        organisers = [m.user for m in trip.members.filter(role__in=["owner", "admin"]).select_related("user")]
-        notify_many(
-            organisers,
-            "trip_joined",
-            f"{request.user.name} joined {trip.title}",
-            actor=request.user,
-            body="They found your open trip in Explore.",
-            trip=trip,
-        )
-    return Response({"id": str(trip.id), "joined": created}, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    return Response({"id": str(trip.id), "status": "pending"}, status=status.HTTP_201_CREATED)
 
 
 class TravelPostViewSet(viewsets.ModelViewSet):

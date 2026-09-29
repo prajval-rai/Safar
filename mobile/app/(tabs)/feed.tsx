@@ -5,9 +5,12 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -137,10 +140,14 @@ function PostCard({ post }: { post: TravelPost }) {
         </Pressable>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Pressable onPress={() => router.push(`/u/${post.author.username}`)}>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{post.author.name}</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }} numberOfLines={1}>
+              {post.author.name}
+            </Text>
           </Pressable>
           {post.place ? (
-            <Text style={{ color: colors.tint, fontSize: 12, fontWeight: '600' }}>📍 {post.place}</Text>
+            <Text style={{ color: colors.tint, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+              📍 {post.place}
+            </Text>
           ) : (
             <Text style={{ color: colors.muted, fontSize: 11 }}>{relativeTime(post.created_at)}</Text>
           )}
@@ -168,7 +175,9 @@ function PostCard({ post }: { post: TravelPost }) {
         </Pressable>
         {post.trip_title ? (
           <View style={[styles.tripChip, { backgroundColor: colors.raised }]}>
-            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600' }}>From {post.trip_title}</Text>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+              From {post.trip_title}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -299,62 +308,66 @@ function WritePostModal({ visible, onClose, onPosted }: { visible: boolean; onCl
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={[styles.modalSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>Write a post</Text>
-          <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 14 }}>
-            A quick tip or the story of your whole day — write as much as you like.
-          </Text>
-
-          <TextInput
-            style={[styles.textarea, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-            value={caption}
-            onChangeText={(t) => setCaption(t.slice(0, 50000))}
-            placeholder="Reached Amer Fort at sunrise — no queue, no crowd, worth the 5 a.m. alarm."
-            placeholderTextColor={colors.muted}
-            multiline
-          />
-          <Text style={{ color: colors.muted, fontSize: 11, alignSelf: 'flex-end', marginTop: 4 }}>{caption.trim() ? caption.trim().split(/\s+/).length : 0} words</Text>
-
-          <Text style={styles.label}>Place (optional)</Text>
-          <TextInput
-            style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-            value={place}
-            onChangeText={setPlace}
-            placeholder="Jaipur, Rajasthan"
-            placeholderTextColor={colors.muted}
-          />
-
-          {trips && trips.results.length > 0 ? (
-            <>
-              <Text style={styles.label}>From a trip (optional)</Text>
-              <View style={styles.tripPickerRow}>
-                <Pressable
-                  onPress={() => setTripId('')}
-                  style={[styles.tripOption, { borderColor: tripId === '' ? colors.tint : colors.border, backgroundColor: tripId === '' ? colors.brandSoft : colors.background }]}
-                >
-                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>None</Text>
-                </Pressable>
-                {trips.results.map((t) => (
-                  <Pressable
-                    key={t.id}
-                    onPress={() => setTripId(t.id)}
-                    style={[styles.tripOption, { borderColor: tripId === t.id ? colors.tint : colors.border, backgroundColor: tripId === t.id ? colors.brandSoft : colors.background }]}
-                  >
-                    <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{t.title}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          ) : null}
-
-          {error ? <Text style={{ color: colors.danger, fontSize: 12, marginTop: 10 }}>{error}</Text> : null}
-
-          <Pressable onPress={submit} disabled={busy || !caption.trim()} style={[styles.submit, { backgroundColor: colors.tint, opacity: busy || !caption.trim() ? 0.6 : 1 }]}>
-            {busy ? <ActivityIndicator color={colors.onBrand} /> : <Text style={{ color: colors.onBrand, fontWeight: '700' }}>Post</Text>}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose}>
+          <Pressable style={[styles.modalSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Write a post</Text>
+              <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 14 }}>
+                A quick tip or the story of your whole day — write as much as you like.
+              </Text>
+    
+              <TextInput
+                style={[styles.textarea, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                value={caption}
+                onChangeText={(t) => setCaption(t.slice(0, 50000))}
+                placeholder="Reached Amer Fort at sunrise — no queue, no crowd, worth the 5 a.m. alarm."
+                placeholderTextColor={colors.muted}
+                multiline
+              />
+              <Text style={{ color: colors.muted, fontSize: 11, alignSelf: 'flex-end', marginTop: 4 }}>{caption.trim() ? caption.trim().split(/\s+/).length : 0} words</Text>
+    
+              <Text style={styles.label}>Place (optional)</Text>
+              <TextInput
+                style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                value={place}
+                onChangeText={setPlace}
+                placeholder="Jaipur, Rajasthan"
+                placeholderTextColor={colors.muted}
+              />
+    
+              {trips && trips.results.length > 0 ? (
+                <>
+                  <Text style={styles.label}>From a trip (optional)</Text>
+                  <View style={styles.tripPickerRow}>
+                    <Pressable
+                      onPress={() => setTripId('')}
+                      style={[styles.tripOption, { borderColor: tripId === '' ? colors.tint : colors.border, backgroundColor: tripId === '' ? colors.brandSoft : colors.background }]}
+                    >
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>None</Text>
+                    </Pressable>
+                    {trips.results.map((t) => (
+                      <Pressable
+                        key={t.id}
+                        onPress={() => setTripId(t.id)}
+                        style={[styles.tripOption, { borderColor: tripId === t.id ? colors.tint : colors.border, backgroundColor: tripId === t.id ? colors.brandSoft : colors.background }]}
+                      >
+                        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{t.title}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+    
+              {error ? <Text style={{ color: colors.danger, fontSize: 12, marginTop: 10 }}>{error}</Text> : null}
+    
+              <Pressable onPress={submit} disabled={busy || !caption.trim()} style={[styles.submit, { backgroundColor: colors.tint, opacity: busy || !caption.trim() ? 0.6 : 1 }]}>
+                {busy ? <ActivityIndicator color={colors.onBrand} /> : <Text style={{ color: colors.onBrand, fontWeight: '700' }}>Post</Text>}
+              </Pressable>
+            </ScrollView>
           </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -411,15 +424,16 @@ const styles = StyleSheet.create({
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   levelChip: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   postFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  likeButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tripChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  likeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  // Shrinks (and truncates) so a long trip name can't push past the card edge.
+  tripChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 1, minWidth: 0 },
 
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, maxHeight: '85%' },
   modalTitle: { fontSize: 17, fontWeight: '800' },
   label: { fontSize: 12, fontWeight: '700', marginBottom: 6, marginTop: 12, color: '#8a8a8a' },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
-  textarea: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15, minHeight: 100, textAlignVertical: 'top' },
+  textarea: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15, minHeight: 100, maxHeight: 220, textAlignVertical: 'top' },
   tripPickerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tripOption: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, maxWidth: 160 },
   submit: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 18 },

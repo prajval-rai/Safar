@@ -14,6 +14,7 @@ from .models import (
     Trip,
     TripExperience,
     TripInvite,
+    TripJoinRequest,
     TripMember,
 )
 
@@ -439,6 +440,16 @@ class SettlementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Settlement
         fields = ["id", "from_user", "to_user", "amount", "method", "status", "created_at", "confirmed_at"]
+
+
+class TripJoinRequestSerializer(serializers.ModelSerializer):
+    """A request from Explore, as the organiser reviewing it sees it."""
+
+    user = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = TripJoinRequest
+        fields = ["id", "status", "created_at", "user"]
 
 
 class TripInviteSerializer(serializers.ModelSerializer):

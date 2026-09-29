@@ -190,6 +190,16 @@ export interface OpenTrip {
   stop_count: number;
   organiser: UserMini;
   is_member: boolean;
+  /** Your request to join, if you've sent one and it isn't approved yet. */
+  request_status: "pending" | "declined" | null;
+}
+
+/** Someone asked to join an open trip; organisers approve or decline. */
+export interface TripJoinRequest {
+  id: string;
+  status: "pending" | "approved" | "declined";
+  created_at: string;
+  user: UserMini;
 }
 
 export type PastReviewStatus = "draft" | "pending" | "approved" | "rejected";
@@ -629,7 +639,10 @@ export type NotificationKind =
   | "reward_update"
   | "past_trip_submitted"
   | "past_trip_reviewed"
-  | "referral_joined";
+  | "referral_joined"
+  | "join_request"
+  | "join_request_approved"
+  | "join_request_declined";
 
 export interface Notification {
   id: string;

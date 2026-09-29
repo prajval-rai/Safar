@@ -42,6 +42,10 @@ export default function TabLayout() {
         options={{ title: 'Explore', tabBarIcon: ({ color }) => <TabIcon name="compass" color={color as string} /> }}
       />
       <Tabs.Screen
+        name="tracks"
+        options={{ title: 'Tracks', tabBarIcon: ({ color }) => <TabIcon name="git-branch" color={color as string} /> }}
+      />
+      <Tabs.Screen
         name="feed"
         options={{ title: 'Feed', tabBarIcon: ({ color }) => <TabIcon name="chatbubbles" color={color as string} /> }}
       />
@@ -51,8 +55,11 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="profile"
+        // Six tabs is the most a phone fits; the profile opens from the avatar
+        // in the header instead.
         options={{
           title: 'Profile',
+          href: null,
           tabBarIcon: ({ color }) => <TabIcon name="person-circle" color={color as string} />,
         }}
       />

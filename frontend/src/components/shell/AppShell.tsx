@@ -55,15 +55,22 @@ interface NavItem {
   label: string;
   Icon: LucideIcon;
   match: (path: string) => boolean;
-  /** Phones only have room for five, so the rest live in the sidebar. */
+  /** Phones only have room for six, so the rest live in the sidebar. */
   mobile: boolean;
 }
 
 const NAV: NavItem[] = [
   { href: "/", label: "Home", Icon: Home, match: (p) => p === "/", mobile: true },
   { href: "/trips", label: "My Trips", Icon: MapIcon, match: (p) => p.startsWith("/trips"), mobile: true },
-  { href: "/explore", label: "Explore", Icon: Compass, match: (p) => p.startsWith("/explore"), mobile: true },
-  { href: "/tracks", label: "Tracks", Icon: Route, match: (p) => p.startsWith("/tracks"), mobile: false },
+  { href: "/explore", label: "Explore", Icon: Compass, match: (p) => p === "/explore", mobile: true },
+  // A single track's page lives at /explore/<id>, but it belongs to Tracks.
+  {
+    href: "/tracks",
+    label: "Tracks",
+    Icon: Route,
+    match: (p) => p.startsWith("/tracks") || p.startsWith("/explore/"),
+    mobile: true,
+  },
   { href: "/feed", label: "Feed", Icon: MessageSquare, match: (p) => p.startsWith("/feed"), mobile: true },
   { href: "/rewards", label: "Rewards", Icon: Trophy, match: (p) => p.startsWith("/rewards"), mobile: true },
   // The profile is also the avatar menu in the top-right corner (every screen
@@ -306,6 +313,9 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   past_trip_submitted: ShieldCheck,
   past_trip_reviewed: History,
   referral_joined: UserPlus,
+  join_request: UserPlus,
+  join_request_approved: PartyPopper,
+  join_request_declined: XCircle,
 };
 
 function notificationHref(note: Notification): string | null {
@@ -313,6 +323,9 @@ function notificationHref(note: Notification): string | null {
   if (note.kind === "trip_invite") return null;
   // Admins aren't on the trip — the review queue on the admin page opens.
   if (note.kind === "past_trip_submitted") return "/manage?tab=past";
+  // A declined traveller isn't on the trip — back to Explore for another.
+  if (note.kind === "join_request_declined") return "/explore";
+  if (note.kind === "join_request" && note.trip_id) return `/trips/${note.trip_id}?tab=people`;
   if (note.trip_id) {
     // Money and chat notifications open the trip straight on that tab.
     const money = note.kind === "settle_paid" || note.kind === "settle_confirmed";
@@ -534,21 +547,21 @@ function BottomNav({ pathname }: { pathname: string }) {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="mx-auto flex max-w-lg items-stretch">
+      <ul className="mx-auto flex max-w-xl items-stretch">
         {NAV.filter((item) => item.mobile).map(({ href, label, Icon, match }) => {
           const active = match(pathname);
           return (
-            <li key={href} className="flex-1">
+            <li key={href} className="min-w-0 flex-1">
               <Link
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-[58px] flex-col items-center justify-center gap-1 px-1 py-1.5 text-[11px] font-semibold transition-colors",
+                  "flex min-h-[58px] flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-[10.5px] font-semibold transition-colors",
                   active ? "text-brand" : "text-muted",
                 )}
               >
                 <Icon size={22} strokeWidth={active ? 2.2 : 1.8} aria-hidden="true" />
-                <span className="leading-tight">{label}</span>
+                <span className="max-w-full truncate leading-tight">{label}</span>
               </Link>
             </li>
           );

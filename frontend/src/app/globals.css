@@ -585,6 +585,9 @@ body {
   font-family: var(--font-app), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   /* Never let content hide under the mobile bottom bar or the notch. */
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* One over-wide card must never make the whole page slide sideways on a
+   * phone (clip, not hidden, so sticky headers keep working). */
+  overflow-x: clip;
 }
 
 *,

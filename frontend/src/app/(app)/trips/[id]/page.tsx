@@ -687,7 +687,7 @@ function TripSettings({
         { trip: trip.id, published: value },
       );
       if (result.xp_awarded) celebrate({ user: result.user, xp_awarded: result.xp_awarded });
-      else toast(value ? "Your track is public again." : "Track hidden — it's no longer in Explore.");
+      else toast(value ? "Your track is public again." : "Track hidden — it's no longer in Tracks.");
       onChanged();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : "Couldn't change that.", "error");
@@ -789,9 +789,9 @@ function TripSettings({
         </section>
       ) : null}
 
-      {/* Two different things in Explore: an open trip is one people can join
-          now; a track is the finished route, for others to copy later. */}
-      {!trip.is_past && (trip.status === "planning" || trip.status === "active") ? (
+      {/* Two different things: an upcoming open trip is listed in Explore for
+          people to ask to join; a track is the finished route, under Tracks. */}
+      {!trip.is_past && trip.status === "planning" ? (
         <section className="card space-y-3 p-4">
           <h2 className="text-sm font-bold text-muted">Open to join</h2>
           <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
@@ -803,10 +803,10 @@ function TripSettings({
               className="mt-1 h-5 w-5 shrink-0 rounded border-line accent-[var(--brand)]"
             />
             <span>
-              <span className="block text-[15px] font-semibold text-ink">Let anyone join this trip</span>
+              <span className="block text-[15px] font-semibold text-ink">Let anyone ask to join this trip</span>
               <span className="block text-sm text-muted">
-                It shows in Explore → Open trips, where any traveller can join without the code. You&apos;re told
-                when someone does. It drops off once the trip is finished.
+                It shows in Explore until the trip starts. Travellers send a request, and you approve or decline it
+                from the People tab.
               </span>
             </span>
           </label>
@@ -829,7 +829,7 @@ function TripSettings({
           <span>
             <span className="block text-[15px] font-semibold text-ink">Publish as a track</span>
             <span className="block text-sm text-muted">
-              Your finished route shows in Explore → Tracks for others to copy.
+              Your finished route shows in Tracks for others to copy.
               {trip.my_track ? " Turn this off to hide it." : " Worth +10 XP the first time."}
             </span>
           </span>

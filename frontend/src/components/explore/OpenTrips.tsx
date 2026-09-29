@@ -1,7 +1,6 @@
 "use client";
 
 import { CalendarDays, MapPin, Users } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { EmptyState } from "@/components/art/Motif";
@@ -14,7 +13,7 @@ import { useApi } from "@/lib/hooks";
 import type { OpenTrip } from "@/lib/types";
 import { TRIP_TYPE_LABELS, dateRange, relativeDays, rupees } from "@/lib/utils";
 
-/** Explore → Open trips: real upcoming trips whose organisers let anyone join. */
+/** Explore: real upcoming trips whose organisers let anyone ask to join. */
 export function OpenTripsList({ query }: { query: string }) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
@@ -35,8 +34,8 @@ export function OpenTripsList({ query }: { query: string }) {
     return (
       <EmptyState
         emoji="🎒"
-        title="No open trips right now."
-        line="Planning one? Open it to join from its Settings, and travellers can find it here."
+        title="No upcoming trips to join right now."
+        line="Planning one? Turn on “Let anyone ask to join” in its Settings, and travellers can find it here."
         action={<ButtonLink href="/trips/new">Plan a trip</ButtonLink>}
       />
     );
@@ -53,18 +52,33 @@ export function OpenTripsList({ query }: { query: string }) {
 }
 
 function OpenTripCard({ trip }: { trip: OpenTrip }) {
-  const router = useRouter();
   const { toast } = useCelebration();
   const [busy, setBusy] = useState(false);
+  const [requested, setRequested] = useState(trip.request_status);
 
-  async function join() {
+  // Nobody walks straight in — the organiser approves each request.
+  async function ask() {
     setBusy(true);
     try {
       await api.post(`/api/explore/open-trips/${trip.id}/join/`);
-      toast(`You're in — ${trip.title}`);
-      router.push(`/trips/${trip.id}`);
+      setRequested("pending");
+      toast("Request sent — you'll hear when the organiser answers.");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : "Couldn't join that trip.", "error");
+      toast(err instanceof ApiError ? err.message : "Couldn't send that request.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw() {
+    setBusy(true);
+    try {
+      await api.del(`/api/explore/open-trips/${trip.id}/join/`);
+      setRequested(null);
+      toast("Request withdrawn.");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't withdraw that request.", "error");
+    } finally {
       setBusy(false);
     }
   }
@@ -77,8 +91,8 @@ function OpenTripCard({ trip }: { trip: OpenTrip }) {
         alt={`${trip.destination} illustration`}
         className="h-36 w-full"
       >
-        <Chip tone={trip.status === "active" ? "success" : "brand"} className="w-fit bg-white/95">
-          {trip.status === "active" ? "● Happening now" : `Starts ${relativeDays(trip.start_date)}`}
+        <Chip tone="brand" className="w-fit bg-white/95">
+          Starts {relativeDays(trip.start_date)}
         </Chip>
       </TripCover>
       <div className="flex flex-1 flex-col gap-3 p-4">
@@ -109,9 +123,15 @@ function OpenTripCard({ trip }: { trip: OpenTrip }) {
             <ButtonLink href={`/trips/${trip.id}`} size="sm" variant="secondary">
               Open
             </ButtonLink>
+          ) : requested === "pending" ? (
+            <Button size="sm" variant="secondary" onClick={withdraw} disabled={busy} title="Withdraw your request">
+              {busy ? "Withdrawing…" : "Requested ✓"}
+            </Button>
+          ) : requested === "declined" ? (
+            <Chip tone="danger">Not accepted</Chip>
           ) : (
-            <Button size="sm" onClick={join} disabled={busy}>
-              {busy ? "Joining…" : "Join trip"}
+            <Button size="sm" onClick={ask} disabled={busy}>
+              {busy ? "Sending…" : "Request to join"}
             </Button>
           )}
         </div>

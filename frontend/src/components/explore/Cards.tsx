@@ -118,7 +118,7 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
   }
 
   return (
-    <article className="card rounded-[22px] p-5">
+    <article className="card min-w-0 rounded-[22px] p-4 sm:p-5">
       <div className="flex items-center gap-3">
         <Link href={`/u/${post.author.username}`} className="shrink-0 rounded-full hover:opacity-80" aria-label={`${post.author.name}'s profile`}>
           <Avatar user={post.author} size="sm" />
@@ -165,9 +165,9 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
       </div>
 
       {full ? (
-        <p className="mt-3 text-[16px] leading-relaxed whitespace-pre-line text-ink">{post.caption}</p>
+        <p className="mt-3 text-[16px] leading-relaxed break-words whitespace-pre-line text-ink">{post.caption}</p>
       ) : (
-        <ExpandableText text={post.caption} className="mt-3 text-[15px] leading-relaxed text-ink" />
+        <ExpandableText text={post.caption} className="mt-3 text-[15px] leading-relaxed break-words text-ink" />
       )}
 
       {/* The full story page has the big player; cards get a tap-to-play chip. */}
@@ -182,7 +182,7 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
         </button>
       ) : null}
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <button
           type="button"
           onClick={toggleLike}
@@ -195,18 +195,23 @@ export function PostCard({ post, full = false }: { post: TravelPost; full?: bool
             aria-hidden="true"
             className={liked ? "fill-brand text-brand" : ""}
           />
-          {formatNumber(likes)} likes
+          {formatNumber(likes)}
+          <span className="hidden sm:inline">likes</span>
         </button>
         {post.trip_title ? (
           post.trip && post.can_open_trip ? (
-            <Link href={`/trips/${post.trip}`} className="rounded-full hover:opacity-80">
-              <Chip>From {post.trip_title}</Chip>
+            <Link href={`/trips/${post.trip}`} className="min-w-0 max-w-full rounded-full hover:opacity-80">
+              <Chip className="max-w-full">
+                <span className="truncate">From {post.trip_title}</span>
+              </Chip>
             </Link>
           ) : (
-            <Chip>From {post.trip_title}</Chip>
+            <Chip className="min-w-0 max-w-full">
+              <span className="truncate">From {post.trip_title}</span>
+            </Chip>
           )
         ) : null}
-        <span className="ml-auto flex items-center gap-1">
+        <span className="ml-auto flex shrink-0 items-center gap-1">
           {!full ? (
             <Link
               href={`/p/${post.id}`}
@@ -375,7 +380,7 @@ export function PostList({
   }
 
   return (
-    <ul className="mx-auto max-w-2xl space-y-4">
+    <ul className="mx-auto w-full max-w-2xl min-w-0 space-y-4">
       {posts.map((post) => (
         <li key={post.id}>
           <PostCard post={post} />

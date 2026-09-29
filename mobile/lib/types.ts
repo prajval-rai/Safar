@@ -184,6 +184,28 @@ export interface Track {
   created_at: string;
 }
 
+/** An upcoming trip its organiser opened in Explore. Joining sends a request
+ *  the organiser approves (backend/explore/views.py `_open_trip_row`). */
+export interface OpenTrip {
+  id: string;
+  title: string;
+  destination: string;
+  region: string;
+  summary: string;
+  cover_key: CoverKey;
+  cover_image: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  trip_type: string;
+  budget_per_person: number;
+  member_count: number;
+  organiser: UserMini;
+  is_member: boolean;
+  request_status: 'pending' | 'declined' | null;
+}
+
 export interface TrackStop {
   id: number;
   title: string;

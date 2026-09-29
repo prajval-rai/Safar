@@ -318,8 +318,8 @@ function PostSheet({
     setBusy(true);
     try {
       await api.post("/api/explore/posts/", { trip: tripId, caption: caption.trim(), place });
-      toast("Posted to Explore.");
-      router.push("/explore");
+      toast("Posted to Tracks.");
+      router.push("/tracks");
     } catch (err) {
       toast(err instanceof ApiError ? err.message : "Couldn't post that.", "error");
       setBusy(false);

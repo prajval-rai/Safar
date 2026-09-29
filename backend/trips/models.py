@@ -316,6 +316,35 @@ class TripInvite(models.Model):
         return f"{self.user} invited to {self.trip} ({self.status})"
 
 
+class TripJoinRequest(models.Model):
+    """Someone found an open trip in Explore and asked to come along. They're
+    only on the trip once an organiser approves; declining closes it."""
+
+    STATUS = [("pending", "Pending"), ("approved", "Approved"), ("declined", "Declined")]
+
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="join_requests")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trip_join_requests"
+    )
+    status = models.CharField(max_length=10, choices=STATUS, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    responded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="handled_join_requests",
+    )
+
+    class Meta:
+        unique_together = ("trip", "user")
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user} asked to join {self.trip} ({self.status})"
+
+
 class Day(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="days")
     index = models.PositiveIntegerField()

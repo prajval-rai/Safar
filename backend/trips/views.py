@@ -54,6 +54,7 @@ from .models import (
     Trip,
     TripExperience,
     TripInvite,
+    TripJoinRequest,
     TripMember,
 )
 from .serializers import (
@@ -68,6 +69,7 @@ from .serializers import (
     TripDetailSerializer,
     TripExperienceSerializer,
     TripInviteSerializer,
+    TripJoinRequestSerializer,
     TripListSerializer,
     TripMemberSerializer,
 )
@@ -573,6 +575,60 @@ class TripViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "The trip owner can't be removed."})
         member.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"], url_path="join-requests")
+    def join_requests(self, request, pk=None):
+        """Pending requests from Explore — organisers only."""
+        trip = self.get_object()
+        require_member(trip, request.user, editors_only=True)
+        pending = TripJoinRequest.objects.filter(trip=trip, status="pending").select_related("user")
+        return Response(TripJoinRequestSerializer(pending, many=True).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"join-requests/(?P<request_id>[^/.]+)/(?P<decision>approve|decline)",
+    )
+    @transaction.atomic
+    def respond_join_request(self, request, pk=None, request_id=None, decision=None):
+        trip = self.get_object()
+        require_member(trip, request.user, editors_only=True)
+        join_request = get_object_or_404(TripJoinRequest, pk=request_id, trip=trip)
+        if join_request.status != "pending":
+            raise ValidationError({"detail": "Someone already answered this request."})
+        if decision == "approve" and trip.status in ("completed", "cancelled"):
+            raise ValidationError({"detail": "This trip is over, so nobody new can join."})
+
+        join_request.status = "approved" if decision == "approve" else "declined"
+        join_request.responded_at = timezone.now()
+        join_request.responded_by = request.user
+        join_request.save(update_fields=["status", "responded_at", "responded_by"])
+
+        traveller = join_request.user
+        if decision == "approve":
+            TripMember.objects.get_or_create(trip=trip, user=traveller)
+            TripInvite.objects.filter(trip=trip, user=traveller, status="pending").update(
+                status="accepted", responded_at=timezone.now()
+            )
+            notify(
+                traveller,
+                "join_request_approved",
+                f"You're in — {trip.title}",
+                actor=request.user,
+                body="Your request to join was approved. See you on the road!",
+                trip=trip,
+            )
+        else:
+            # They aren't on the trip, so its page would be a dead end.
+            notify(
+                traveller,
+                "join_request_declined",
+                f"Your request to join {trip.title} wasn't accepted",
+                actor=request.user,
+                body="The organiser couldn't take you on this one. Plenty more in Explore.",
+                url="/explore",
+            )
+        return Response({"status": join_request.status})
 
     # --- Live trip ---------------------------------------------------------
 

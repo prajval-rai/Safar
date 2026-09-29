@@ -32,6 +32,9 @@ class Notification(models.Model):
         ("past_trip_submitted", "A past trip is waiting for review (admins)"),
         ("past_trip_reviewed", "Your past trip was reviewed"),
         ("referral_joined", "Someone joined with your referral link"),
+        ("join_request", "Someone asked to join your trip"),
+        ("join_request_approved", "Your request to join a trip was approved"),
+        ("join_request_declined", "Your request to join a trip was declined"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

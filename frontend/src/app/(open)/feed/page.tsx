@@ -26,7 +26,7 @@ export default function FeedPage() {
   const [fresh, setFresh] = useState(0);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Feed</h1>
@@ -62,8 +62,9 @@ export default function FeedPage() {
         </section>
       )}
 
-      <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-4">
         {user ? (
+          <div className="hide-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <SegmentedControl
             label="Whose posts to show"
             value={scope}
@@ -73,6 +74,7 @@ export default function FeedPage() {
               { value: "following", label: "Following" },
             ]}
           />
+          </div>
         ) : null}
 
         <div className="relative">
@@ -120,7 +122,7 @@ function FindTravellers() {
   }, [query]);
 
   return (
-    <section className="card mx-auto max-w-2xl p-4" aria-labelledby="find-heading">
+    <section className="card mx-auto w-full max-w-2xl min-w-0 p-4" aria-labelledby="find-heading">
       <h2 id="find-heading" className="mb-2.5 text-sm font-bold text-ink">
         Find travellers to follow
       </h2>
