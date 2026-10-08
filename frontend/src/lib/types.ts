@@ -664,6 +664,7 @@ export type NotificationKind =
   | "trip_completed"
   | "expense_added"
   | "settle_reminder"
+  | "checklist_reminder"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"

@@ -882,6 +882,38 @@ class TripViewSet(viewsets.ModelViewSet):
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
+    def reminder(self, request, pk=None):
+        """The organiser sets when the "trip's coming up" reminder goes out,
+        with an optional note: {"at": ISO datetime | null, "note": "..."}.
+        `at: null` goes back to the default day-before reminder."""
+        from django.utils.dateparse import parse_datetime
+
+        trip = self.get_object()
+        require_organiser(trip, request.user, "set the trip reminder")
+        if trip.is_past or trip.status in ("completed", "cancelled"):
+            raise ValidationError({"detail": "This trip is already over."})
+        raw = request.data.get("at")
+        note = str(request.data.get("note") or "").strip()[:200]
+        if raw in (None, ""):
+            at = None
+        else:
+            at = parse_datetime(str(raw))
+            if at is None:
+                raise ValidationError({"at": "Send a date and time, like 2026-10-20T08:00:00+05:30."})
+            if timezone.is_naive(at):
+                at = timezone.make_aware(at)
+            if at <= timezone.now():
+                raise ValidationError({"at": "Pick a time that hasn't passed yet."})
+            last_moment = timezone.make_aware(datetime.combine(trip.start_date, datetime.max.time()))
+            if at > last_moment:
+                raise ValidationError({"at": "The reminder has to go out before the trip starts."})
+        trip.pre_start_reminder_at = at
+        trip.pre_start_reminder_note = note
+        trip.pre_start_reminder_sent = False
+        trip.save(update_fields=["pre_start_reminder_at", "pre_start_reminder_note", "pre_start_reminder_sent"])
+        return Response(TripDetailSerializer(trip, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
     @transaction.atomic
     def locate(self, request, pk=None):
         """A trip planned without a location earns no XP — we can't tell a real
@@ -1930,10 +1962,32 @@ def home_feed(request):
         .first()
     )
 
+    # Trips starting within a week (or on now) where this traveller still has
+    # unticked checklist items — shown first on the home screen.
+    from .reminders import pending_items
+
+    checklist_due = []
+    soon = mine.filter(status__in=["planning", "active"], is_past=False, start_date__lte=today + timedelta(days=7)).filter(
+        end_date__gte=today
+    )
+    for trip in soon.order_by("start_date")[:5]:
+        items = list(pending_items(trip, user).values_list("title", flat=True)[:20])
+        if items:
+            checklist_due.append(
+                {
+                    "trip_id": str(trip.id),
+                    "title": trip.title,
+                    "start_date": trip.start_date,
+                    "pending": len(items),
+                    "items": items[:3],
+                }
+            )
+
     context = {"request": request}
     return Response(
         {
             "user": UserSerializer(user).data,
+            "checklist_due": checklist_due,
             "live_trip": TripListSerializer(live, context=context).data if live else None,
             "upcoming": TripListSerializer(upcoming, many=True, context=context).data,
             "past": TripListSerializer(past, many=True, context=context).data,

@@ -62,7 +62,12 @@ function NativeGoogleButton({ onSuccess, onError }: Props) {
     const { GoogleSignin, isErrorWithCode, isSuccessResponse, statusCodes } = native;
     setBusy(true);
     try {
-      GoogleSignin.configure({ webClientId: GOOGLE_CLIENT_ID });
+      GoogleSignin.configure({
+        webClientId: GOOGLE_CLIENT_ID,
+        // iPhone signs in through its own iOS client (app.json → extra); the
+        // token is still issued for the Web client, which the backend checks.
+        iosClientId: Constants.expoConfig?.extra?.googleIosClientId,
+      });
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
       if (!isSuccessResponse(response)) return; // They backed out of the account picker.

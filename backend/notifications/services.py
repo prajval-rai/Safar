@@ -55,8 +55,17 @@ def notify(user, kind, title, *, actor=None, body="", trip=None, track=None, url
         list(user.expo_push_tokens.values_list("token", flat=True)),
         title,
         body,
-        # The app has no admin page, so an overridden link opens Home there.
-        url="/" if invite or url else _open_url_mobile(trip=trip, track=track),
+        # The app has no admin page, so an overridden link opens Home there —
+        # unless it's a trip link (e.g. straight to its checklist).
+        url=(
+            "/"
+            if invite
+            else url
+            if url and url.startswith("/trips/")
+            else "/"
+            if url
+            else _open_url_mobile(trip=trip, track=track)
+        ),
     )
     return note
 

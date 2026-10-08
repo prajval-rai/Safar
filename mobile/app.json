@@ -58,7 +58,12 @@
           }
         }
       ],
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.58397693974-e5t1a0aq78fel7sg2afvu6o3vk2gbi0c"
+        }
+      ],
       "expo-image",
       [
         "expo-image-picker",
@@ -75,7 +80,8 @@
       "router": {},
       "eas": {
         "projectId": "22258a1c-7fc2-48d8-8898-e4e1867c135d"
-      }
+      },
+      "googleIosClientId": "58397693974-e5t1a0aq78fel7sg2afvu6o3vk2gbi0c.apps.googleusercontent.com"
     },
     "owner": "prajval2001"
   }

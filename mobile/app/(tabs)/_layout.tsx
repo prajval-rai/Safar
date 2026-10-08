@@ -4,8 +4,8 @@ import { AppHeader } from '@/components/AppHeader';
 import { FloatingTabBar } from '@/components/FloatingTabBar';
 import { useAuth } from '@/lib/auth';
 
-/** Just two tabs: your trips, and you. Everything about a trip lives on its
- *  own page (plan, chat, photos, money, checklist, people). */
+/** Three tabs: your trips, Explore in the middle, and you. Everything about a
+ *  trip lives on its own page (plan, chat, photos, money, checklist, people). */
 export default function TabLayout() {
   const { user } = useAuth();
 
@@ -23,6 +23,8 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'My trips' }} />
+      {/* The big round button in the middle — a full-screen map, no header. */}
+      <Tabs.Screen name="explore" options={{ title: 'Explore', headerShown: false }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );

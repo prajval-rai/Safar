@@ -69,3 +69,69 @@ class TripDayReminderTests(SafarTestCase):
         note = Notification.objects.get(trip=self.trip, kind="settle_reminder")
         self.assertEqual(note.user_id, self.friend.id)
         self.assertIn("You owe Owner ₹1,000", note.body)
+
+
+class OrganiserReminderTests(SafarTestCase):
+    """The organiser picks when "the trip's coming up" goes out; checklist
+    nudges follow for anyone with items left."""
+
+    def setUp(self):
+        super().setUp()
+        self.trip.start_date = date.today() + timedelta(days=2)
+        self.trip.end_date = date.today() + timedelta(days=3)
+        self.trip.save()
+        from trips.models import ChecklistItem
+
+        ChecklistItem.objects.create(trip=self.trip, title="Sunscreen")  # shared
+        ChecklistItem.objects.create(trip=self.trip, title="ID card", assigned_to=self.friend)
+        ChecklistItem.objects.create(trip=self.trip, title="Power bank", assigned_to=self.owner, is_done=True)
+
+    def set_reminder(self, user, at, note=""):
+        return self.client_for(user).post(
+            f"/api/trips/{self.trip.id}/reminder/", {"at": at, "note": note}, format="json"
+        )
+
+    def test_only_an_organiser_can_set_it_and_only_before_the_trip(self):
+        soon = (timezone.now() + timedelta(hours=1)).isoformat()
+        self.assertEqual(self.set_reminder(self.friend, soon).status_code, 403)
+        self.assertEqual(self.set_reminder(self.owner, (timezone.now() - timedelta(hours=1)).isoformat()).status_code, 400)
+        too_late = (timezone.now() + timedelta(days=5)).isoformat()
+        self.assertEqual(self.set_reminder(self.owner, too_late).status_code, 400)
+        response = self.set_reminder(self.owner, soon, "Meet at Dadar, 6 AM")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pre_start_reminder_note"], "Meet at Dadar, 6 AM")
+
+    def test_it_goes_out_on_time_with_the_note_then_a_checklist_nudge(self):
+        self.set_reminder(self.owner, (timezone.now() + timedelta(minutes=5)).isoformat(), "Meet at Dadar, 6 AM")
+        call_command("send_trip_reminders")
+        self.assertFalse(Notification.objects.filter(kind="trip_reminder").exists())  # not yet
+
+        from trips.models import Trip
+
+        Trip.objects.filter(pk=self.trip.pk).update(pre_start_reminder_at=timezone.now() - timedelta(minutes=1))
+        call_command("send_trip_reminders")
+        call_command("send_trip_reminders")
+        reminders = Notification.objects.filter(kind="trip_reminder", trip=self.trip)
+        self.assertEqual(reminders.count(), 2)
+        self.assertIn("in 2 days", reminders.first().title)
+        self.assertEqual(reminders.first().body, "Meet at Dadar, 6 AM")
+        # The friend has two items left (the shared one and their own); the
+        # owner one (the shared item — theirs is ticked).
+        friend = Notification.objects.get(kind="checklist_reminder", user=self.friend)
+        self.assertIn("2 things left", friend.title)
+        self.assertIn("Sunscreen", friend.body)
+        owner = Notification.objects.get(kind="checklist_reminder", user=self.owner)
+        self.assertIn("1 thing left", owner.title)
+
+    def test_a_scheduled_reminder_replaces_the_default_day_before_one(self):
+        self.trip.start_date = date.today() + timedelta(days=1)
+        self.trip.save()
+        self.set_reminder(self.owner, (timezone.now() + timedelta(hours=2)).isoformat())
+        call_command("send_trip_reminders")
+        self.assertFalse(Notification.objects.filter(kind="trip_reminder").exists())
+
+    def test_home_lists_trips_coming_up_with_checklist_items_left(self):
+        due = self.client_for(self.friend).get("/api/home/").data["checklist_due"]
+        self.assertEqual(len(due), 1)
+        self.assertEqual(due[0]["pending"], 2)
+        self.assertIn("ID card", due[0]["items"])

@@ -179,8 +179,18 @@ class TripListSerializer(serializers.ModelSerializer):
             "is_past",
             "review_status",
             "open_to_join",
+            # The organiser's reminder before the trip (set via /reminder/).
+            "pre_start_reminder_at",
+            "pre_start_reminder_note",
         ]
-        read_only_fields = ["no_xp", "no_xp_reason", "is_past", "review_status"]
+        read_only_fields = [
+            "no_xp",
+            "no_xp_reason",
+            "is_past",
+            "review_status",
+            "pre_start_reminder_at",
+            "pre_start_reminder_note",
+        ]
 
     def get_activity_count(self, obj) -> int:
         return Activity.objects.filter(day__trip=obj).count()

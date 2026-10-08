@@ -133,6 +133,9 @@ export interface TripDetail extends Trip {
   my_role: "owner" | "admin" | "member" | null;
   /** XP leaving would cost you right now (negative), or null if you can't leave. */
   leave_penalty: number | null;
+  /** The organiser's reminder before the trip, if they set one. */
+  pre_start_reminder_at: string | null;
+  pre_start_reminder_note: string;
   created_at: string;
 }
 
@@ -154,6 +157,9 @@ export interface HomeData {
   /** The latest finished trip you haven't written about yet. */
   experience_prompt: { trip: Trip; xp_earned: number } | null;
   counts: { trips: number; completed: number; places: number };
+  /** Trips starting within a week (or on now) where you still have unticked
+   *  checklist items — shown first on My trips. */
+  checklist_due: { trip_id: string; title: string; start_date: string; pending: number; items: string[] }[];
 }
 
 export interface Paginated<T> {
@@ -317,6 +323,7 @@ export type NotificationKind =
   | "trip_completed"
   | "expense_added"
   | "settle_reminder"
+  | "checklist_reminder"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"

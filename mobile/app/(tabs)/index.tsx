@@ -67,6 +67,10 @@ export default function TripsScreen() {
               </Pressable>
             </View>
 
+            {(home.data?.checklist_due ?? []).map((due) => (
+              <ChecklistDue key={due.trip_id} due={due} />
+            ))}
+
             {live ? <LiveTrip trip={live} /> : null}
 
             <PillTabs options={FILTERS} value={filter} onChange={setFilter} style={{ paddingHorizontal: 0 }} />
@@ -95,6 +99,34 @@ export default function TripsScreen() {
 
       <JoinTripModal visible={joinOpen} onClose={() => setJoinOpen(false)} />
     </>
+  );
+}
+
+/** A trip coming up (or on now) where you still have checklist items to
+ *  tick — first thing on the screen, opening straight to the checklist. */
+function ChecklistDue({ due }: { due: HomeData['checklist_due'][number] }) {
+  const colors = usePalette();
+  const days = Math.round((new Date(due.start_date).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000);
+  const when = days <= 0 ? 'is on now' : days === 1 ? 'starts tomorrow' : `starts in ${days} days`;
+  return (
+    <Pressable
+      onPress={() => router.push(`/trips/${due.trip_id}?tab=checklist`)}
+      style={[styles.due, { backgroundColor: colors.highlight }]}
+    >
+      <View style={[styles.dueIcon, { backgroundColor: colors.onHighlight }]}>
+        <Ionicons name="checkbox-outline" size={22} color={colors.highlight} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: colors.onHighlight, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>
+          Check your list first · {due.pending} left
+        </Text>
+        <Text style={{ color: colors.onHighlight, fontSize: 12, opacity: 0.8, marginTop: 2 }} numberOfLines={2}>
+          {due.title} {when}. Still to sort: {due.items.join(', ')}
+          {due.pending > due.items.length ? '…' : ''}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.onHighlight} />
+    </Pressable>
   );
 }
 
@@ -139,6 +171,8 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   title: { fontSize: 30, fontWeight: '800', letterSpacing: -0.5 },
   join: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 11 },
+  due: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 24, padding: 14 },
+  dueIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   live: { borderRadius: 28, padding: 10 },
   liveImage: { height: 180, borderRadius: 22, overflow: 'hidden' },
   liveChip: {

@@ -18,6 +18,7 @@ import {
 import { ErrorState, Loading } from '@/components/ScreenState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ReminderCard } from '@/components/trip/ReminderCard';
 import { TripChecklist } from '@/components/trip/TripChecklist';
 import { TripMoney } from '@/components/trip/TripMoney';
 import { TripPhotos } from '@/components/trip/TripPhotos';
@@ -57,9 +58,12 @@ const MAIN_TABS: { value: MainTab | 'chat'; label: string }[] = [
 
 export default function TripDetailScreen() {
   const colors = Colors[useColorScheme()];
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `?tab=checklist` (from a checklist reminder) opens straight on that tab.
+  const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
   const { user } = useAuth();
-  const [tab, setTab] = useState<MainTab>('overview');
+  const [tab, setTab] = useState<MainTab>(
+    MAIN_TABS.some((t) => t.value === initialTab && t.value !== 'chat') ? (initialTab as MainTab) : 'overview',
+  );
   const [moreOpen, setMoreOpen] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const insets = useSafeAreaInsets();
@@ -242,6 +246,8 @@ function Overview({
           {completedCount} of {trip.activity_count} activities done · {trip.total_xp.toLocaleString('en-IN')} XP earned so far
         </Text>
       </View>
+
+      <ReminderCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
 
       <View style={styles.statGrid}>
         <StatTile icon="calendar-outline" value={trip.duration_days} label="Days" colors={colors} />

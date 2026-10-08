@@ -25,6 +25,7 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
   trip_completed: 'trophy-outline',
   expense_added: 'wallet-outline',
   settle_reminder: 'cash-outline',
+  checklist_reminder: 'checkbox-outline',
   chat_message: 'chatbubble-outline',
   settle_paid: 'cash-outline',
   settle_confirmed: 'checkmark-done-outline',
@@ -42,6 +43,7 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
 function notificationHref(note: Notification): string | null {
   // An invitee isn't on the trip yet; invites are answered at the top of this screen.
   if (note.kind === 'trip_invite') return null;
+  if (note.kind === 'checklist_reminder' && note.trip_id) return `/trips/${note.trip_id}?tab=checklist`;
   if (note.trip_id) return `/trips/${note.trip_id}`;
   if (note.track_id) return `/tracks/${note.track_id}`;
   if (note.kind === 'new_follower' && note.actor) return `/u/${note.actor.username}`;

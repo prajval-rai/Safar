@@ -27,6 +27,7 @@ from django.utils import timezone
 
 from notifications.services import notify, notify_many
 from trips.models import Activity, Trip
+from trips.reminders import nudge_checklist
 
 # The "starts today" reminder waits until morning.
 MORNING_HOUR = 7
@@ -36,16 +37,44 @@ class Command(BaseCommand):
     help = "Sends day-before trip and hour-before itinerary reminder notifications. Safe to run repeatedly."
 
     def handle(self, *args, **options):
+        custom = self._send_organiser_reminders()
         day_before = self._send_day_before_trip_reminders()
         day_of = self._send_day_of_trip_reminders()
         after_end = self._send_after_end_reminders()
         hour_before = self._send_hour_before_stop_reminders()
         self.stdout.write(
             self.style.SUCCESS(
-                f"Sent {day_before} day-before, {day_of} morning-of, {after_end} after-the-trip and "
+                f"Sent {custom} organiser, {day_before} day-before, {day_of} morning-of, {after_end} after-the-trip and "
                 f"{hour_before} hour-before reminder notification(s)."
             )
         )
+
+    def _send_organiser_reminders(self) -> int:
+        """The reminder the organiser scheduled (instead of the day-before one),
+        with their note, then a checklist nudge for anyone with items left."""
+        trips = Trip.objects.filter(
+            pre_start_reminder_at__lte=timezone.now(),
+            pre_start_reminder_sent=False,
+            status__in=["planning", "active"],
+            is_past=False,
+        )
+        sent = 0
+        for trip in trips:
+            members = [m.user for m in trip.members.select_related("user")]
+            days = (trip.start_date - timezone.localdate()).days
+            when = "today" if days <= 0 else "tomorrow" if days == 1 else f"in {days} days"
+            note = trip.pre_start_reminder_note
+            notify_many(
+                members,
+                "trip_reminder",
+                f"{trip.title} starts {when}!",
+                body=note or f"Get ready for {trip.destination} — check the plan and your checklist.",
+                trip=trip,
+            )
+            sent += len(members) + nudge_checklist(trip, members)
+            trip.pre_start_reminder_sent = True
+            trip.save(update_fields=["pre_start_reminder_sent"])
+        return sent
 
     def _send_day_of_trip_reminders(self) -> int:
         if timezone.localtime().hour < MORNING_HOUR:
@@ -66,7 +95,7 @@ class Command(BaseCommand):
                 body=f"Have a great time in {trip.destination}. Check in at each stop when you get there to earn its XP.",
                 trip=trip,
             )
-            sent += len(members)
+            sent += len(members) + nudge_checklist(trip, members, last_call=True)
             trip.day_of_reminder_sent = True
             trip.save(update_fields=["day_of_reminder_sent"])
         return sent
@@ -115,6 +144,8 @@ class Command(BaseCommand):
             start_date=tomorrow,
             status__in=["planning", "active"],
             day_before_reminder_sent=False,
+            # An organiser who scheduled their own reminder gets that instead.
+            pre_start_reminder_at__isnull=True,
         )
         sent = 0
         for trip in trips:
@@ -127,7 +158,7 @@ class Command(BaseCommand):
                     body=f"Pack your bags — you're headed to {trip.destination} tomorrow.",
                     trip=trip,
                 )
-                sent += len(members)
+                sent += len(members) + nudge_checklist(trip, members)
             trip.day_before_reminder_sent = True
             trip.save(update_fields=["day_before_reminder_sent"])
         return sent

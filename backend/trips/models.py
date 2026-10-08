@@ -141,6 +141,12 @@ class Trip(models.Model):
     # (finish it / settle up) — each sent once.
     day_of_reminder_sent = models.BooleanField(default=False)
     after_end_reminder_sent = models.BooleanField(default=False)
+    # The organiser's own "trip's coming up" reminder: when it goes out and an
+    # optional note with it (where to meet, what to bring). Unset, everyone
+    # gets the default day-before reminder instead (see trips.reminders).
+    pre_start_reminder_at = models.DateTimeField(null=True, blank=True)
+    pre_start_reminder_note = models.CharField(max_length=200, blank=True)
+    pre_start_reminder_sent = models.BooleanField(default=False)
     # A past trip: somewhere the traveller has already been, logged afterwards
     # with its itinerary, photos and story. It's never started or run live —
     # it's submitted for review instead, and an admin approving it is what
