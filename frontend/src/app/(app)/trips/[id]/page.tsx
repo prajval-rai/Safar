@@ -9,6 +9,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Itinerary } from "@/components/trip/Itinerary";
 import { PastTripPanel, reviewBadge } from "@/components/trip/PastTripPanel";
+import { ReminderCard } from "@/components/trip/ReminderCard";
 import { TripChecklist } from "@/components/trip/TripChecklist";
 import { TripChat, TripExpenses } from "@/components/trip/TripExtras";
 import { TripMap } from "@/components/trip/TripMap";
@@ -496,6 +497,8 @@ function Overview({
       </div>
 
       <BudgetCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
+
+      <ReminderCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
 
       {nextUp ? (
         <section className="card p-4">

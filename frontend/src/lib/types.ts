@@ -175,6 +175,9 @@ export interface Trip {
   review_status: PastReviewStatus | "";
   /** Listed in Explore → Open trips, where anyone can join without the code. */
   open_to_join: boolean;
+  /** The organiser's reminder before the trip (see ReminderCard), if set. */
+  pre_start_reminder_at: string | null;
+  pre_start_reminder_note: string;
 }
 
 /** An upcoming or live trip anyone can join, as Explore → Open trips lists it. */

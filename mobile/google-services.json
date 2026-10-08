@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "990068834188",
+    "project_id": "tripplanner-44731",
+    "storage_bucket": "tripplanner-44731.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:990068834188:android:263193d95aabbb869620a9",
+        "android_client_info": {
+          "package_name": "in.safar.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwiH-6UkSQNGNgbsjLqZEpRFw62vLuIXc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
