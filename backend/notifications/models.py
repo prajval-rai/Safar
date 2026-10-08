@@ -19,6 +19,8 @@ class Notification(models.Model):
         ("activity_reminder", "Itinerary reminder"),
         ("trip_cancelled", "Trip cancelled"),
         ("trip_completed", "Trip completed"),
+        ("expense_added", "Someone added an expense"),
+        ("settle_reminder", "Settle up after a trip"),
         ("chat_message", "New message in trip chat"),
         ("settle_paid", "Someone says they paid you back"),
         ("settle_confirmed", "Your payment was confirmed"),

@@ -309,11 +309,13 @@ def approve(trip, admin, note=""):
     )
 
     # Approval is final (only a pending trip can be approved), so this is
-    # only ever paid once per trip.
-    paid = award_xp(owner, config.approval_xp, f"Past trip approved: {trip.title}", kind="trip", trip=trip)
+    # only ever paid once per trip. An admin checked it, so the daily cap doesn't apply.
+    paid = award_xp(
+        owner, config.approval_xp, f"Past trip approved: {trip.title}", kind="trip", trip=trip, capped=False
+    )
     story = trip.experiences.filter(user=owner, skipped=False).exclude(text="").first()
     if story:
-        award_xp(owner, config.story_xp, f"Wrote about {trip.title}", kind="bonus", trip=trip)
+        award_xp(owner, config.story_xp, f"Wrote about {trip.title}", kind="bonus", trip=trip, capped=False)
         if story.is_public and config.allow_public_story:
             share_experience_to_feed(story)
     evaluate_achievements(owner, trip=trip)
@@ -352,6 +354,34 @@ def reject(trip, admin, note):
     )
 
 
+# A photo taken this far from the destination is flagged for the reviewer.
+EVIDENCE_RADIUS_KM = 50
+
+
+def photo_evidence(memory, trip) -> dict:
+    """What a past trip's photo says about itself, for the reviewer: when and
+    where the camera says it was taken (EXIF, when the file kept any), whether
+    it's only a link, and whether the same picture was already on Safar. None
+    means "can't tell" — plenty of apps strip EXIF, so it's a hint, not proof."""
+    from .geo import haversine_km
+
+    in_dates = None
+    if memory.taken_at:
+        taken = timezone.localtime(memory.taken_at).date()
+        in_dates = trip.start_date - timedelta(days=1) <= taken <= trip.end_date + timedelta(days=1)
+    km = None
+    if memory.photo_latitude is not None and trip.latitude is not None and trip.longitude is not None:
+        km = round(haversine_km(memory.photo_latitude, memory.photo_longitude, trip.latitude, trip.longitude), 1)
+    return {
+        "taken_at": memory.taken_at,
+        "in_dates": in_dates,
+        "km_from_destination": km,
+        "near_destination": None if km is None else km <= EVIDENCE_RADIUS_KM,
+        "linked": not memory.image,
+        "seen_before": not memory.is_original,
+    }
+
+
 class AdminPastTripSerializer(serializers.ModelSerializer):
     """A past trip as the review queue shows it: the trip, its itinerary, its
     photos and story — everything an admin needs to decide."""
@@ -364,6 +394,7 @@ class AdminPastTripSerializer(serializers.ModelSerializer):
     story = serializers.SerializerMethodField()
     stop_count = serializers.SerializerMethodField()
     photo_count = serializers.SerializerMethodField()
+    evidence = serializers.SerializerMethodField()
 
     class Meta:
         model = Trip
@@ -389,6 +420,7 @@ class AdminPastTripSerializer(serializers.ModelSerializer):
             "stop_count",
             "photo_count",
             "photos",
+            "evidence",
             "days",
             "story",
             "created_at",
@@ -405,10 +437,29 @@ class AdminPastTripSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
         return [
-            {"id": str(m.id), "url": memory_photo_url(m, request), "caption": m.caption}
+            {
+                "id": str(m.id),
+                "url": memory_photo_url(m, request),
+                "caption": m.caption,
+                "evidence": photo_evidence(m, obj),
+            }
             for m in obj.memories.order_by("created_at")
             if m.image or m.image_url
         ]
+
+    def get_evidence(self, obj) -> dict:
+        """Totals of the per-photo evidence, for the queue at a glance."""
+        rows = [photo_evidence(m, obj) for m in obj.memories.all() if m.image or m.image_url]
+        return {
+            "photos": len(rows),
+            "dated_in_trip": sum(1 for r in rows if r["in_dates"] is True),
+            "dated_outside": sum(1 for r in rows if r["in_dates"] is False),
+            "near_destination": sum(1 for r in rows if r["near_destination"] is True),
+            "far_from_destination": sum(1 for r in rows if r["near_destination"] is False),
+            "no_camera_data": sum(1 for r in rows if r["taken_at"] is None and r["km_from_destination"] is None),
+            "linked": sum(1 for r in rows if r["linked"]),
+            "seen_before": sum(1 for r in rows if r["seen_before"]),
+        }
 
     def get_days(self, obj) -> list[dict]:
         if not self.context.get("full"):

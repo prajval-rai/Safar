@@ -8,15 +8,25 @@ export const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "http://127.0.0.1:80
 const ACCESS_KEY = "safar.access";
 const REFRESH_KEY = "safar.refresh";
 
-export async function getTokens(): Promise<{ access: string; refresh: string } | null> {
+type Tokens = { access: string; refresh: string };
+
+/** The tokens, kept in memory once read: SecureStore is an encrypted native
+ *  read, far too slow to do twice for every single request. `undefined`
+ *  means "not read yet", `null` means "signed out". */
+let cachedTokens: Tokens | null | undefined;
+
+export async function getTokens(): Promise<Tokens | null> {
+  if (cachedTokens !== undefined) return cachedTokens;
   const [access, refresh] = await Promise.all([
     SecureStore.getItemAsync(ACCESS_KEY),
     SecureStore.getItemAsync(REFRESH_KEY),
   ]);
-  return access && refresh ? { access, refresh } : null;
+  cachedTokens = access && refresh ? { access, refresh } : null;
+  return cachedTokens;
 }
 
-export async function setTokens(tokens: { access: string; refresh: string }): Promise<void> {
+export async function setTokens(tokens: Tokens): Promise<void> {
+  cachedTokens = tokens;
   await Promise.all([
     SecureStore.setItemAsync(ACCESS_KEY, tokens.access),
     SecureStore.setItemAsync(REFRESH_KEY, tokens.refresh),
@@ -24,6 +34,7 @@ export async function setTokens(tokens: { access: string; refresh: string }): Pr
 }
 
 export async function clearTokens(): Promise<void> {
+  cachedTokens = null;
   await Promise.all([SecureStore.deleteItemAsync(ACCESS_KEY), SecureStore.deleteItemAsync(REFRESH_KEY)]);
 }
 
@@ -130,4 +141,38 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** Uploads a multipart form (a photo) with the same token handling as `api`. */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  async function attempt(): Promise<Response> {
+    const tokens = await getTokens();
+    return fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      // No Content-Type: fetch sets the multipart boundary itself.
+      headers: tokens ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: form,
+    });
+  }
+  let res = await attempt();
+  if (res.status === 401) {
+    const newAccess = await refreshAccessToken();
+    if (newAccess) res = await attempt();
+  }
+  if (!res.ok) {
+    let parsed: unknown = null;
+    try {
+      parsed = await res.json();
+    } catch {
+      // Not JSON — fall back to a generic message.
+    }
+    throw new ApiError(res.status, extractMessage(res.status, parsed));
+  }
+  return (await res.json()) as T;
+}
+
+/** A media path from the API ("/media/…") as a full URL; full URLs pass through. */
+export function mediaUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return path.startsWith("/") ? `${API_BASE}${path}` : path;
 }

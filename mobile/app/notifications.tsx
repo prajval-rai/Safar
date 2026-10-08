@@ -23,6 +23,8 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
   activity_reminder: 'time-outline',
   trip_cancelled: 'close-circle-outline',
   trip_completed: 'trophy-outline',
+  expense_added: 'wallet-outline',
+  settle_reminder: 'cash-outline',
   chat_message: 'chatbubble-outline',
   settle_paid: 'cash-outline',
   settle_confirmed: 'checkmark-done-outline',
@@ -43,7 +45,7 @@ function notificationHref(note: Notification): string | null {
   if (note.trip_id) return `/trips/${note.trip_id}`;
   if (note.track_id) return `/tracks/${note.track_id}`;
   if (note.kind === 'new_follower' && note.actor) return `/u/${note.actor.username}`;
-  if (note.kind === 'reward_update') return '/(tabs)/rewards';
+  if (note.kind === 'reward_update') return '/(tabs)/profile';
   return null;
 }
 
@@ -134,7 +136,7 @@ export default function NotificationsScreen() {
                 <Pressable
                   disabled={answering !== null}
                   onPress={() => answer(invite, 'accept')}
-                  style={[styles.inviteButton, { backgroundColor: colors.tint, borderColor: colors.tint }]}
+                  style={[styles.inviteButton, { backgroundColor: colors.highlight, borderColor: colors.tint }]}
                 >
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     {answering === invite.id ? 'Joining…' : 'Accept'}
@@ -170,7 +172,7 @@ export default function NotificationsScreen() {
             <View style={styles.body}>
               <View style={styles.titleRow}>
                 <Text style={[styles.title, { color: colors.text }]}>{note.title}</Text>
-                {!note.read ? <View style={[styles.dot, { backgroundColor: colors.tint }]} /> : null}
+                {!note.read ? <View style={[styles.dot, { backgroundColor: colors.highlight }]} /> : null}
               </View>
               {note.body ? <Text style={[styles.desc, { color: colors.muted }]}>{note.body}</Text> : null}
               <Text style={[styles.time, { color: colors.muted }]}>{relativeTime(note.created_at)}</Text>
@@ -195,7 +197,7 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, marginTop: 4 },
   invites: { marginBottom: 12 },
   sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2, marginBottom: 6, marginLeft: 4 },
-  invite: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8, gap: 2 },
+  invite: { borderRadius: 22, padding: 12, marginBottom: 8, gap: 2 },
   inviteActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  inviteButton: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  inviteButton: { flex: 1, borderRadius: 22, paddingVertical: 10, alignItems: 'center' },
 });

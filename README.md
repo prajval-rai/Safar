@@ -155,8 +155,9 @@ data in it straight away.
 
 **Rewards**
 - **Refer a friend, +10 XP**: your referral link is on the Rewards screen. When someone creates
-  their Safar account from it for the first time, you get +10 XP and a notification — once per
-  new account; existing accounts signing in again don't count
+  their Safar account from it for the first time you're notified, and you get +10 XP once they
+  finish their first real trip (checked in on the spot) — at most 5 referrals paid in any 30
+  days; existing accounts signing in again don't count
 - XP for distance, check-ins, photos, days, trips, write-ups, tracks and achievements — and
   XP cuts for leaving or cancelling trips and for undone stops (see [XP rules](#xp-rules))
 - Levels, 13 achievements, a leaderboard with a podium
@@ -183,9 +184,16 @@ data in it straight away.
 
 ## Completing stops, assignment and the travel map
 
-**Organisers complete stops for the group.** Only the trip owner or a co-planner can mark
-a stop complete, and it's then done for everyone on the trip: every member earns its XP
-(and the day and trip bonuses when those finish). Travellers can still check in themselves.
+**Organisers complete stops for the group; travellers check in for themselves.** Only the
+trip owner or a co-planner can mark a stop complete, and it's then done for the whole trip —
+but its XP only goes to the people who **checked in** at it (the organiser completing a
+pinned stop is checked in automatically). Being a member isn't enough, so joining a friend's
+trip from home earns nothing. Check-ins work before the stop is completed and for 24 hours
+after. The day bonus goes to whoever checked in at every stop of that day, and the
+completion bonus is split by each person's own share of the trip's stops. A stop with no
+pin needs no location to check in, but only counts for someone who has checked in on the
+spot at a pinned stop of the same trip. Photo, write-up and track XP also need at least
+one check-in on the trip. See `backend/trips/attendance.py`.
 
 **The 1 km rule.** A stop with a pin on the map can only be checked in at, or marked
 complete, from within 1 km of it — there is no override and it isn't configurable. The app
@@ -371,7 +379,7 @@ All endpoints are under `/api/`, JWT-authenticated via `Authorization: Bearer <t
 | `GET/POST /api/rewards/catalog/`, `PATCH/DELETE .../{id}/`, `POST .../{id}/claim/` | Reward catalog: staff upload a reward image with the XP needed and how many people can claim it; travellers claim once (XP isn't spent) |
 | `GET /api/rewards/admin/overview/`, `/admin/claims/`, `PATCH .../claims/{id}/` | Admin page: handle reward claims |
 | `POST /api/trips/` with `is_past: true`, `POST /api/trips/{id}/submit-review/`, `/withdraw-review/`, `DELETE /api/trips/{id}/memories/{memory_id}/` | Log a past trip, send it for review, take it back; remove a photo while drafting |
-| `POST /api/auth/google/` with `ref` | Referral: a brand-new account made with someone's code pays them +10 XP; `referral_code` / `referral_count` come back on `/api/auth/me/` |
+| `POST /api/auth/google/` with `ref` | Referral: a brand-new account made with someone's code is linked to them, who get +10 XP once it finishes a real trip; `referral_code` / `referral_count` come back on `/api/auth/me/` |
 | `GET/PATCH /api/past-trips/config/` | Past-trip rules — anyone reads, admins change |
 | `GET /api/admin/past-trips/`, `GET .../{id}/`, `POST .../{id}/review/` | Admin review queue: `{"decision": "approve" \| "reject", "note": "…"}` |
 | `GET /api/notifications/`, `/unread-count/`, `POST /read-all/`, `/{id}/read/` | The notification bell |
@@ -388,22 +396,41 @@ Defined in one place, `backend/rewards/services.py`:
 | Action | XP |
 | --- | --- |
 | Plan a trip | +2 (organiser) |
-| Complete a stop (everyone on the trip) | Distance XP for the leg travelled to reach it — start point → first stop, then stop → stop: 0.01 XP/km (1000 km = 10 XP, 2 km = 0.02 XP), at most 10 per leg. Tune with `DISTANCE_XP_PER_KM` / `DISTANCE_XP_LEG_CAP` |
-| Finish every stop in a day (everyone) | +5 |
-| Finish the trip (everyone) | +10, and +10 more for the organiser — or, if the organiser finishes early, that share of it (e.g. 1 of 3 stops done = 3.33) |
+| Complete a stop (everyone who checked in at it) | Distance XP for the leg travelled to reach it — start point → first stop, then stop → stop: 0.01 XP/km (1000 km = 10 XP, 2 km = 0.02 XP), at most 10 per leg. Tune with `DISTANCE_XP_PER_KM` / `DISTANCE_XP_LEG_CAP` |
+| Finish every stop in a day (everyone who checked in at all of them) | +5 |
+| Finish the trip | Up to +10, and up to +10 more for the organiser — each person gets the share matching the share of the trip's stops they checked in at (e.g. 1 of 3 = 3.33); skipped stops count as missed |
 | Write about a finished trip (shared to the Feed) | +10 |
-| Check in at a place | +1 |
-| Add a memory | +1 |
+| Check in at a place | +1 (stops within 200 m of one you've checked in at on the trip pay it once) |
+| Add a memory | +1 per uploaded photo, up to 20 per trip — re-saved or edited copies and links earn nothing |
 | Publish a track | +10 |
 | Unlock an achievement | 2–10 |
 | **Leave a trip you joined** | **−2** before it starts, **−3** once it's live (XP already earned is kept) |
 | **Cancel a trip that's already live** | **−10** (organiser); cancelling one still in planning is free |
 | **Trip within 10 km of where it was planned / started** | Nothing — no XP earned or lost on it, and it doesn't count towards achievements |
-| **Organiser undoes a stop** | Everyone loses that stop's distance XP — plus the day bonus if its day was complete, and the completion and organiser bonuses if the trip was finished |
+| **Organiser undoes a stop** | Everyone who earned from it loses that stop's distance XP — plus the day bonus if its day was complete, and the completion and organiser bonuses if the trip was finished |
 
 **Settle up to unlock:** if you still owe money on a trip when it finishes, its completion XP (and the organiser bonus) is held until you've paid back what you owe and it's confirmed; stop and day XP isn't affected.
 
-XP never drops below 0, and claiming a reward never spends it. Each rule in `XP_RULES` has a
+**Anti-cheat** (see `trips/attendance.py`, `trips/geo.py`, `trips/photos.py`, `rewards/services.py`):
+
+- A trip starts from where it was planned (the new-trip page sends the planner's location). Planned
+  without a location, it earns no XP (`no_xp_reason = "no_location"`) until someone shares one
+  (`POST /api/trips/<id>/locate/`, or starting it with a location). Stops within 10 km of the start
+  point earn nothing and count towards nothing.
+- Check-ins open once the trip is live or its first day has come. Every location is checked against
+  the traveller's last one (`LocationFix`): faster than 900 km/h is refused. `accuracy` is required.
+- A day's bonus is paid on or after that day's date, at most one per real day.
+- Nobody earns more than 120 XP a day (`DAILY_XP_CAP`); achievements, referrals and admin-approved
+  past trips don't count towards it.
+- Photos are matched by a perceptual hash, so re-saved or touched-up copies are repeats. Past-trip
+  reviewers see each photo's EXIF date and place and whether it was already on Safar.
+- Only followers who have travelled for real count towards *Local Hero*.
+- A cut bigger than your total becomes debt (`User.xp_debt`) that comes off what you earn next.
+
+The one thing the server can't prove is that a phone's GPS isn't faked; the checks above keep a
+faker to a trickle (the daily cap) rather than a flood.
+
+XP never shows below 0, and claiming a reward never spends it. Each rule in `XP_RULES` has a
 `kind` — `earn`, `note` or `cut` — which groups it on the Rewards screen's *How XP works* sheet,
 where the cuts are highlighted.
 

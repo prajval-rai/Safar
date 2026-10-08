@@ -259,8 +259,8 @@ function NowCard({
         <p className="mt-3 rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
           <span aria-hidden="true">📍</span>{" "}
           {isOrganiser
-            ? "Be within 1 km of this spot to complete it — it counts for everyone on the trip."
-            : "Be within 1 km of this spot to check in."}
+            ? "Be within 1 km of this spot to complete it. Everyone else checks in for themselves — only the people who were here earn XP for it."
+            : "Be within 1 km of this spot to check in — you only earn XP for the stops you check in at."}
         </p>
       ) : null}
 

@@ -14,7 +14,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { SelectField, TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
-import { checkInStop, completeStop, isPinned } from "@/lib/geo";
+import { canCheckIn, checkInStop, completeStop, isPinned } from "@/lib/geo";
 import { OfflineQueuedError } from "@/lib/offlineQueue";
 import { categoryFor, usePlaceSearch } from "@/lib/places";
 import type { Activity, Day, PickedPlace, TripDetail, TripMember, XPResult } from "@/lib/types";
@@ -511,10 +511,25 @@ function ActivityDetailSheet({
       description={`${CATEGORY_LABELS[activity.category]} · ${timeWindow(activity)}`}
       footer={
         pastTrip ? null : done ? (
-          canEdit ? (
-            <Button variant="secondary" fullWidth onClick={() => act(() => api.post<XPResult>(`/api/activities/${activity.id}/undo/`), "Marked as not done.")} disabled={busy}>
-              Mark as not done
-            </Button>
+          canCheckIn(activity) || canEdit ? (
+            <div className="flex gap-2">
+              {/* Arrived after the organiser ticked it off? You can still check in for a day. */}
+              {canCheckIn(activity) ? (
+                <Button
+                  fullWidth={!canEdit}
+                  onClick={() => act(() => checkInStop(activity))}
+                  disabled={busy}
+                  icon="📍"
+                >
+                  Check in
+                </Button>
+              ) : null}
+              {canEdit ? (
+                <Button variant="secondary" fullWidth onClick={() => act(() => api.post<XPResult>(`/api/activities/${activity.id}/undo/`), "Marked as not done.")} disabled={busy}>
+                  Mark as not done
+                </Button>
+              ) : null}
+            </div>
           ) : null
         ) : (
           <div className="flex gap-2">
@@ -549,7 +564,7 @@ function ActivityDetailSheet({
           <p className="rounded-xl bg-accent-soft px-3.5 py-2.5 text-sm text-accent">
             <span aria-hidden="true">📍</span> This stop is pinned on the map. Be within 1 km of it to
             check in or mark it complete — we&apos;ll ask for your location. The organiser marks it
-            done for everyone on the trip.
+            done for the group, but XP from it only goes to the people who checked in here.
           </p>
         ) : null}
 
@@ -590,6 +605,17 @@ function ActivityDetailSheet({
           <p className="text-sm text-muted">
             <span aria-hidden="true">✓</span> Completed by {activity.completed_by.name}
             {activity.verified_by_location ? " — location confirmed on the spot" : ""}
+          </p>
+        ) : null}
+
+        {done && !pastTrip ? (
+          <p className="text-sm text-muted">
+            <span aria-hidden="true">📍</span>{" "}
+            {activity.checked_in_at
+              ? "You checked in here, so its XP is yours."
+              : canCheckIn(activity)
+                ? "You haven't checked in here. Check in within a day of it being done to earn its XP."
+                : "You didn't check in here, so it didn't earn you XP."}
           </p>
         ) : null}
 

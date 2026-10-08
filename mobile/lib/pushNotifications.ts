@@ -95,8 +95,12 @@ export function useHandlePushNotificationTaps() {
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const url = response.notification.request.content.data?.url;
-      if (typeof url === 'string' && url !== '/') {
+      // Only open screens the app has; anything else (a website-only page)
+      // lands on the notifications list instead.
+      if (typeof url === 'string' && /^\/(trips|u|tracks)\//.test(url)) {
         router.push(url as never);
+      } else if (typeof url === 'string' && url !== '/') {
+        router.push('/notifications');
       }
     });
     return () => subscription.remove();

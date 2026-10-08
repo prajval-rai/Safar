@@ -9,7 +9,13 @@ import { TextAreaField, TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
-import type { AdminPastTrip, AdminPastTripPage, PastReviewStatus, PastTripConfig } from "@/lib/types";
+import type {
+  AdminPastTrip,
+  AdminPastTripPage,
+  PastReviewStatus,
+  PastTripConfig,
+  PhotoEvidence,
+} from "@/lib/types";
 import {
   CATEGORY_ICONS,
   TRANSPORT_LABELS,
@@ -19,6 +25,32 @@ import {
   relativeTime,
   rupees,
 } from "@/lib/utils";
+
+/** "2 dated outside the trip, 1 already on Safar" — or "" when nothing's off. */
+function evidenceWarnings(e: AdminPastTrip["evidence"]): string {
+  const parts = [
+    e.dated_outside ? `${e.dated_outside} dated outside the trip` : "",
+    e.far_from_destination ? `${e.far_from_destination} taken far from it` : "",
+    e.seen_before ? `${e.seen_before} already on Safar` : "",
+    e.linked ? `${e.linked} only linked` : "",
+  ];
+  return parts.filter(Boolean).join(", ");
+}
+
+/** One line under a photo: when and where its camera says it was taken. */
+function photoFacts(e: PhotoEvidence): string {
+  const facts = [
+    e.taken_at
+      ? `📅 ${new Date(e.taken_at).toLocaleDateString()}${e.in_dates === false ? " (outside trip)" : ""}`
+      : "📅 no date",
+    e.km_from_destination != null
+      ? `📍 ${e.km_from_destination} km away${e.near_destination === false ? " ⚠️" : ""}`
+      : "📍 no place",
+  ];
+  if (e.seen_before) facts.push("⚠️ already on Safar");
+  if (e.linked) facts.push("🔗 link");
+  return facts.join(" · ");
+}
 
 type QueueFilter = Exclude<PastReviewStatus, "draft"> | "all";
 
@@ -113,6 +145,7 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
                   </div>
                   <p className="mt-0.5 text-xs text-muted">
                     {trip.photo_count} photos · {trip.stop_count} stops{trip.story ? " · story" : ""}
+                    {evidenceWarnings(trip.evidence) ? ` · ⚠️ ${evidenceWarnings(trip.evidence)}` : ""}
                     {trip.submitted_at ? ` · sent ${relativeTime(trip.submitted_at)}` : ""}
                     {trip.reviewed_by && trip.reviewed_at
                       ? ` · ${REVIEW_STYLE[trip.review_status].label.toLowerCase()} by ${trip.reviewed_by.name} ${relativeTime(trip.reviewed_at)}`
@@ -226,6 +259,12 @@ function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
 
           <section>
             <h3 className="mb-2 text-sm font-bold text-muted">Photos ({trip.photos.length})</h3>
+            <p className="mb-2 text-xs text-muted">
+              From the photos&apos; own camera data, where they kept it: {trip.evidence.dated_in_trip} taken
+              during the trip, {trip.evidence.near_destination} taken near {trip.destination}.{" "}
+              {evidenceWarnings(trip.evidence) ? <b className="text-danger">{evidenceWarnings(trip.evidence)}.</b> : null}{" "}
+              Many apps strip this data, so a missing date or place is a hint, not proof.
+            </p>
             {trip.photos.length ? (
               <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {trip.photos.map((photo) => (
@@ -240,6 +279,7 @@ function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
                       />
                     </a>
                     {photo.caption ? <p className="mt-1 truncate text-xs text-muted">{photo.caption}</p> : null}
+                    <p className="mt-0.5 text-xs text-muted">{photoFacts(photo.evidence)}</p>
                   </li>
                 ))}
               </ul>

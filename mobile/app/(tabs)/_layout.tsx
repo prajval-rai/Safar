@@ -1,19 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 
 import { AppHeader } from '@/components/AppHeader';
-import { useColorScheme } from '@/components/useColorScheme';
-import Colors from '@/constants/Colors';
+import { FloatingTabBar } from '@/components/FloatingTabBar';
 import { useAuth } from '@/lib/auth';
 
-type IconName = keyof typeof Ionicons.glyphMap;
-
-function TabIcon({ name, color }: { name: IconName; color: string }) {
-  return <Ionicons name={name} size={24} color={color} style={{ marginBottom: -3 }} />;
-}
-
+/** Just two tabs: your trips, and you. Everything about a trip lives on its
+ *  own page (plan, chat, photos, money, checklist, people). */
 export default function TabLayout() {
-  const colors = Colors[useColorScheme()];
   const { user } = useAuth();
 
   // The root index route already gates on auth before sending anyone here, but a
@@ -22,47 +15,15 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: colors.tint,
-        tabBarInactiveTintColor: colors.tabIconDefault,
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
         header: () => <AppHeader />,
+        // Keep each tab mounted once visited, so switching back is instant.
+        freezeOnBlur: true,
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{ title: 'Home', tabBarIcon: ({ color }) => <TabIcon name="home" color={color as string} /> }}
-      />
-      <Tabs.Screen
-        name="trips"
-        options={{ title: 'My Trips', tabBarIcon: ({ color }) => <TabIcon name="airplane" color={color as string} /> }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{ title: 'Explore', tabBarIcon: ({ color }) => <TabIcon name="compass" color={color as string} /> }}
-      />
-      <Tabs.Screen
-        name="tracks"
-        options={{ title: 'Tracks', tabBarIcon: ({ color }) => <TabIcon name="git-branch" color={color as string} /> }}
-      />
-      <Tabs.Screen
-        name="feed"
-        options={{ title: 'Feed', tabBarIcon: ({ color }) => <TabIcon name="chatbubbles" color={color as string} /> }}
-      />
-      <Tabs.Screen
-        name="rewards"
-        options={{ title: 'Rewards', tabBarIcon: ({ color }) => <TabIcon name="trophy" color={color as string} /> }}
-      />
-      <Tabs.Screen
-        name="profile"
-        // Six tabs is the most a phone fits; the profile opens from the avatar
-        // in the header instead.
-        options={{
-          title: 'Profile',
-          href: null,
-          tabBarIcon: ({ color }) => <TabIcon name="person-circle" color={color as string} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: 'My trips' }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );
 }

@@ -181,6 +181,8 @@ export default function NewTripPage() {
       setStep(5);
       // Planning alone earns nothing — the XP comes once the trip is completed.
       if (!created.no_xp) toast("Trip planned! Complete it — with at least one stop done — to earn XP.");
+      else if (created.no_xp_reason === "no_location")
+        toast("Planned — but without your location it can't earn XP. Share it from the trip page.", "error");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't create the trip.");
     } finally {

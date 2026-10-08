@@ -1,63 +1,78 @@
-// Mirrors the web app's default "Saffron Sunrise" theme exactly — same values
-// as the [data-theme="saffron"] CSS custom properties in
-// frontend/src/app/globals.css — so the two apps read as one product. The
-// web app now has nine themes that switch automatically based on a
-// traveller's live/upcoming trip destination (see useAmbientTheme on the
-// frontend); mobile doesn't have that dynamic system yet and just opens on
-// the same default everyone starts from on web.
-export default {
-  light: {
-    background: '#fbf9f6', // canvas
-    card: '#ffffff', // surface
-    raised: '#f4f0ea', // a step up from card — stat tiles, chips
-    border: '#e9e3da', // line
-    text: '#1c1917', // ink
-    muted: '#6b625a',
+// Safar's mobile look: a cool, light canvas with white cards, a charcoal
+// floating tab bar and one bright highlight (saffron — the app icon's colour)
+// for whatever is selected: the active tab, the chosen pill, the main button.
+// To try another highlight (e.g. lime '#D7F25A'), change `highlight` below;
+// everything selected follows it.
+const highlight = '#FFB547';
 
-    tint: '#8a3204', // brand
-    brandStrong: '#6b2503',
-    brandBright: '#d9772b',
-    brandSoft: '#f6ebe1',
-    onBrand: '#ffffff',
+const light = {
+  background: '#F2F3F5', // canvas
+  card: '#FFFFFF', // surface
+  raised: '#ECEEF1', // a step up from card — stat tiles, chips
+  border: '#E4E6EA', // line
+  text: '#17191C', // ink
+  muted: '#6E737A',
 
-    accent: '#0f766e',
-    accentSoft: '#dcf1ee',
+  tint: '#C2570C', // brand — links, accents, text on white
+  brandStrong: '#9A3F05',
+  brandBright: '#F08A2C',
+  brandSoft: '#FFF1DE',
+  onBrand: '#FFFFFF',
 
-    success: '#15803d',
-    successSoft: '#dcf5e4',
-    warn: '#a16207',
-    warnSoft: '#fbf0d3',
-    danger: '#b91c1c',
-    dangerSoft: '#fce8e8',
+  /** Selected pills, the active tab, primary buttons. */
+  highlight,
+  onHighlight: '#17191C',
+  /** The floating tab bar and dark overlay cards. */
+  nav: '#22272B',
+  onNav: '#E9EBEE',
 
-    tabIconDefault: '#a89c8d',
-    tabIconSelected: '#8a3204',
-  },
-  dark: {
-    background: '#1a1410',
-    card: '#241c16',
-    raised: '#2f251d',
-    border: '#3d3128',
-    text: '#f7ede2',
-    muted: '#b7a494',
+  accent: '#0F766E',
+  accentSoft: '#DCF1EE',
 
-    tint: '#f97316',
-    brandStrong: '#fb923c',
-    brandBright: '#fdba74',
-    brandSoft: '#3a2415',
-    onBrand: '#1a1008',
+  success: '#15803D',
+  successSoft: '#DCF5E4',
+  warn: '#A16207',
+  warnSoft: '#FBF0D3',
+  danger: '#B91C1C',
+  dangerSoft: '#FCE8E8',
 
-    accent: '#2dd4bf',
-    accentSoft: '#123330',
-
-    success: '#4ade80',
-    successSoft: '#12301d',
-    warn: '#fbbf24',
-    warnSoft: '#332612',
-    danger: '#f87171',
-    dangerSoft: '#3a1717',
-
-    tabIconDefault: '#6b5d4f',
-    tabIconSelected: '#f97316',
-  },
+  tabIconDefault: '#9AA0A6',
+  tabIconSelected: '#17191C',
 };
+
+const dark: typeof light = {
+  background: '#101214',
+  card: '#1A1D20',
+  raised: '#24282C',
+  border: '#2C3135',
+  text: '#F3F4F6',
+  muted: '#9AA1A9',
+
+  tint: '#FFA94D',
+  brandStrong: '#FFC078',
+  brandBright: '#FFB547',
+  brandSoft: '#3A2A16',
+  onBrand: '#17191C',
+
+  highlight,
+  onHighlight: '#17191C',
+  nav: '#000000',
+  onNav: '#E9EBEE',
+
+  accent: '#2DD4BF',
+  accentSoft: '#123330',
+
+  success: '#4ADE80',
+  successSoft: '#12301D',
+  warn: '#FBBF24',
+  warnSoft: '#332612',
+  danger: '#F87171',
+  dangerSoft: '#3A1717',
+
+  tabIconDefault: '#6B7178',
+  tabIconSelected: '#17191C',
+};
+
+export type Palette = typeof light;
+
+export default { light, dark };

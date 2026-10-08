@@ -33,6 +33,9 @@ class ActivitySerializer(serializers.ModelSerializer):
     day_index = serializers.IntegerField(source="day.index", read_only=True)
     trip = serializers.UUIDField(source="day.trip_id", read_only=True)
     memory_count = serializers.IntegerField(source="memories.count", read_only=True)
+    # When *you* checked in here — each traveller checks in for themselves.
+    checked_in_at = serializers.SerializerMethodField()
+    checkin_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -65,6 +68,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "assigned_to",
             "verified_by_location",
             "memory_count",
+            "checkin_count",
         ]
         read_only_fields = [
             "xp_value",
@@ -72,10 +76,21 @@ class ActivitySerializer(serializers.ModelSerializer):
             "status",
             "completed_at",
             "completed_by",
-            "checked_in_at",
             "assigned_to",
             "verified_by_location",
         ]
+
+    def get_checked_in_at(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        # .all() rather than .filter() so a trip's prefetched check-ins are used
+        # — otherwise every stop on the trip costs its own query.
+        checkin = next((c for c in obj.checkins.all() if c.user_id == request.user.id), None)
+        return checkin.created_at if checkin else None
+
+    def get_checkin_count(self, obj):
+        return len(obj.checkins.all())
 
     def validate_latitude(self, value):
         return _check_range(value, -90, 90, "Latitude")
@@ -159,12 +174,13 @@ class TripListSerializer(serializers.ModelSerializer):
             "theme",
             # Too close to where it was planned or started from: earns no XP.
             "no_xp",
+            "no_xp_reason",
             # Logged after the fact, and where its review stands (see trips.past).
             "is_past",
             "review_status",
             "open_to_join",
         ]
-        read_only_fields = ["no_xp", "is_past", "review_status"]
+        read_only_fields = ["no_xp", "no_xp_reason", "is_past", "review_status"]
 
     def get_activity_count(self, obj) -> int:
         return Activity.objects.filter(day__trip=obj).count()
@@ -485,5 +501,6 @@ class TripInviteSerializer(serializers.ModelSerializer):
             "member_count": trip.members.count(),
             "stop_count": Activity.objects.filter(day__trip=trip).count(),
             "no_xp": trip.no_xp,
+            "no_xp_reason": trip.no_xp_reason,
             "organiser": UserMiniSerializer(trip.created_by).data,
         }

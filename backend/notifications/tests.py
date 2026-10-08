@@ -108,7 +108,7 @@ class NotificationTestCase(TestCase):
 
     # --- trip completed ------------------------------------------------------
 
-    def test_completing_the_last_activity_notifies_everyone_with_an_expense_summary(self):
+    def test_completing_the_last_activity_tells_each_person_their_side_of_the_money(self):
         trip = self.make_trip(self.me)
         TripMember.objects.create(trip=trip, user=self.ann, role="member")
         day = trip.days.first()
@@ -117,11 +117,12 @@ class NotificationTestCase(TestCase):
 
         self.client_for(self.me).post(f"/api/activities/{activity.id}/complete/")
 
-        # Split two ways: ann owes 1000, me (who paid) gets 1000 back.
+        # Split two ways: ann owes 1,000 to me (who paid) — each hears their side.
         note_ann = Notification.objects.get(user=self.ann, kind="trip_completed")
         note_me = Notification.objects.get(user=self.me, kind="trip_completed")
-        self.assertIn("₹1000", note_ann.body)
-        self.assertIn("₹1000", note_me.body)
+        self.assertIn("You owe", note_ann.body)
+        self.assertIn("₹1,000", note_ann.body)
+        self.assertIn("owes you ₹1,000", note_me.body)
 
     def test_completing_a_trip_with_no_expenses_says_so_plainly(self):
         trip = self.make_trip(self.me)

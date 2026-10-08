@@ -25,8 +25,10 @@ from trips.models import (
     ChatMessage,
     ChecklistItem,
     Day,
+    DayBonus,
     Expense,
     Memory,
+    StopCheckIn,
     Trip,
     TripMember,
 )
@@ -261,24 +263,33 @@ class Command(BaseCommand):
             activity.status = "completed"
             activity.completed_by = doer
             activity.completed_at = timezone_for(activity)
-            activity.checked_in_at = activity.completed_at
             # Demo data: pretend these travellers really stood at each pinned stop.
             activity.verified_by_location = activity.latitude is not None
             activity.completed_distance_m = 120 if activity.latitude is not None else None
             activity.save()
+            # …and that the whole group checked in at every one of them.
             for member in everyone:
-                award_xp(member, activity.xp_value, f"Completed {activity.title}", "activity", trip)
+                award_xp(member, activity.xp_value, f"Completed {activity.title}", "activity", trip, capped=False)
+                StopCheckIn.objects.create(
+                    activity=activity,
+                    user=member,
+                    distance_m=activity.completed_distance_m,
+                    xp_paid=activity.xp_value,
+                )
 
         for day in trip.days.all():
             if day.is_complete:
                 for member in everyone:
-                    award_xp(member, DAY_COMPLETE_BONUS, f"Finished day {day.index}", "day", trip)
+                    award_xp(member, DAY_COMPLETE_BONUS, f"Finished day {day.index}", "day", trip, capped=False)
+                    DayBonus.objects.create(day=day, user=member, amount=DAY_COMPLETE_BONUS)
 
         if complete_ratio >= 1.0:
             trip.status = "completed"
-            trip.save(update_fields=["status"])
+            trip.completion_bonus = TRIP_COMPLETE_BONUS
+            trip.save(update_fields=["status", "completion_bonus"])
             for member in everyone:
-                award_xp(member, TRIP_COMPLETE_BONUS, f"Completed {title}", "trip", trip)
+                award_xp(member, TRIP_COMPLETE_BONUS, f"Completed {title}", "trip", trip, capped=False)
+            trip.members.update(completion_xp=TRIP_COMPLETE_BONUS)
 
         self.stdout.write(f"  · {title} — {len(created_activities)} activities")
         return trip

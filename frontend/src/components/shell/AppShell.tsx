@@ -300,6 +300,8 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   trip_cancelled: XCircle,
   trip_left: UserMinus,
   trip_completed: PartyPopper,
+  expense_added: IndianRupee,
+  settle_reminder: IndianRupee,
   chat_message: MessageCircle,
   settle_paid: IndianRupee,
   settle_confirmed: BadgeCheck,

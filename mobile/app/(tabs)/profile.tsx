@@ -1,26 +1,24 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { IndiaAchievementMap } from '@/components/IndiaAchievementMap';
-import { useColorScheme } from '@/components/useColorScheme';
-import Colors from '@/constants/Colors';
+import { TAB_BAR_SPACE } from '@/components/FloatingTabBar';
+import { ProfileView } from '@/components/ProfileView';
+import { usePalette } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { shortDate } from '@/lib/format';
-import type { TravelMapData, User } from '@/lib/types';
-import { useFetch } from '@/lib/useFetch';
+import type { User } from '@/lib/types';
 
 const AVATARS = ['🧳', '🏍️', '📸', '⛰️', '🌴', '🍛', '🚂', '🪂', '🧭', '🎒', '🛺', '🏕️'];
 
+/** Your own profile: the shared profile layout, with Edit and Invite in
+ *  place of Follow, and your account settings at the bottom. */
 export default function ProfileScreen() {
-  const colors = Colors[useColorScheme()];
-  const { user, logout, refreshUser } = useAuth();
+  const colors = usePalette();
+  const { user, logout } = useAuth();
   const [editing, setEditing] = useState(false);
-
-  useFocusEffect(useCallback(() => { refreshUser(); }, [refreshUser]));
-
-  const { data: travelMap } = useFetch<TravelMapData>(user ? `/api/users/${user.username}/travel-map/` : null);
 
   function confirmLogout() {
     Alert.alert('Log out?', 'You can log back in any time.', [
@@ -36,68 +34,70 @@ export default function ProfileScreen() {
     ]);
   }
 
+  async function invite() {
+    try {
+      const me = await api<User & { referral_code?: string }>('/api/auth/me/');
+      const code = me.referral_code ? `
+
+Use my code when you sign up: ${me.referral_code}` : '';
+      await Share.share({
+        message: `Plan trips with me on Safar — earn XP for every place you really go.${code}`,
+      });
+    } catch {
+      // Share sheet dismissed or offline — nothing to do.
+    }
+  }
+
   if (!user) return null;
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <View style={[styles.header, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={[styles.avatar, { backgroundColor: colors.brandSoft }]}>
-          <Text style={styles.avatarEmoji}>{user.avatar_emoji}</Text>
-        </View>
-        <Text style={[styles.name, { color: colors.text }]}>{user.display_name || user.username}</Text>
-        <Text style={[styles.username, { color: colors.muted }]}>@{user.username}</Text>
-        {user.home_city ? <Text style={[styles.city, { color: colors.muted }]}>📍 {user.home_city}</Text> : null}
-        {user.bio ? <Text style={[styles.bio, { color: colors.text }]}>{user.bio}</Text> : null}
-
-        <View style={[styles.levelChip, { backgroundColor: colors.brandSoft }]}>
-          <Text style={{ color: colors.tint, fontWeight: '700', fontSize: 13 }}>
-            Level {user.level} · {user.level_name}
-          </Text>
-        </View>
-
-        <View style={styles.progressWrap}>
-          <Text style={[styles.progressLabel, { color: colors.muted }]}>
-            {user.xp_into_level.toLocaleString('en-IN')} / {user.xp_for_next_level.toLocaleString('en-IN')} XP to level{' '}
-            {user.level + 1}
-          </Text>
-          <View style={[styles.progressTrack, { backgroundColor: colors.raised }]}>
-            <View style={[styles.progressFill, { backgroundColor: colors.tint, width: `${Math.max(4, user.level_progress)}%` }]} />
+    <>
+      <ProfileView
+        username={user.username}
+        bottomSpace={TAB_BAR_SPACE}
+        actions={() => (
+          <>
+            <Pressable onPress={() => setEditing(true)} style={[styles.actionButton, { backgroundColor: colors.nav }]}>
+              <Ionicons name="create-outline" size={17} color={colors.onNav} />
+              <Text style={{ color: colors.onNav, fontWeight: '700', fontSize: 14 }}>Edit profile</Text>
+            </Pressable>
+            <Pressable onPress={invite} style={[styles.actionButton, { backgroundColor: colors.card }]}>
+              <Ionicons name="gift-outline" size={17} color={colors.text} />
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Invite friends</Text>
+            </Pressable>
+          </>
+        )}
+        footer={
+          <View style={[styles.section, { backgroundColor: colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
+            <Row label="Username" value={`@${user.username}`} />
+            {user.email ? <Row label="Email" value={user.email} /> : null}
+            <Row label="Travelling since" value={shortDate(user.date_joined.slice(0, 10))} last />
+            <Pressable onPress={confirmLogout} style={[styles.logout, { borderColor: colors.danger }]}>
+              <Text style={{ color: colors.danger, fontWeight: '700' }}>Log out</Text>
+            </Pressable>
           </View>
-        </View>
-
-        <Pressable onPress={() => setEditing(true)} style={[styles.editButton, { borderColor: colors.border, backgroundColor: colors.background }]}>
-          <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>Edit profile</Text>
-        </Pressable>
-      </View>
-
-      {travelMap ? <IndiaAchievementMap data={travelMap} /> : null}
-
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
-        <Row label="Username" value={`@${user.username}`} colors={colors} />
-        {user.email ? <Row label="Email" value={user.email} colors={colors} /> : null}
-        <Row label="Travelling since" value={shortDate(user.date_joined.slice(0, 10))} colors={colors} last />
-        <Pressable onPress={confirmLogout} style={[styles.logout, { borderColor: colors.danger }]}>
-          <Text style={{ color: colors.danger, fontWeight: '700' }}>Log out</Text>
-        </Pressable>
-      </View>
-
+        }
+      />
       <EditProfileModal visible={editing} user={user} onClose={() => setEditing(false)} />
-    </ScrollView>
+    </>
   );
 }
 
-function Row({ label, value, colors, last }: { label: string; value: string; colors: (typeof Colors)['light']; last?: boolean }) {
+function Row({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  const colors = usePalette();
   return (
     <View style={[styles.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}>
       <Text style={{ color: colors.muted, fontSize: 13 }}>{label}</Text>
-      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>{value}</Text>
+      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13, flexShrink: 1 }} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 function EditProfileModal({ visible, user, onClose }: { visible: boolean; user: User; onClose: () => void }) {
-  const colors = Colors[useColorScheme()];
+  const colors = usePalette();
   const { refreshUser } = useAuth();
   const [displayName, setDisplayName] = useState(user.display_name || user.name);
   const [homeCity, setHomeCity] = useState(user.home_city);
@@ -159,7 +159,7 @@ function EditProfileModal({ visible, user, onClose }: { visible: boolean; user: 
               <Pressable
                 key={emoji}
                 onPress={() => setAvatar(emoji)}
-                style={[styles.avatarOption, { borderColor: selected ? colors.tint : colors.border, backgroundColor: selected ? colors.brandSoft : colors.background }]}
+                style={[styles.avatarOption, { borderColor: selected ? colors.highlight : colors.border, backgroundColor: selected ? colors.brandSoft : colors.background }]}
               >
                 <Text style={{ fontSize: 20 }}>{emoji}</Text>
               </Pressable>
@@ -169,8 +169,8 @@ function EditProfileModal({ visible, user, onClose }: { visible: boolean; user: 
 
         {error ? <Text style={{ color: colors.danger, fontSize: 13, marginBottom: 10 }}>{error}</Text> : null}
 
-        <Pressable onPress={save} disabled={busy} style={[styles.saveButton, { backgroundColor: colors.tint, opacity: busy ? 0.6 : 1 }]}>
-          {busy ? <ActivityIndicator color={colors.onBrand} /> : <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 16 }}>Save changes</Text>}
+        <Pressable onPress={save} disabled={busy} style={[styles.saveButton, { backgroundColor: colors.highlight, opacity: busy ? 0.6 : 1 }]}>
+          {busy ? <ActivityIndicator color={colors.onHighlight} /> : <Text style={{ color: colors.onHighlight, fontWeight: '800', fontSize: 16 }}>Save changes</Text>}
         </Pressable>
       </ScrollView>
     </Modal>
@@ -178,32 +178,18 @@ function EditProfileModal({ visible, user, onClose }: { visible: boolean; user: 
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, paddingBottom: 40 },
-  header: { alignItems: 'center', borderWidth: 1, borderRadius: 20, padding: 24, gap: 6 },
-  avatar: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  avatarEmoji: { fontSize: 34 },
-  name: { fontSize: 20, fontWeight: '800' },
-  username: { fontSize: 13 },
-  city: { fontSize: 13 },
-  bio: { fontSize: 13, textAlign: 'center', marginTop: 2, maxWidth: 280 },
-  levelChip: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, marginTop: 6 },
-  progressWrap: { width: '100%', maxWidth: 280, marginTop: 10 },
-  progressLabel: { fontSize: 11, textAlign: 'center', marginBottom: 6 },
-  progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 999 },
-  editButton: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9, marginTop: 12 },
-
-  section: { borderWidth: 1, borderRadius: 18, padding: 18, marginTop: 16 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 12 },
+  section: { borderRadius: 24, padding: 18, marginTop: 22, marginHorizontal: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 11 },
   logout: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 16 },
 
   modalContainer: { padding: 20, paddingTop: 60, paddingBottom: 40 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '800' },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
   label: { fontSize: 13, fontWeight: '700', marginBottom: 6, marginTop: 12 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  input: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 13, fontSize: 15 },
   avatarRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  avatarOption: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  saveButton: { borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 22 },
+  avatarOption: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  saveButton: { borderRadius: 999, paddingVertical: 15, alignItems: 'center', marginTop: 22 },
 });

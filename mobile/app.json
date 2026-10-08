@@ -52,8 +52,19 @@
         "expo-build-properties",
         {
           "android": {
-            "buildArchs": ["arm64-v8a"]
+            "buildArchs": [
+              "arm64-v8a"
+            ]
           }
+        }
+      ],
+      "@react-native-google-signin/google-signin",
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Safar lets you add photos from your trips to the trip's shared album.",
+          "cameraPermission": "Safar lets you take a photo for your trip's shared album."
         }
       ]
     ],

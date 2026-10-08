@@ -58,13 +58,13 @@ export function JoinTripModal({ visible, onClose }: { visible: boolean; onClose:
             disabled={busy || code.trim().length < 4}
             style={[
               styles.submit,
-              { backgroundColor: colors.tint, opacity: busy || code.trim().length < 4 ? 0.5 : 1 },
+              { backgroundColor: colors.highlight, opacity: busy || code.trim().length < 4 ? 0.5 : 1 },
             ]}
           >
             {busy ? (
-              <ActivityIndicator color={colors.onBrand} />
+              <ActivityIndicator color={colors.onHighlight} />
             ) : (
-              <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 16 }}>Join trip</Text>
+              <Text style={{ color: colors.onHighlight, fontWeight: '700', fontSize: 16 }}>Join trip</Text>
             )}
           </Pressable>
         </Pressable>

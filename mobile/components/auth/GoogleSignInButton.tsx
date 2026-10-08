@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useIdTokenAuthRequest } from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
@@ -12,40 +13,95 @@ import { useAuth } from '@/lib/auth';
 // Google redirects — without this, a successful sign-in never resolves.
 WebBrowser.maybeCompleteAuthSession();
 
+/** The Web application OAuth client (same as the website's). Every ID token
+ *  is issued for this client, so the backend checks one audience whichever
+ *  way the traveller signed in. */
 const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
-/**
- * Google's own rendered button (the one on web) only exists in a browser —
- * it's Google Identity Services' JS widget. On mobile this opens the system
- * browser instead via expo-auth-session, gets an ID token the same shape
- * Google's web widget hands the frontend, and posts it to the very same
- * backend endpoint (/api/auth/google/) — one account, either way in.
- *
- * Uses expo-auth-session/providers/google's useIdTokenAuthRequest rather
- * than a native Google Sign-In SDK specifically because it works inside
- * Expo Go — the native libraries need a custom dev build and can't run here
- * at all. Renders nothing when EXPO_PUBLIC_GOOGLE_CLIENT_ID isn't set, same
- * as the web button when its Client ID is missing.
- */
-export function GoogleSignInButton({
-  onSuccess,
-  onError,
-}: {
+/** Expo Go can't load native modules, so it keeps the browser flow. */
+const IN_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+interface Props {
   /** The auth context's `user` is already updated by the time this fires —
    *  this is just the screen's cue to navigate, same as after a normal login. */
   onSuccess: () => void;
   onError: (message: string) => void;
-}) {
-  const colors = Colors[useColorScheme()];
+}
+
+/**
+ * "Continue with Google", posting Google's ID token to the same backend
+ * endpoint the website's button uses (/api/auth/google/) — one account,
+ * either way in.
+ *
+ * In a real build (the APK) this is native Google Sign-In: Android's own
+ * account picker, no browser and no redirect. The browser flow can't work
+ * there — Google blocks sending a Web client's sign-in back to an app's
+ * custom scheme (in.safar.app://…), which is the "Access blocked" error.
+ * Native sign-in needs an *Android* OAuth client in Google Cloud for the
+ * package in.safar.app and the APK's signing SHA-1; `webClientId` still
+ * names the Web client, so the ID token's audience is unchanged.
+ *
+ * Expo Go can't run the native module, so there it falls back to the
+ * expo-auth-session browser flow, which works through Expo's own redirect.
+ */
+export function GoogleSignInButton(props: Props) {
+  if (!GOOGLE_CLIENT_ID) return null;
+  return IN_EXPO_GO ? <BrowserGoogleButton {...props} /> : <NativeGoogleButton {...props} />;
+}
+
+function NativeGoogleButton({ onSuccess, onError }: Props) {
+  const { loginWithGoogle } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  async function signIn() {
+    // Required lazily: importing it at the top would crash Expo Go, which
+    // doesn't have the native module.
+    type GoogleSignInModule = typeof import('@react-native-google-signin/google-signin');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const native = require('@react-native-google-signin/google-signin') as GoogleSignInModule;
+    const { GoogleSignin, isErrorWithCode, isSuccessResponse, statusCodes } = native;
+    setBusy(true);
+    try {
+      GoogleSignin.configure({ webClientId: GOOGLE_CLIENT_ID });
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response)) return; // They backed out of the account picker.
+      const idToken = response.data.idToken;
+      if (!idToken) {
+        onError("Google didn't return a usable sign-in token.");
+        return;
+      }
+      await loginWithGoogle(idToken);
+      onSuccess();
+    } catch (e: unknown) {
+      if (isErrorWithCode(e)) {
+        if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) return;
+        if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          onError('Google Play services is needed to sign in with Google on this phone.');
+          return;
+        }
+        // DEVELOPER_ERROR (code 10) means the Android OAuth client is
+        // missing or its SHA-1 doesn't match this build's signing key.
+        onError(`Couldn't sign in with Google (${e.code}).`);
+        return;
+      }
+      onError(e instanceof Error ? e.message : "Couldn't sign in with Google.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <ButtonBody busy={busy} disabled={busy} onPress={signIn} />;
+}
+
+function BrowserGoogleButton({ onSuccess, onError }: Props) {
   const { loginWithGoogle } = useAuth();
   const [busy, setBusy] = useState(false);
 
   // expo-auth-session's Google provider picks androidClientId/iosClientId/
   // webClientId based on Platform.OS, falling back to the generic `clientId`
-  // only when the platform-specific one is missing. We only have one real
-  // OAuth client (a Web application type, same as the website's) and no
-  // separate native Android/iOS ones — passing it as `clientId` covers every
-  // platform through that fallback, without duplicating it three times.
+  // only when the platform-specific one is missing — so the one Web client
+  // covers Expo Go on every platform.
   const [request, response, promptAsync] = useIdTokenAuthRequest({
     clientId: GOOGLE_CLIENT_ID,
   });
@@ -67,15 +123,18 @@ export function GoogleSignInButton({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [response]);
 
-  if (!GOOGLE_CLIENT_ID) return null;
+  return <ButtonBody busy={busy} disabled={!request || busy} onPress={() => promptAsync()} />;
+}
 
+function ButtonBody({ busy, disabled, onPress }: { busy: boolean; disabled: boolean; onPress: () => void }) {
+  const colors = Colors[useColorScheme()];
   return (
     <Pressable
-      onPress={() => promptAsync()}
-      disabled={!request || busy}
+      onPress={onPress}
+      disabled={disabled}
       style={[
         styles.button,
-        { borderColor: colors.border, backgroundColor: colors.card, opacity: !request || busy ? 0.6 : 1 },
+        { borderColor: colors.border, backgroundColor: colors.card, opacity: disabled ? 0.6 : 1 },
       ]}
     >
       {busy ? (

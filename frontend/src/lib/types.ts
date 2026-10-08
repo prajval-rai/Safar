@@ -98,7 +98,11 @@ export interface Activity {
   status: ActivityStatus;
   completed_at: string | null;
   completed_by: UserMini | null;
+  /** When *you* checked in here — each traveller checks in for themselves,
+   *  and only the people who checked in earn from the stop. */
   checked_in_at: string | null;
+  /** How many people on the trip have checked in here. */
+  checkin_count: number;
   assigned_to: UserMini | null;
   /** True when the completer's phone was within 1 km of the place. */
   verified_by_location: boolean;
@@ -159,8 +163,12 @@ export interface Trip {
   /** Palette drawn from the destination's state — the same for every member,
    *  regardless of anyone's own personal theme. See useTripTheme(). */
   theme: ThemeId;
-  /** Within 10 km of where it was planned or started from — earns no XP. */
+  /** Earns no XP — see no_xp_reason. */
   no_xp: boolean;
+  /** "nearby": within 10 km of where it was planned or started from.
+   *  "no_location": planned without sharing a location, so we can't tell a
+   *  real trip from stops round the corner — sharing one fixes it. */
+  no_xp_reason: "" | "nearby" | "no_location";
   /** Logged after the fact ("I've already been") — reviewed by an admin, never run live. */
   is_past: boolean;
   /** Where a past trip's review stands; "" for an ordinary trip. */
@@ -248,6 +256,19 @@ export interface PastTripConfig {
   updated_at: string;
 }
 
+/** What a past trip's photo says about itself (from its EXIF, when it kept
+ *  any). null means "can't tell" — plenty of apps strip it. */
+export interface PhotoEvidence {
+  taken_at: string | null;
+  in_dates: boolean | null;
+  km_from_destination: number | null;
+  near_destination: boolean | null;
+  /** Only a link to a picture, not an upload. */
+  linked: boolean;
+  /** The same picture was already on Safar. */
+  seen_before: boolean;
+}
+
 /** A past trip as the admin review queue sees it. */
 export interface AdminPastTrip {
   id: string;
@@ -270,7 +291,18 @@ export interface AdminPastTrip {
   reviewed_by: UserMini | null;
   stop_count: number;
   photo_count: number;
-  photos: { id: string; url: string; caption: string }[];
+  photos: { id: string; url: string; caption: string; evidence: PhotoEvidence }[];
+  /** Totals of the photos' evidence, for the queue at a glance. */
+  evidence: {
+    photos: number;
+    dated_in_trip: number;
+    dated_outside: number;
+    near_destination: number;
+    far_from_destination: number;
+    no_camera_data: number;
+    linked: number;
+    seen_before: number;
+  };
   /** Filled in on the detail endpoint only. */
   days: {
     index: number;
@@ -587,6 +619,9 @@ export interface XPResult {
   xp_held?: number;
   /** This photo was uploaded before (by anyone), so it earned no XP. */
   duplicate_photo?: boolean;
+  /** Why something earned less XP than you'd expect (a stop near the trip's
+   *  start, a repeated place, the photo cap…). Shown as a toast. */
+  note?: string;
   unlocked?: { title: string; icon: string }[];
   activity?: Activity;
   /** From finishing a trip early. */
@@ -627,6 +662,8 @@ export type NotificationKind =
   | "activity_reminder"
   | "trip_cancelled"
   | "trip_completed"
+  | "expense_added"
+  | "settle_reminder"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"

@@ -16,6 +16,8 @@ class HeldXPTests(SafarTestCase):
     def finish(self):
         client = self.client_for(self.owner)
         response = None
+        self.was_at(self.owner, self.a1, self.a2, self.a3)
+        self.was_at(self.friend, self.a1, self.a2, self.a3)
         for activity in (self.a1, self.a2, self.a3):
             response = client.post(f"/api/activities/{activity.id}/complete/")
         return response
@@ -69,8 +71,9 @@ class HeldXPTests(SafarTestCase):
         before = self.xp(self.friend)
         self.client_for(self.owner).post(f"/api/activities/{self.a3.id}/undo/")
         self.assertFalse(HeldXP.objects.filter(user=self.friend).exists())
-        # Only the stop and day XP come back off — not a bonus they never got.
-        self.assertEqual(self.xp(self.friend), before - self.a3.xp_value - 5)
+        # Only the stop XP comes back off — not a bonus they never got (the
+        # completion XP was held, and day 2's bonus waits for its date).
+        self.assertEqual(self.xp(self.friend), before - self.a3.xp_value)
 
     def test_only_an_organiser_can_change_or_remove_an_expense(self):
         # Even the person who paid can't change it once it's in.

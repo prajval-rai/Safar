@@ -113,14 +113,25 @@ class FollowTests(SocialTestCase):
         self.assertFalse(data["is_me"])
         self.assertTrue(self.client_for(self.me).get("/api/users/me/").data["is_me"])
 
-    def test_five_followers_unlock_local_hero(self):
-        for i in range(5):
-            fan = User.objects.create_user(f"fan{i}", password="x")
+    def test_five_followers_who_travel_unlock_local_hero(self):
+        from trips.models import StopCheckIn
+
+        fans = [User.objects.create_user(f"fan{i}", password="x") for i in range(5)]
+        for fan in fans:
             self.client_for(fan).post("/api/users/me/follow/")
-        titles = [
-            a["title"] for a in self.client_for(self.me).get("/api/users/me/").data["achievements"]
-        ]
-        self.assertIn("Local Hero", titles)
+
+        def titles():
+            return [a["title"] for a in self.client_for(self.me).get("/api/users/me/").data["achievements"]]
+
+        # Five empty accounts following you aren't five followers.
+        self.assertNotIn("Local Hero", titles())
+        for fan in fans:
+            trip = self.make_trip(fan)
+            StopCheckIn.objects.create(activity=self.stop(trip, fan), user=fan, distance_m=40)
+        # Achievements are checked when something happens; a new follow will do.
+        extra = User.objects.create_user("fan5", password="x")
+        self.client_for(extra).post("/api/users/me/follow/")
+        self.assertIn("Local Hero", titles())
 
     def test_search_finds_people_by_display_name_and_says_if_i_follow_them(self):
         Follow.objects.create(follower=self.me, following=self.ann)
@@ -220,8 +231,13 @@ class TravelMapTests(SocialTestCase):
         self.assertEqual(theirs["needs_coords"], [])
 
     def test_areas_covered_counts_distinct_destinations(self):
+        from trips.models import StopCheckIn
+
         for place in ("Goa", "Jaipur", "Leh"):
-            self.make_trip(self.me, place)
+            trip = self.make_trip(self.me, place)
+            StopCheckIn.objects.create(activity=self.stop(trip, self.me), user=self.me, distance_m=40)
+        # A finished trip you never checked in on doesn't count.
+        self.make_trip(self.me, "Ooty")
         self.assertEqual(_stats(self.me)["areas_covered"], 3)
 
 

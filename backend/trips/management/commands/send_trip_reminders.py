@@ -1,8 +1,12 @@
-"""Sends two kinds of reminder, both worked out from the itinerary itself —
-no separately-configured reminder times to keep in sync:
+"""Sends the trip reminders, all worked out from the trip itself — no
+separately-configured reminder times to keep in sync:
 
   1. Day-before: everyone on a trip starting tomorrow gets one nudge.
-  2. Hour-before: whoever's due at a stop (or everyone, if it's unassigned)
+  2. Morning-of: from 7 a.m. on the first day, "starts today".
+  3. Day-after: once a trip's last day is over — organisers of a trip still
+     not marked complete are asked to finish it, and anyone who still owes
+     money on it is told exactly who to pay.
+  4. Hour-before: whoever's due at a stop (or everyone, if it's unassigned)
      gets nudged about an hour before its start time — every stop with a
      time on it, not just the first one. The very first dated stop in the
      whole trip is phrased as the trip itself starting, since that's what it
@@ -21,8 +25,11 @@ from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from notifications.services import notify_many
+from notifications.services import notify, notify_many
 from trips.models import Activity, Trip
+
+# The "starts today" reminder waits until morning.
+MORNING_HOUR = 7
 
 
 class Command(BaseCommand):
@@ -30,12 +37,77 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         day_before = self._send_day_before_trip_reminders()
+        day_of = self._send_day_of_trip_reminders()
+        after_end = self._send_after_end_reminders()
         hour_before = self._send_hour_before_stop_reminders()
         self.stdout.write(
             self.style.SUCCESS(
-                f"Sent {day_before} day-before and {hour_before} hour-before reminder notification(s)."
+                f"Sent {day_before} day-before, {day_of} morning-of, {after_end} after-the-trip and "
+                f"{hour_before} hour-before reminder notification(s)."
             )
         )
+
+    def _send_day_of_trip_reminders(self) -> int:
+        if timezone.localtime().hour < MORNING_HOUR:
+            return 0
+        trips = Trip.objects.filter(
+            start_date=timezone.localdate(),
+            status__in=["planning", "active"],
+            is_past=False,
+            day_of_reminder_sent=False,
+        )
+        sent = 0
+        for trip in trips:
+            members = [m.user for m in trip.members.select_related("user")]
+            notify_many(
+                members,
+                "trip_reminder",
+                f"{trip.title} starts today! 🧳",
+                body=f"Have a great time in {trip.destination}. Check in at each stop when you get there to earn its XP.",
+                trip=trip,
+            )
+            sent += len(members)
+            trip.day_of_reminder_sent = True
+            trip.save(update_fields=["day_of_reminder_sent"])
+        return sent
+
+    def _send_after_end_reminders(self) -> int:
+        from trips.settle import owes_money
+        from trips.views import money_line_for, trip_expense_balances
+
+        trips = Trip.objects.filter(
+            end_date__lt=timezone.localdate(),
+            status__in=["planning", "active", "completed"],
+            is_past=False,
+            after_end_reminder_sent=False,
+        )
+        sent = 0
+        for trip in trips:
+            members = [m for m in trip.members.select_related("user")]
+            if trip.status != "completed":
+                organisers = [m.user for m in members if m.role in ("owner", "admin")]
+                notify_many(
+                    organisers,
+                    "trip_reminder",
+                    f"{trip.title} has ended — mark it complete",
+                    body="Finish the trip in Safar so everyone gets their completion XP and the final money split.",
+                    trip=trip,
+                )
+                sent += len(organisers)
+            balances = trip_expense_balances(trip)
+            for member in members:
+                if owes_money(balances, member.user):
+                    notify(
+                        member.user,
+                        "settle_reminder",
+                        f"Settle up for {trip.title}",
+                        body=f"{money_line_for(trip, member.user, balances)} Pay back to unlock your completion XP.",
+                        trip=trip,
+                    )
+                    sent += 1
+            trip.after_end_reminder_sent = True
+            trip.save(update_fields=["after_end_reminder_sent"])
+        return sent
 
     def _send_day_before_trip_reminders(self) -> int:
         tomorrow = timezone.localdate() + timedelta(days=1)

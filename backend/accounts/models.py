@@ -103,6 +103,12 @@ class User(AbstractUser):
     referred_by = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="referrals"
     )
+    # When whoever referred them was paid for it — only once they've finished a
+    # real trip, not at signup (see accounts.referrals.pay_referral_if_due).
+    referral_paid_at = models.DateTimeField(null=True, blank=True)
+    # XP they lost but didn't have: a penalty or take-back bigger than their
+    # total. XP never shows below 0, so this comes off what they earn next.
+    xp_debt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

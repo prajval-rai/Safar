@@ -127,16 +127,17 @@ export default function TripDetailPage() {
   async function lifecycle(action: "start" | "reopen", message: string) {
     setLifecycleBusy(true);
     try {
-      // Where you are when you start is the start point: the first stop's
-      // distance XP is measured from here. Without it the trip still starts,
-      // it's just the first leg that earns nothing.
+      // The trip starts from where it was planned; if it was planned without
+      // a location, where you are now becomes its start point instead. Without
+      // either, the trip still starts — it just can't earn XP.
       let body: object = {};
       if (action === "start") {
         try {
-          const { latitude, longitude } = await getPosition();
-          body = { latitude, longitude };
+          body = await getPosition();
         } catch {
-          toast("No location, so the first stop won't earn distance XP.", "error");
+          if (trip!.no_xp_reason === "no_location") {
+            toast("No location, so this trip can't earn XP yet.", "error");
+          }
         }
       }
       await api.post(`/api/trips/${trip!.id}/${action}/`, body);
@@ -144,6 +145,20 @@ export default function TripDetailPage() {
       reload();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : "Couldn't do that.", "error");
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function shareStartPoint() {
+    setLifecycleBusy(true);
+    try {
+      const position = await getPosition();
+      await api.post(`/api/trips/${trip!.id}/locate/`, position);
+      toast("Got it — this trip starts from here.");
+      reload();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't get your location.", "error");
     } finally {
       setLifecycleBusy(false);
     }
@@ -196,7 +211,15 @@ export default function TripDetailPage() {
           ) : null}
           {trip.no_xp ? (
             <Chip tone="warn" className="w-fit bg-white/95">
-              <span aria-hidden="true">🏠</span> Close to home · No XP
+              {trip.no_xp_reason === "no_location" ? (
+                <>
+                  <span aria-hidden="true">📍</span> No start location · No XP
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">🏠</span> Close to home · No XP
+                </>
+              )}
             </Chip>
           ) : null}
         </div>
@@ -206,6 +229,19 @@ export default function TripDetailPage() {
           {trip.region ? `, ${trip.region}` : ""} · {dateRange(trip.start_date, trip.end_date)}
         </p>
       </TripCover>
+
+      {trip.no_xp_reason === "no_location" && canEdit && (trip.status === "planning" || trip.status === "active") ? (
+        <div className="rounded-xl bg-accent-soft px-3.5 py-3 text-sm text-accent">
+          <p>
+            This trip was planned without your location, so it can&apos;t earn XP — we can&apos;t
+            tell a real trip from stops pinned round the corner. Share where it starts from to
+            fix that.
+          </p>
+          <Button className="mt-2" size="sm" icon="📍" onClick={shareStartPoint} disabled={lifecycleBusy}>
+            Share my location
+          </Button>
+        </div>
+      ) : null}
 
       {trip.status === "active" ? (
         <ButtonLink href={`/trips/${trip.id}/live`} size="lg" fullWidth icon="🧭">

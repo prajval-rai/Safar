@@ -17,6 +17,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { ApiError, api } from '@/lib/api';
 import { CATEGORY_ICONS, clockTime, rupees, todayISO, TRIP_TYPE_LABELS } from '@/lib/format';
+import { getPosition } from '@/lib/geo';
 import type { TrackDetail, TrackStop, Trip } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
@@ -71,7 +72,7 @@ export default function TrackDetailScreen() {
 
         <Pressable
           onPress={() => router.push(`/u/${track.author.username}`)}
-          style={[styles.authorRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+          style={[styles.authorRow, { backgroundColor: colors.card }]}
         >
           <View style={[styles.avatar, { backgroundColor: colors.brandSoft }]}>
             <Text style={{ fontSize: 18 }}>{track.author.avatar_emoji}</Text>
@@ -86,8 +87,8 @@ export default function TrackDetailScreen() {
         </Pressable>
 
         <View style={styles.actionRow}>
-          <Pressable onPress={() => setUseOpen(true)} style={[styles.actionButton, { backgroundColor: colors.tint }]}>
-            <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 14 }}>➕ Use this track</Text>
+          <Pressable onPress={() => setUseOpen(true)} style={[styles.actionButton, { backgroundColor: colors.highlight }]}>
+            <Text style={{ color: colors.onHighlight, fontWeight: '700', fontSize: 14 }}>➕ Use this track</Text>
           </Pressable>
           <Pressable
             onPress={toggleSave}
@@ -100,7 +101,7 @@ export default function TrackDetailScreen() {
         </View>
 
         {track.route.length ? (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
             <Text style={styles.cardLabel}>The route</Text>
             <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700', marginTop: 4 }}>{track.route.join(' → ')}</Text>
           </View>
@@ -110,7 +111,7 @@ export default function TrackDetailScreen() {
         {track.track_days.map((day) => {
           const open = openDay === day.index;
           return (
-            <View key={day.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View key={day.id} style={[styles.card, { backgroundColor: colors.card }]}>
               <Pressable onPress={() => setOpenDay(open ? null : day.index)} style={styles.dayHeader}>
                 <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>
                   Day {day.index} <Text style={{ color: colors.muted, fontWeight: '500', fontSize: 13 }}>
@@ -183,9 +184,17 @@ function UseTrackModal({
     setBusy(true);
     setError(null);
     try {
+      // Where you are now is where the trip starts from — without it, the
+      // copied trip can't earn XP.
+      const here = await getPosition().catch(() => null);
       const trip = await api<Trip>(`/api/explore/tracks/${trackId}/use/`, {
         method: 'POST',
-        body: { start_date: startDate, title: title.trim() },
+        body: {
+          start_date: startDate,
+          title: title.trim(),
+          planner_latitude: here?.latitude ?? null,
+          planner_longitude: here?.longitude ?? null,
+        },
       });
       onClose();
       router.push(`/trips/${trip.id}`);
@@ -224,9 +233,9 @@ function UseTrackModal({
           <Pressable
             onPress={go}
             disabled={busy || !startDate || !title.trim()}
-            style={[styles.submit, { backgroundColor: colors.tint, opacity: busy ? 0.6 : 1 }]}
+            style={[styles.submit, { backgroundColor: colors.highlight, opacity: busy ? 0.6 : 1 }]}
           >
-            {busy ? <ActivityIndicator color={colors.onBrand} /> : <Text style={{ color: colors.onBrand, fontWeight: '700' }}>Create my trip</Text>}
+            {busy ? <ActivityIndicator color={colors.onHighlight} /> : <Text style={{ color: colors.onHighlight, fontWeight: '700' }}>Create my trip</Text>}
           </Pressable>
         </Pressable>
       </Pressable>
@@ -243,11 +252,11 @@ const styles = StyleSheet.create({
   body: { padding: 16 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 14 },
+  authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 22, padding: 12, marginBottom: 14 },
   avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   actionRow: { gap: 10, marginBottom: 16 },
   actionButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  card: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 10 },
+  card: { borderRadius: 22, padding: 14, marginBottom: 10 },
   cardLabel: { fontSize: 12, fontWeight: '700', color: '#8a8a8a' },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginBottom: 10, marginTop: 6 },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -258,6 +267,6 @@ const styles = StyleSheet.create({
   modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 },
   modalTitle: { fontSize: 17, fontWeight: '800' },
   label: { fontSize: 12, fontWeight: '700', marginBottom: 6, marginTop: 10, color: '#8a8a8a' },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  input: { borderRadius: 22, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   submit: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 18 },
 });

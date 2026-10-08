@@ -14,4 +14,8 @@ python manage.py collectstatic --no-input
 python manage.py migrate --no-input
 python manage.py ensure_superuser
 python manage.py seed_achievements
+# Trip reminders (day before, morning of, an hour before each stop, the day
+# after it ends): one loop, started once here rather than per gunicorn
+# worker. Each reminder is flagged when sent, so a restart never repeats one.
+python manage.py runreminders &
 exec gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2

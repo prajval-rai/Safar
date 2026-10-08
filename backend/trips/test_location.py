@@ -33,7 +33,7 @@ class LocationCompletionTests(SafarTestCase):
         )
 
     def at(self, lat_offset=0.0, **extra):
-        return {"latitude": BAGA[0] + lat_offset, "longitude": BAGA[1], **extra}
+        return {"latitude": BAGA[0] + lat_offset, "longitude": BAGA[1], "accuracy": 10, **extra}
 
     def test_standing_at_the_stop_completes_it_and_verifies_the_visit(self):
         response = self.complete(self.owner, **self.at(0.0005, accuracy=20))
@@ -45,7 +45,7 @@ class LocationCompletionTests(SafarTestCase):
         self.assertLess(self.pin.completed_distance_m, 100)
 
     def test_far_away_is_refused_with_a_friendly_distance(self):
-        response = self.complete(self.owner, latitude=MUMBAI[0], longitude=MUMBAI[1])
+        response = self.complete(self.owner, latitude=MUMBAI[0], longitude=MUMBAI[1], accuracy=10)
         self.assertEqual(response.status_code, 400)
         message = str(response.data["detail"])
         self.assertIn("Baga Beach", message)
@@ -94,7 +94,7 @@ class LocationCompletionTests(SafarTestCase):
         client = self.client_for(self.friend)
         far = client.post(
             f"/api/activities/{self.pin.id}/checkin/",
-            {"latitude": MUMBAI[0], "longitude": MUMBAI[1]},
+            {"latitude": MUMBAI[0], "longitude": MUMBAI[1], "accuracy": 10},
             format="json",
         )
         self.assertEqual(far.status_code, 400)
@@ -103,8 +103,8 @@ class LocationCompletionTests(SafarTestCase):
             f"/api/activities/{self.pin.id}/checkin/", self.at(0.001), format="json"
         )
         self.assertEqual(near.status_code, 200)
-        self.pin.refresh_from_db()
-        self.assertIsNotNone(self.pin.checked_in_at)
+        self.assertTrue(self.pin.checkins.filter(user=self.friend).exists())
+        self.assertIsNotNone(near.data["activity"]["checked_in_at"])
 
     def test_undo_clears_the_verification(self):
         self.complete(self.owner, **self.at(0.001))

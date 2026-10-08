@@ -34,6 +34,11 @@ class PhotoXPTests(SafarTestCase):
         super().tearDownClass()
         shutil.rmtree(TEST_MEDIA, ignore_errors=True)
 
+    def setUp(self):
+        super().setUp()
+        # Photos only pay someone who has checked in on the trip.
+        self.was_at(self.friend, self.a1)
+
     def upload(self, user, trip=None, content=PHOTO, name="sunset.png"):
         trip = trip or self.trip
         return self.client_for(user).post(
@@ -71,6 +76,11 @@ class PhotoXPTests(SafarTestCase):
         # The duplicate is still saved — it just didn't earn anything.
         self.assertEqual(Memory.objects.filter(is_original=False).count(), 2)
 
+    def test_photos_from_a_trip_you_never_checked_in_on_earn_nothing(self):
+        response = self.upload(self.owner, content=png((10, 200, 10)))
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["xp_awarded"], 0)
+
     def test_a_different_photo_earns_again(self):
         self.upload(self.friend)
         self.assertEqual(self.upload(self.friend, content=png((0, 90, 200))).data["xp_awarded"], MEMORY_XP)
@@ -80,8 +90,11 @@ class PhotoXPTests(SafarTestCase):
         url = f"/api/trips/{self.trip.id}/memories/"
         first = client.post(url, {"image_url": "https://example.com/fort.jpg"}, format="json")
         second = client.post(url, {"image_url": "https://example.com/fort.jpg"}, format="json")
-        self.assertEqual(first.data["xp_awarded"], MEMORY_XP)
-        self.assertEqual(second.data["xp_awarded"], 0)
+        # A link can point at anyone's picture, so it never earns XP…
+        self.assertEqual(first.data["xp_awarded"], 0)
+        self.assertIn("Linked photos", first.data["note"])
+        # …but it's still tracked, so the same link again is a repeat.
+        self.assertTrue(second.data["duplicate_photo"])
 
     def test_repeat_uploads_do_not_count_towards_shutterbug(self):
         for _ in range(3):

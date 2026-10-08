@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { api, clearTokens, getTokens, setTokens } from "./api";
+import { clearFetchCache } from "./useFetch";
 import type { User } from "./types";
 
 interface AuthState {
@@ -18,7 +19,9 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | undefined | null>(undefined);
 
-  async function loadUser() {
+  // Stable, so screens can call it from focus effects without re-running them
+  // on every render (which used to loop: refresh → new user → new function → refresh).
+  const loadUser = useCallback(async () => {
     try {
       const me = await api<User>("/api/auth/me/");
       setUser(me);
@@ -27,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await clearTokens();
       setUser(null);
     }
-  }
+  }, []);
 
   useEffect(() => {
     let settled = false;
@@ -61,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // seconds, force a definite state rather than spin forever.
     const timeout = setTimeout(settle, 5000);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [loadUser]);
 
   const value = useMemo<AuthState>(
     () => ({
@@ -79,11 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async logout() {
         await clearTokens();
+        clearFetchCache();
         setUser(null);
       },
       refreshUser: loadUser,
     }),
-    [user],
+    [user, loadUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

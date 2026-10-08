@@ -117,9 +117,9 @@ class Trip(models.Model):
     start_latitude = models.FloatField(null=True, blank=True)
     start_longitude = models.FloatField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
-    # Completion XP actually paid per member / to the organiser. A trip the
-    # organiser finishes early pays a share of the full bonus, so undo has to
-    # know exactly what to take back.
+    # The completion bonus for someone at every completed stop (a trip finished
+    # early pays a share of the full one), and what the organiser was actually
+    # paid. Each traveller's own completion XP is on TripMember.completion_xp.
     completion_bonus = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     organizer_bonus = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     # True when the organiser ended the trip before every stop was done; the
@@ -129,9 +129,18 @@ class Trip(models.Model):
     # started from. It can still be planned and run, but it never earns or costs
     # XP (see rewards.services.award_xp) — a trip round the corner isn't an XP farm.
     no_xp = models.BooleanField(default=False)
+    # Why: "nearby" (within MIN_TRIP_DISTANCE_KM of where it was planned or
+    # started from) or "no_location" (we never learned where it starts from, so
+    # there's no telling a real trip from stops pinned round the corner —
+    # sharing a location later fixes it, see TripViewSet.locate).
+    no_xp_reason = models.CharField(max_length=12, blank=True)
     # Set once the "starts tomorrow" reminder has gone out, so it's never
     # sent twice (see trips.management.commands.send_trip_reminders).
     day_before_reminder_sent = models.BooleanField(default=False)
+    # The morning-of "starts today" reminder, and the day-after-it-ends one
+    # (finish it / settle up) — each sent once.
+    day_of_reminder_sent = models.BooleanField(default=False)
+    after_end_reminder_sent = models.BooleanField(default=False)
     # A past trip: somewhere the traveller has already been, logged afterwards
     # with its itinerary, photos and story. It's never started or run live —
     # it's submitted for review instead, and an admin approving it is what
@@ -260,6 +269,9 @@ class TripMember(models.Model):
     # person on the trip decides for their own profile. Someone joining starts
     # from the trip's own setting (Trip.is_public).
     show_on_map = models.BooleanField(default=False)
+    # Completion XP this traveller has been paid (or had held) for the trip —
+    # their share of TRIP_COMPLETE_BONUS, by how many of its stops they checked in at.
+    completion_xp = models.DecimalField(max_digits=8, decimal_places=2, default=0)
 
     class Meta:
         unique_together = ("trip", "user")
@@ -403,7 +415,6 @@ class Activity(models.Model):
         on_delete=models.SET_NULL,
         related_name="completed_activities",
     )
-    checked_in_at = models.DateTimeField(null=True, blank=True)
     # Who is responsible for this stop. Set by the organiser or a co-planner; once
     # assigned, only that person (or an organiser) can complete it.
     assigned_to = models.ForeignKey(
@@ -432,6 +443,64 @@ class Activity(models.Model):
     @property
     def trip_id_value(self):
         return self.day.trip_id
+
+
+class StopCheckIn(models.Model):
+    """One traveller saying "I'm here" at one stop. Stop XP is paid per person,
+    only to the people who checked in — being a member of the trip isn't enough,
+    so nobody earns a trip they followed from home (see trips.attendance)."""
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="checkins")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stop_checkins"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    # How far their phone was from the pin. None for a stop with no pin, where
+    # there was nothing to measure against.
+    distance_m = models.FloatField(null=True, blank=True)
+    # Distance XP this check-in has been paid for the stop, so undo knows what to take back.
+    xp_paid = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    # The stop is within MIN_TRIP_DISTANCE_KM of where the trip started, so
+    # this check-in earns nothing and counts towards nothing (see
+    # trips.attendance.near_start). Kept here so achievements can filter on it.
+    near_start = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("activity", "user")
+        ordering = ["created_at"]
+
+    @property
+    def verified(self) -> bool:
+        return self.distance_m is not None
+
+
+class LocationFix(models.Model):
+    """Every location a traveller has sent us (planning, check-ins, completing
+    stops), so a new one can be checked against the last: nobody gets from
+    Pune to Goa in ten minutes (see trips.geo.check_plausible)."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="location_fixes")
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    # When the phone took the reading — offline check-ins are sent later.
+    at = models.DateTimeField(db_index=True)
+    source = models.CharField(max_length=20)
+
+    class Meta:
+        ordering = ["-at"]
+
+
+class DayBonus(models.Model):
+    """DAY_COMPLETE_BONUS paid to one traveller for one day — so it's paid once,
+    and undo knows exactly who to take it back from."""
+
+    day = models.ForeignKey(Day, on_delete=models.CASCADE, related_name="bonuses")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="day_bonuses")
+    amount = models.DecimalField(max_digits=6, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("day", "user")
 
 
 class Expense(models.Model):
@@ -534,6 +603,13 @@ class Memory(models.Model):
     content_hash = models.CharField(max_length=64, blank=True, db_index=True)
     # True for the first upload of this photo anywhere — the one that earned XP.
     is_original = models.BooleanField(default=True)
+    # Perceptual hash (see trips.photos): stays the same when a picture is
+    # re-saved, resized or has a pixel changed, unlike content_hash.
+    phash = models.CharField(max_length=16, blank=True, db_index=True)
+    # From the photo's EXIF, when it has any — evidence for past-trip review.
+    taken_at = models.DateTimeField(null=True, blank=True)
+    photo_latitude = models.FloatField(null=True, blank=True)
+    photo_longitude = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

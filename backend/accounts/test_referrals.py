@@ -1,4 +1,5 @@
-"""Refer a friend: +REFERRAL_XP when someone signs up with your link."""
+"""Refer a friend: signing up with your link links the two of you; the
+REFERRAL_XP comes once they finish a real trip (see trips.test_anti_cheat)."""
 
 from unittest.mock import patch
 
@@ -9,7 +10,6 @@ from rest_framework.test import APIClient
 
 from accounts.tests import google_claims
 from notifications.models import Notification
-from rewards.services import REFERRAL_XP
 
 User = get_user_model()
 
@@ -37,7 +37,7 @@ class ReferralTests(TestCase):
         self.assertEqual(len(first), 8)
         self.assertEqual(self.code(), first)
 
-    def test_a_new_signup_with_the_link_pays_the_referrer(self, verify):
+    def test_a_new_signup_with_the_link_links_them_but_pays_nothing_yet(self, verify):
         verify.return_value = google_claims()
         code = self.code()
         response = self.sign_in(ref=code.lower())  # codes aren't case-sensitive
@@ -46,7 +46,9 @@ class ReferralTests(TestCase):
         newcomer = User.objects.get(google_sub="1234567890")
         self.assertEqual(newcomer.referred_by, self.referrer)
         self.referrer.refresh_from_db()
-        self.assertEqual(self.referrer.xp, REFERRAL_XP)
+        # A throwaway account signing up is worth nothing on its own.
+        self.assertEqual(self.referrer.xp, 0)
+        self.assertIsNone(newcomer.referral_paid_at)
         self.assertTrue(
             Notification.objects.filter(user=self.referrer, kind="referral_joined", actor=newcomer).exists()
         )

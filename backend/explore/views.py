@@ -13,6 +13,8 @@ from accounts.authentication import OptionalJWTAuthentication
 from accounts.serializers import UserSerializer
 from notifications.services import notify, notify_many
 from rewards.services import TRACK_PUBLISH_XP, award_xp, evaluate_achievements
+from trips.attendance import was_there
+from trips.geo import check_plausible, optional_point, reading_time
 from trips.media import absolute_url
 from trips.models import Activity, Day, Trip, TripMember
 from trips.serializers import TripDetailSerializer
@@ -95,7 +97,23 @@ class TrackViewSet(viewsets.ModelViewSet):
         except ValueError:
             raise ValidationError({"start_date": "Use the format YYYY-MM-DD."})
 
+        # Like planning a trip from scratch: where you are now is where it
+        # starts from, and without a location it can't earn XP until one is
+        # shared (see trips.views.TripViewSet.create and trips.attendance).
+        planner = optional_point(
+            {"latitude": request.data.get("planner_latitude"), "longitude": request.data.get("planner_longitude")}
+        )
+        if planner:
+            try:
+                check_plausible(request.user, planner, reading_time(request.data), "planning")
+            except ValidationError:
+                planner = None
+
         trip = Trip.objects.create(
+            start_latitude=planner[0] if planner else None,
+            start_longitude=planner[1] if planner else None,
+            no_xp=planner is None,
+            no_xp_reason="" if planner else "no_location",
             title=request.data.get("title") or track.title,
             destination=track.destination,
             region=track.region,
@@ -229,7 +247,12 @@ def track_from_trip(request):
                 order=activity.order,
             )
 
-    award_xp(request.user, TRACK_PUBLISH_XP, f"Published '{track.title}'", kind="track", trip=trip)
+    # Anyone on the trip can share its route, but only someone who travelled
+    # it (checked in at a stop) earns XP for it.
+    awarded = 0
+    if was_there(trip, request.user):
+        txn = award_xp(request.user, TRACK_PUBLISH_XP, f"Published '{track.title}'", kind="track", trip=trip)
+        awarded = txn.amount if txn else 0
     unlocked = evaluate_achievements(request.user, trip=trip)
     request.user.refresh_from_db()
 
@@ -246,7 +269,7 @@ def track_from_trip(request):
     return Response(
         {
             "track": TrackDetailSerializer(track, context={"request": request}).data,
-            "xp_awarded": TRACK_PUBLISH_XP,
+            "xp_awarded": awarded,
             "user": UserSerializer(request.user).data,
             "unlocked": [{"title": a.title, "icon": a.icon} for a in unlocked],
         },
@@ -334,6 +357,84 @@ def open_trips(request):
     return Response([_open_trip_row(t, request, member_ids, request_status) for t in trips])
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def explore_map(request):
+    """Pins for the Explore map: every published track (at its first pinned
+    stop, or its source trip's destination) and every open trip with a place
+    on the map. ?kind=tracks|trips narrows it; ?q= searches title and place."""
+    from django.db.models import Prefetch, Q
+
+    kind = request.query_params.get("kind") or "all"
+    query = (request.query_params.get("q") or "").strip()
+    pins = []
+
+    if kind in ("all", "tracks"):
+        tracks = (
+            Track.objects.filter(is_published=True, author__is_active=True)
+            .select_related("author", "source_trip")
+            .prefetch_related(
+                Prefetch(
+                    "track_days__stops",
+                    queryset=TrackStop.objects.filter(latitude__isnull=False).order_by("order"),
+                )
+            )
+            .order_by("-created_at")
+        )
+        if query:
+            tracks = tracks.filter(Q(title__icontains=query) | Q(destination__icontains=query) | Q(region__icontains=query))
+        for track in tracks[:150]:
+            point = None
+            for day in track.track_days.all():
+                stops = list(day.stops.all())
+                if stops:
+                    point = (stops[0].latitude, stops[0].longitude)
+                    break
+            trip = track.source_trip
+            if point is None and trip is not None and trip.latitude is not None:
+                point = (trip.latitude, trip.longitude)
+            if point is None:
+                continue
+            pins.append(
+                {
+                    "kind": "track",
+                    "id": str(track.id),
+                    "title": track.title,
+                    "subtitle": track.summary or track.destination,
+                    "destination": track.destination,
+                    "latitude": point[0],
+                    "longitude": point[1],
+                    "image": track.cover_image,
+                    "cover_key": track.cover_key,
+                    "days": track.days,
+                    "author": track.author.display_name or track.author.username,
+                }
+            )
+
+    if kind in ("all", "trips"):
+        trips = _open_trips().filter(latitude__isnull=False, longitude__isnull=False)
+        if query:
+            trips = trips.filter(Q(title__icontains=query) | Q(destination__icontains=query) | Q(region__icontains=query))
+        for trip in trips.order_by("start_date")[:100]:
+            pins.append(
+                {
+                    "kind": "trip",
+                    "id": str(trip.id),
+                    "title": trip.title,
+                    "subtitle": trip.summary or trip.destination,
+                    "destination": trip.destination,
+                    "latitude": trip.latitude,
+                    "longitude": trip.longitude,
+                    "image": trip.display_cover(request),
+                    "cover_key": trip.cover_key,
+                    "days": trip.duration_days,
+                    "start_date": trip.start_date,
+                    "author": trip.created_by.display_name or trip.created_by.username,
+                }
+            )
+    return Response(pins)
+
+
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def join_open_trip(request, pk):
@@ -404,6 +505,9 @@ class TravelPostViewSet(viewsets.ModelViewSet):
         author = self.request.query_params.get("author")
         if author:
             qs = qs.filter(author__username__iexact=author)
+        # ?sort=popular: most-liked first (the app's "Popular" tab).
+        if self.request.query_params.get("sort") == "popular":
+            qs = qs.annotate(like_total=Count("likes", distinct=True)).order_by("-like_total", "-created_at")
         return qs
 
     def perform_create(self, serializer):

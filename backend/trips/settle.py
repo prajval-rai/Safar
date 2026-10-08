@@ -70,27 +70,41 @@ def owes_money(balances: list[dict], user) -> bool:
 
 def award_or_hold(trip, user, amount, reason: str, balances: list[dict]):
     """Completion XP: paid now if `user` doesn't owe anything, otherwise held
-    until they settle. Returns what was paid now."""
+    until they settle. Returns (paid now, granted in all — paid or held); the
+    daily XP cap can make either less than `amount`."""
     from rewards.services import as_xp, award_xp, hold_xp
 
     amount = as_xp(amount)
+    zero = as_xp(0)
     if owes_money(balances, user):
-        hold_xp(user, amount, reason, kind="trip", trip=trip)
-        return 0
-    award_xp(user, amount, reason, kind="trip", trip=trip)
-    return amount
+        held = hold_xp(user, amount, reason, kind="trip", trip=trip)
+        return zero, (held.amount if held else zero)
+    txn = award_xp(user, amount, reason, kind="trip", trip=trip)
+    paid = txn.amount if txn else zero
+    return paid, paid
 
 
-def take_back(trip, user, amount, reason: str) -> None:
+def take_back(trip, user, amount, reason: str, held_reason: str | None = None) -> None:
     """Undo a completion reward: drop it if it was still held, otherwise
-    deduct it like any other reversal."""
+    deduct it like any other reversal. With `held_reason`, every held row
+    with that reason is dropped (a reward topped up after a late check-in is
+    held in parts) and only the rest is deducted."""
     from rewards.models import HeldXP
     from rewards.services import as_xp, award_xp
 
     amount = as_xp(amount)
     if not amount:
         return
-    held = HeldXP.objects.filter(user=user, trip=trip, released_at=None, amount=amount).first()
+    waiting = HeldXP.objects.filter(user=user, trip=trip, released_at=None)
+    if held_reason is not None:
+        rows = list(waiting.filter(reason=held_reason))
+        amount -= sum((row.amount for row in rows), as_xp(0))
+        for row in rows:
+            row.delete()
+        if amount > 0:
+            award_xp(user, -amount, reason, kind="trip", trip=trip)
+        return
+    held = waiting.filter(amount=amount).first()
     if held:
         held.delete()
     else:

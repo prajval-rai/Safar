@@ -23,24 +23,41 @@ from notifications.services import mark_chat_seen, notify, notify_chat_message, 
 from rewards.services import (
     CANCEL_PENALTY,
     CHECKIN_XP,
-    DAY_COMPLETE_BONUS,
     EXPERIENCE_XP,
+    MAX_PHOTO_XP_PER_TRIP,
     MEMORY_XP,
-    ORGANIZER_COMPLETE_BONUS,
     TRIP_COMPLETE_BONUS,
-    TRIP_CREATE_XP,
     as_xp,
     award_xp,
     completion_share,
     distance_xp,
     evaluate_achievements,
+    held_xp_total,
     leave_penalty,
 )
 
 from .catalog import DESTINATIONS, TRIP_TYPE_DEFAULTS, find_destination, plan_for_day
-from .geo import distance_from_stop, haversine_km, optional_point, too_close_for_xp
+from .geo import (
+    check_plausible,
+    distance_from_stop,
+    haversine_km,
+    optional_point,
+    reading_time,
+    too_close_for_xp,
+)
 from .past import block_if_locked, block_if_past, submit_for_review, validate_past_dates, withdraw_review
-from .settle import award_or_hold, release_if_settled, suggested_transfers, take_back, upi_link
+from .photos import dhash, exif_details, same_photo
+from .attendance import (
+    can_check_in,
+    checkin_repeats_a_place,
+    mark_near_start,
+    near_start,
+    settle_member,
+    take_back_completion,
+    take_back_stop,
+    was_there,
+)
+from .settle import release_if_settled, suggested_transfers, upi_link
 from .regional_theme import DEFAULT_TRIP_THEME
 from .models import (
     Activity,
@@ -51,6 +68,7 @@ from .models import (
     Memory,
     PastTripConfig,
     Settlement,
+    StopCheckIn,
     Trip,
     TripExperience,
     TripInvite,
@@ -103,18 +121,21 @@ def trip_expense_balances(trip) -> list[dict]:
     return balances
 
 
-def expense_summary_line(trip) -> str:
-    """'Rahul gets ₹800 back, Sneha owes ₹800' — or a clean fallback when
-    nothing was ever logged. Used in the trip-completed push/notification,
-    where a full breakdown doesn't fit."""
-    balances = trip_expense_balances(trip)
+def money_line_for(trip, user, balances=None) -> str:
+    """The end-of-trip money message for one person: exactly who they pay or
+    who pays them, from the same suggested transfers as the Settle up screen."""
+    from .settle import suggested_transfers
+
+    balances = trip_expense_balances(trip) if balances is None else balances
     if not any(b["paid"] for b in balances):
         return "No expenses were logged for this trip."
-    owed_back = [b for b in balances if b["balance"] > 0]
-    owes = [b for b in balances if b["balance"] < 0]
-    parts = [f"{b['user'].name.split()[0]} gets ₹{b['balance']} back" for b in owed_back]
-    parts += [f"{b['user'].name.split()[0]} owes ₹{-b['balance']}" for b in owes]
-    return ", ".join(parts) + "." if parts else "Everyone's even — no one owes anything."
+    lines = []
+    for t in suggested_transfers(balances):
+        if t["from"].pk == user.pk:
+            lines.append(f"You owe {t['to'].name.split()[0]} ₹{t['amount']:,}")
+        elif t["to"].pk == user.pk:
+            lines.append(f"{t['from'].name.split()[0]} owes you ₹{t['amount']:,}")
+    return (", ".join(lines) + ".") if lines else "You're all square — nobody owes anything."
 
 
 def ensure_can_go_live(trip, user):
@@ -170,14 +191,6 @@ def trip_xp_for(trip, user):
     return user.xp_transactions.filter(trip=trip).aggregate(total=Sum("amount"))["total"] or 0
 
 
-def award_everyone(trip, amount, reason, kind):
-    """Pay the same XP to every member — used for things the group does together."""
-    users = [m.user for m in trip.members.select_related("user")]
-    for user in users:
-        award_xp(user, amount, reason, kind=kind, trip=trip)
-    return users
-
-
 def previous_point(trip, exclude=None):
     """Where the group last was: the most recently completed pinned stop, or
     the trip's start point before any stop is done. None when neither is known."""
@@ -203,55 +216,36 @@ def leg_km(trip, activity):
 
 
 def complete_trip(trip, actor, members, share=None):
-    """Mark `trip` completed and pay the completion bonuses — the full bonus
-    when every stop was done, or `share` of it when the organiser finished
-    early. Returns (XP paid to `actor` now, XP held back from `actor`)."""
+    """Mark `trip` completed and pay everyone their completion bonuses — each
+    traveller's share of the bonus matching the share of the trip's stops they
+    checked in at (see trips.attendance). `share` is the share of stops the
+    group completed, kept on the trip as the bonus for someone at all of them.
+    Returns (XP paid to `actor` now, XP held back from `actor`)."""
     share = completion_share(1, 1) if share is None else share
-    member_bonus = as_xp(TRIP_COMPLETE_BONUS * share)
-    organiser_bonus = as_xp(ORGANIZER_COMPLETE_BONUS * share)
     trip.status = "completed"
-    trip.completion_bonus = member_bonus
-    trip.organizer_bonus = organiser_bonus
-    trip.save(update_fields=["status", "completion_bonus", "organizer_bonus", "finished_early"])
+    trip.completion_bonus = as_xp(TRIP_COMPLETE_BONUS * share)
+    trip.save(update_fields=["status", "completion_bonus", "finished_early"])
 
-    paid = held = as_xp(0)
+    paid = as_xp(0)
     # Completion XP waits for anyone who still owes money on the trip.
     balances = trip_expense_balances(trip)
-    for member in members:
-        paid_now = award_or_hold(trip, member, member_bonus, f"Completed {trip.title}", balances)
-        if member.id == actor.id:
+    held_before = held_xp_total(actor, trip)
+    everyone = {m.pk: m for m in members}
+    everyone.setdefault(trip.created_by_id, trip.created_by)
+    for user in everyone.values():
+        paid_now = settle_member(trip, user, balances)
+        if user.pk == actor.pk:
             paid += paid_now
-            held += member_bonus - paid_now
-    paid_now = award_or_hold(
-        trip, trip.created_by, organiser_bonus, f"Organised {trip.title} to completion", balances
-    )
-    if trip.created_by_id == actor.id:
-        paid += paid_now
-        held += organiser_bonus - paid_now
-    paid += pay_planning_xp(trip, actor)
-    notify_many(
-        members,
-        "trip_completed",
-        f"{trip.title} is complete! 🎉",
-        body=expense_summary_line(trip),
-        trip=trip,
-    )
-    return paid, held
-
-
-def pay_planning_xp(trip, actor):
-    """TRIP_CREATE_XP for the organiser — earned by taking the trip, not by
-    creating it: paid when it's completed with at least one planned stop done.
-    Once per trip, so undoing and finishing again never pays twice. Returns
-    what `actor` got."""
-    organiser = trip.created_by
-    done = Activity.objects.filter(day__trip=trip, status="completed").exists()
-    already = organiser.xp_transactions.filter(trip=trip, reason=f"Planned {trip.title}").exists()
-    if not done or already:
-        return as_xp(0)
-    if award_xp(organiser, TRIP_CREATE_XP, f"Planned {trip.title}", kind="trip", trip=trip) and organiser.pk == actor.pk:
-        return as_xp(TRIP_CREATE_XP)
-    return as_xp(0)
+    # Each person hears their own side of the money: who to pay, or who pays them.
+    for user in members:
+        notify(
+            user,
+            "trip_completed",
+            f"{trip.title} is complete! 🎉",
+            body=money_line_for(trip, user, balances),
+            trip=trip,
+        )
+    return paid, held_xp_total(actor, trip) - held_before
 
 
 _KEEP = object()
@@ -308,6 +302,15 @@ def photo_fingerprint(image, image_url: str) -> str:
     return ""
 
 
+def seen_before(phash, trip, user) -> bool:
+    """Whether a photo with this perceptual hash is already on Safar: exactly
+    anywhere, or near enough among this trip's photos and the uploader's own."""
+    if Memory.objects.filter(phash=phash).exists():
+        return True
+    nearby = Memory.objects.filter(Q(trip=trip) | Q(user=user)).exclude(phash="").values_list("phash", flat=True)
+    return any(same_photo(phash, other) for other in nearby)
+
+
 def xp_result(user, extra=None):
     """Standard payload so the UI can show the right celebration."""
     payload = {"user": UserSerializer(user).data}
@@ -328,7 +331,12 @@ class TripViewSet(viewsets.ModelViewSet):
                 Prefetch(
                     "days",
                     queryset=Day.objects.prefetch_related(
-                        Prefetch("activities", queryset=Activity.objects.select_related("completed_by"))
+                        Prefetch(
+                            "activities",
+                            queryset=Activity.objects.select_related("completed_by", "assigned_to").prefetch_related(
+                                "checkins", "memories"
+                            ),
+                        )
                     ),
                 ),
                 "members__user",
@@ -347,7 +355,14 @@ class TripViewSet(viewsets.ModelViewSet):
         invites = serializer.validated_data.pop("invite_usernames", [])
         if serializer.validated_data.get("is_past"):
             return self._create_past(serializer)
-        trip = serializer.save(created_by=self.request.user, no_xp=getattr(self, "_no_xp", False))
+        start = getattr(self, "_start", None)
+        trip = serializer.save(
+            created_by=self.request.user,
+            no_xp=bool(getattr(self, "_no_xp_reason", "")),
+            no_xp_reason=getattr(self, "_no_xp_reason", ""),
+            start_latitude=start[0] if start else None,
+            start_longitude=start[1] if start else None,
+        )
         TripMember.objects.create(trip=trip, user=self.request.user, role="owner")
 
         # One Day row per calendar date so the itinerary is ready to fill in.
@@ -394,11 +409,25 @@ class TripViewSet(viewsets.ModelViewSet):
                 "longitude": request.data.get("planner_longitude"),
             }
         )
-        self._no_xp = too_close_for_xp(
+        # Where it's planned from is where it starts from: the home point stops
+        # are measured against (see trips.attendance.near_start) and the first
+        # leg of distance XP runs from. No location → no XP until one's shared.
+        if planner and not serializer.validated_data.get("is_past"):
+            try:
+                check_plausible(request.user, planner, reading_time(request.data), "planning")
+            except ValidationError:
+                planner = None
+        self._start = planner
+        if planner is None:
+            self._no_xp_reason = "no_location"
+        elif too_close_for_xp(
             serializer.validated_data.get("latitude"),
             serializer.validated_data.get("longitude"),
             planner,
-        )
+        ):
+            self._no_xp_reason = "nearby"
+        else:
+            self._no_xp_reason = ""
         self.perform_create(serializer)
         trip = self._created_trip
         detail = TripDetailSerializer(trip, context=self.get_serializer_context())
@@ -499,8 +528,8 @@ class TripViewSet(viewsets.ModelViewSet):
             if day.date > trip.end_date:
                 trip.end_date = day.date
                 trip.save(update_fields=["end_date"])
-            return Response(DaySerializer(day).data, status=status.HTTP_201_CREATED)
-        return Response(DaySerializer(trip.days.all(), many=True).data)
+            return Response(DaySerializer(day, context={"request": request}).data, status=status.HTTP_201_CREATED)
+        return Response(DaySerializer(trip.days.all(), many=True, context={"request": request}).data)
 
     # --- People ------------------------------------------------------------
 
@@ -655,9 +684,9 @@ class TripViewSet(viewsets.ModelViewSet):
 
         payload = {
             "trip": TripListSerializer(trip, context=self.get_serializer_context()).data,
-            "day": DaySerializer(day).data if day else None,
-            "now": ActivitySerializer(current).data if current else None,
-            "next": ActivitySerializer(upcoming).data if upcoming else None,
+            "day": DaySerializer(day, context={"request": request}).data if day else None,
+            "now": ActivitySerializer(current, context={"request": request}).data if current else None,
+            "next": ActivitySerializer(upcoming, context={"request": request}).data if upcoming else None,
             "completed_today": sum(1 for a in activities if a.status == "completed"),
             "total_today": len(activities),
             "members": TripMemberSerializer(trip.members.select_related("user"), many=True).data,
@@ -740,9 +769,10 @@ class TripViewSet(viewsets.ModelViewSet):
         else:
             unshare_experience(experience)
         awarded = 0
-        if first:
-            awarded = EXPERIENCE_XP
-            award_xp(request.user, awarded, f"Wrote about {trip.title}", kind="bonus", trip=trip)
+        # Writing about a trip you weren't on is fine — it just doesn't pay.
+        if first and was_there(trip, request.user):
+            txn = award_xp(request.user, EXPERIENCE_XP, f"Wrote about {trip.title}", kind="bonus", trip=trip)
+            awarded = txn.amount if txn else 0
             request.user.refresh_from_db()
         return Response(
             {**serializer.data, **xp_result(request.user, {"xp_awarded": awarded})},
@@ -827,12 +857,19 @@ class TripViewSet(viewsets.ModelViewSet):
         trip.status = "active"
         trip.started_at = timezone.now()
         if point:
-            trip.start_latitude, trip.start_longitude = point
+            check_plausible(request.user, point, reading_time(request.data), "start")
+            if trip.start_point is None:
+                trip.start_latitude, trip.start_longitude = point
+                if trip.no_xp_reason == "no_location":
+                    trip.no_xp, trip.no_xp_reason = False, ""
             # Starting from right next to the destination makes it a no-XP trip,
             # however far away it was planned from.
             if too_close_for_xp(trip.latitude, trip.longitude, point):
-                trip.no_xp = True
-        trip.save(update_fields=["status", "started_at", "start_latitude", "start_longitude", "no_xp"])
+                trip.no_xp, trip.no_xp_reason = True, "nearby"
+        trip.save(
+            update_fields=["status", "started_at", "start_latitude", "start_longitude", "no_xp", "no_xp_reason"]
+        )
+        mark_near_start(trip)
         others = [m.user for m in trip.members.exclude(user=request.user).select_related("user")]
         notify_many(
             others,
@@ -843,6 +880,32 @@ class TripViewSet(viewsets.ModelViewSet):
             trip=trip,
         )
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def locate(self, request, pk=None):
+        """A trip planned without a location earns no XP — we can't tell a real
+        trip from stops pinned round the corner. Sharing where it starts from
+        fixes that: {latitude, longitude, accuracy}. Organisers only, before
+        the trip is over."""
+        trip = self.get_object()
+        require_member(trip, request.user, editors_only=True)
+        if trip.no_xp_reason != "no_location":
+            raise ValidationError({"detail": "This trip already knows where it starts from."})
+        if trip.status in ("completed", "cancelled"):
+            raise ValidationError({"detail": "This trip is " + trip.status + "."})
+        point = optional_point(request.data)
+        if point is None:
+            raise ValidationError({"detail": "Turn on location so we can see where the trip starts from."})
+        check_plausible(request.user, point, reading_time(request.data), "planning")
+        trip.start_latitude, trip.start_longitude = point
+        if too_close_for_xp(trip.latitude, trip.longitude, point):
+            trip.no_xp, trip.no_xp_reason = True, "nearby"
+        else:
+            trip.no_xp, trip.no_xp_reason = False, ""
+        trip.save(update_fields=["start_latitude", "start_longitude", "no_xp", "no_xp_reason"])
+        mark_near_start(trip)
+        return Response(TripDetailSerializer(trip, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
@@ -940,8 +1003,24 @@ class TripViewSet(viewsets.ModelViewSet):
             payer = serializer.validated_data.get("paid_by", request.user)
             if not trip.members.filter(user=payer).exists():
                 raise ValidationError({"paid_by_id": "That person isn't on this trip."})
-            serializer.save(trip=trip, paid_by=payer)
+            expense = serializer.save(trip=trip, paid_by=payer)
             release_if_settled(trip)
+            # Everyone else hears about it, with their share of an equal split.
+            others = [m.user for m in trip.members.exclude(user=request.user).select_related("user")]
+            head_count = max(trip.members.count(), 1)
+            share = (
+                f"Your share is about ₹{round(expense.amount / head_count):,}."
+                if expense.split_type == "equal"
+                else f"Paid by {payer.name}."
+            )
+            notify_many(
+                others,
+                "expense_added",
+                f"{request.user.name.split()[0]} added ₹{expense.amount:,} · {expense.title}",
+                actor=request.user,
+                body=f"{share} See who owes what in {trip.title}.",
+                trip=trip,
+            )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         expenses = trip.expenses.select_related("paid_by")
@@ -1155,17 +1234,46 @@ class TripViewSet(viewsets.ModelViewSet):
                     )
             serializer = MemorySerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            fingerprint = photo_fingerprint(
-                serializer.validated_data.get("image"), serializer.validated_data.get("image_url", "")
-            )
+            image = serializer.validated_data.get("image")
+            fingerprint = photo_fingerprint(image, serializer.validated_data.get("image_url", ""))
+            phash = dhash(image) if image else ""
+            evidence = exif_details(image) if image else {}
             # A photo earns XP once, ever: the same picture uploaded again — by
-            # anyone, on any trip — is still added, just without XP.
+            # anyone, on any trip, even resized, re-saved or touched up — is
+            # still added, just without XP.
             original = bool(fingerprint) and not Memory.objects.filter(content_hash=fingerprint).exists()
-            serializer.save(trip=trip, user=request.user, content_hash=fingerprint, is_original=original)
+            if original and phash:
+                original = not seen_before(phash, trip, request.user)
+            serializer.save(
+                trip=trip,
+                user=request.user,
+                content_hash=fingerprint,
+                is_original=original,
+                phash=phash,
+                taken_at=evidence.get("taken_at"),
+                photo_latitude=evidence.get("latitude"),
+                photo_longitude=evidence.get("longitude"),
+            )
             # A past trip's photos are its proof for review, not XP — the trip
-            # is paid for as a whole once it's approved.
-            awarded = MEMORY_XP if original and not trip.is_past else 0
-            award_xp(request.user, awarded, "Added a photo", kind="photo", trip=trip)
+            # is paid for as a whole once it's approved. Photos only pay
+            # someone who has checked in on the trip, only when uploaded (a
+            # link can point at anyone's picture), and only so much per trip.
+            earned_here = (
+                request.user.xp_transactions.filter(trip=trip, kind="photo").aggregate(t=Sum("amount"))["t"] or 0
+            )
+            awarded = as_xp(0)
+            note = ""
+            if not original or trip.is_past:
+                pass
+            elif not image:
+                note = "Linked photos don't earn XP — upload the picture itself."
+            elif not was_there(trip, request.user):
+                note = "Check in at a stop on this trip for its photos to earn XP."
+            elif earned_here >= MAX_PHOTO_XP_PER_TRIP:
+                note = f"You've had the {MAX_PHOTO_XP_PER_TRIP} XP photos can earn on this trip."
+            else:
+                txn = award_xp(request.user, MEMORY_XP, "Added a photo", kind="photo", trip=trip)
+                awarded = txn.amount if txn else as_xp(0)
             unlocked = evaluate_achievements(request.user, trip=trip) if awarded else []
             request.user.refresh_from_db()
             return Response(
@@ -1177,6 +1285,7 @@ class TripViewSet(viewsets.ModelViewSet):
                             "xp_awarded": awarded,
                             # Tells the app why there was no XP this time.
                             "duplicate_photo": bool(fingerprint) and not original,
+                            "note": note,
                             "unlocked": [
                                 {"title": a.title, "icon": a.icon} for a in unlocked
                             ],
@@ -1240,12 +1349,12 @@ class DayViewSet(viewsets.GenericViewSet):
 
     def retrieve(self, request, pk=None):
         day = self.get_object()
-        return Response(DaySerializer(day).data)
+        return Response(DaySerializer(day, context={"request": request}).data)
 
     def partial_update(self, request, pk=None):
         day = self.get_object()
         require_member(day.trip, request.user, editors_only=True)
-        serializer = DaySerializer(day, data=request.data, partial=True)
+        serializer = DaySerializer(day, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -1254,7 +1363,7 @@ class DayViewSet(viewsets.GenericViewSet):
     def activities(self, request, pk=None):
         day = self.get_object()
         require_member(day.trip, request.user, editors_only=True)
-        serializer = ActivitySerializer(data={**request.data, "day": day.pk})
+        serializer = ActivitySerializer(data={**request.data, "day": day.pk}, context={"request": request})
         serializer.is_valid(raise_exception=True)
         last = day.activities.order_by("-order").first()
         serializer.save(order=(last.order + 1) if last else 0)
@@ -1281,50 +1390,86 @@ class ActivityViewSet(viewsets.ModelViewSet):
         instance.delete()
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def checkin(self, request, pk=None):
+        """"I'm here" — each traveller checks in for themselves, and that's what
+        earns them the stop: its distance XP, and towards the day and
+        completion bonuses (see trips.attendance). Works before the organiser
+        ticks the stop off, and for LATE_CHECKIN_WINDOW after."""
         activity = self.get_object()
-        require_member(activity.day.trip, request.user)
-        block_if_past(activity.day.trip, "check in")
-        if activity.day.trip.status == "cancelled":
+        trip = activity.day.trip
+        require_member(trip, request.user)
+        block_if_past(trip, "check in")
+        if trip.status == "cancelled":
             raise ValidationError({"detail": "This trip was cancelled."})
-        if activity.checked_in_at:
+        if activity.checkins.filter(user=request.user).exists():
             return Response(xp_result(request.user, {"already_checked_in": True}))
+        if not can_check_in(activity):
+            if activity.status == "planned" and trip.status == "planning":
+                raise ValidationError({"detail": "Check-in opens once the trip starts."})
+            raise ValidationError({"detail": "Check-in for this stop has closed."})
         # A check-in means "I'm here", so it always needs a real location when the
-        # stop is pinned.
-        if has_pin(activity):
-            distance_from_stop(activity, request.data)
-        activity.checked_in_at = timezone.now()
-        activity.save(update_fields=["checked_in_at"])
-        award_xp(
-            request.user,
-            CHECKIN_XP,
-            f"Checked in at {activity.place_name or activity.title}",
-            kind="checkin",
-            trip=activity.day.trip,
+        # stop is pinned — one they could really have got to since their last.
+        distance_km = distance_from_stop(activity, request.data) if has_pin(activity) else None
+        if distance_km is not None:
+            check_plausible(request.user, optional_point(request.data), reading_time(request.data), "checkin")
+        checkin = StopCheckIn.objects.create(
+            activity=activity,
+            user=request.user,
+            distance_m=round(distance_km * 1000) if distance_km is not None else None,
+            near_start=near_start(trip, activity),
         )
+        xp = as_xp(0)
+        note = ""
+        if checkin.near_start:
+            note = "This stop is close to where the trip started, so it doesn't earn XP."
+        elif checkin_repeats_a_place(checkin):
+            # A cluster of stops pinned on one spot is one place, not ten check-ins.
+            note = "You've already checked in right here on this trip."
+        else:
+            txn = award_xp(
+                request.user,
+                CHECKIN_XP,
+                f"Checked in at {activity.place_name or activity.title}",
+                kind="checkin",
+                trip=trip,
+            )
+            xp += txn.amount if txn else 0
+        before = held_xp_total(request.user, trip)
+        # Checking in after the organiser completed the stop pays what the stop earned.
+        xp += settle_member(trip, request.user)
+        xp_held = held_xp_total(request.user, trip) - before
+        unlocked = evaluate_achievements(request.user, trip=trip)
         request.user.refresh_from_db()
         return Response(
             xp_result(
                 request.user,
-                {"xp_awarded": CHECKIN_XP, "activity": ActivitySerializer(activity).data},
+                {
+                    "xp_awarded": xp,
+                    "xp_held": xp_held,
+                    "note": note,
+                    "activity": ActivitySerializer(activity, context={"request": request}).data,
+                    "unlocked": [{"title": a.title, "icon": a.icon} for a in unlocked],
+                },
             )
         )
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def complete(self, request, pk=None):
-        """The organiser marks a stop done for the whole group, and everyone on
-        the trip earns distance XP for the leg that got them here — from the
-        previous completed stop, or from the trip's start point for the first
-        one. A pinned stop can only be completed from within 1 km of it —
-        there's no way around that."""
+        """The organiser marks a stop done for the whole group. Everyone who
+        checked in at it earns distance XP for the leg that got them here — from
+        the previous completed stop, or from the trip's start point for the
+        first one; anyone who checks in later (see LATE_CHECKIN_WINDOW) earns it
+        then. A pinned stop can only be completed from within 1 km of it —
+        there's no way around that — which checks the organiser in too."""
         activity = self.get_object()
         trip = activity.day.trip
         require_organiser(trip, request.user, "mark stops as done")
         block_if_past(trip, "tick stops off")
         if activity.status == "completed":
             return Response(
-                xp_result(request.user, {"activity": ActivitySerializer(activity).data})
+                xp_result(request.user, {"activity": ActivitySerializer(activity, context={"request": request}).data})
             )
         # Doing the first stop is what starts a trip, so the one-live-trip rule applies here too.
         if trip.status == "planning":
@@ -1333,6 +1478,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "This trip is " + trip.status + "."})
 
         distance_km = distance_from_stop(activity, request.data) if has_pin(activity) else None
+        if distance_km is not None:
+            check_plausible(request.user, optional_point(request.data), reading_time(request.data), "complete")
         travelled_km = leg_km(trip, activity)
 
         activity.status = "completed"
@@ -1354,33 +1501,33 @@ class ActivityViewSet(viewsets.ModelViewSet):
             ]
         )
 
-        xp = activity.xp_value
-        members = award_everyone(
-            trip,
-            xp,
-            f"Travelled {travelled_km:.1f} km to {activity.title}"
-            if travelled_km is not None
-            else f"Completed {activity.title}",
-            "distance",
+        # Completing a stop means the organiser is at it, so they're checked in.
+        StopCheckIn.objects.get_or_create(
+            activity=activity,
+            user=request.user,
+            defaults={"distance_m": activity.completed_distance_m, "near_start": near_start(trip, activity)},
         )
 
+        members = [m.user for m in trip.members.select_related("user")]
         day = activity.day
         day_completed = day.is_complete
-        if day_completed:
-            award_everyone(trip, DAY_COMPLETE_BONUS, f"Finished day {day.index}", "day")
-            xp += DAY_COMPLETE_BONUS
 
+        xp = as_xp(0)
         trip_completed = False
         xp_held = 0
         remaining = Activity.objects.filter(day__trip=trip, status="planned").count()
         if remaining == 0 and trip.status != "completed":
             trip_completed = True
-            paid_now, xp_held = complete_trip(trip, request.user, members)
-            xp += paid_now
-        elif trip.status == "planning":
-            trip.status = "active"
-            trip.started_at = trip.started_at or timezone.now()
-            trip.save(update_fields=["status", "started_at"])
+            xp, xp_held = complete_trip(trip, request.user, members)
+        else:
+            if trip.status == "planning":
+                trip.status = "active"
+                trip.started_at = trip.started_at or timezone.now()
+                trip.save(update_fields=["status", "started_at"])
+            for member in members:
+                paid_now = settle_member(trip, member)
+                if member.pk == request.user.pk:
+                    xp += paid_now
 
         unlocked = []
         for member in members:
@@ -1393,7 +1540,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             xp_result(
                 request.user,
                 {
-                    "activity": ActivitySerializer(activity).data,
+                    "activity": ActivitySerializer(activity, context={"request": request}).data,
                     "xp_awarded": xp,
                     "day_completed": day_completed,
                     "day_index": day.index,
@@ -1407,31 +1554,26 @@ class ActivityViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def undo(self, request, pk=None):
-        """Marked something done by mistake — take back what everyone earned for it."""
+        """Marked something done by mistake — take back what everyone earned for
+        it: the stop's distance XP, the day bonus, and the completion bonuses if
+        the trip was finished."""
         activity = self.get_object()
         trip = activity.day.trip
         require_organiser(trip, request.user, "undo a stop")
         block_if_past(trip, "undo a stop")
         if activity.status != "completed":
-            return Response(xp_result(request.user, {"activity": ActivitySerializer(activity).data}))
-        day = activity.day
+            return Response(xp_result(request.user, {"activity": ActivitySerializer(activity, context={"request": request}).data}))
         trip_was_complete = trip.status == "completed"
         if trip_was_complete and trip.finished_early:
-            # Reopening an early-finished trip puts the stops it skipped back on
-            # the plan — before checking the day, since skipped stops never
-            # made a day complete (no day bonus was paid for them).
+            # Reopening an early-finished trip puts the stops it skipped back on the plan.
             Activity.objects.filter(day__trip=trip, status="skipped").update(status="planned")
             trip.finished_early = False
-        day_was_complete = day.is_complete
 
-        award_everyone(trip, -activity.xp_value, f"Undid {activity.title}", "distance")
-        if day_was_complete:
-            award_everyone(trip, -DAY_COMPLETE_BONUS, f"Day {day.index} reopened", "day")
+        # Check-ins stay — the people who were there were really there; only
+        # what the stop paid them goes back until it's completed again.
+        take_back_stop(activity)
         if trip_was_complete:
-            for m in trip.members.select_related("user"):
-                take_back(trip, m.user, trip.completion_bonus, f"{trip.title} reopened")
-            take_back(trip, trip.created_by, trip.organizer_bonus, f"{trip.title} reopened")
-            trip.completion_bonus = trip.organizer_bonus = 0
+            take_back_completion(trip)
 
         activity.status = "planned"
         activity.completed_at = None
@@ -1461,7 +1603,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             trip.save(update_fields=["status", "finished_early", "completion_bonus", "organizer_bonus"])
         request.user.refresh_from_db()
         return Response(
-            xp_result(request.user, {"activity": ActivitySerializer(activity).data})
+            xp_result(request.user, {"activity": ActivitySerializer(activity, context={"request": request}).data})
         )
 
     @action(detail=True, methods=["post"])
@@ -1482,7 +1624,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"detail": "This stop is already done."})
             activity.assigned_to = member.user
         activity.save(update_fields=["assigned_to"])
-        return Response(ActivitySerializer(activity).data)
+        return Response(ActivitySerializer(activity, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     def move(self, request, pk=None):
@@ -1516,7 +1658,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "Send either direction=up/down or day_index."})
 
         activity.refresh_from_db()
-        return Response(ActivitySerializer(activity).data)
+        return Response(ActivitySerializer(activity, context={"request": request}).data)
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):

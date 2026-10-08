@@ -9,6 +9,7 @@ from trips.tests import SafarTestCase
 class ExperienceTests(SafarTestCase):
     def finish_trip(self):
         client = self.client_for(self.owner)
+        self.was_at(self.friend, self.a1, self.a2, self.a3)
         for activity in (self.a1, self.a2, self.a3):
             client.post(f"/api/activities/{activity.id}/complete/")
 

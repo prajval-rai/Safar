@@ -1,6 +1,7 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Link, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +16,12 @@ import {
 } from 'react-native';
 
 import { ErrorState, Loading } from '@/components/ScreenState';
-import { TripCover } from '@/components/TripCover';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { TripChecklist } from '@/components/trip/TripChecklist';
+import { TripMoney } from '@/components/trip/TripMoney';
+import { TripPhotos } from '@/components/trip/TripPhotos';
+import { Avatar, Photo, PillTabs, type IconName } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useAuth } from '@/lib/auth';
@@ -37,18 +43,16 @@ import { checkInStop, completeStop, getPosition, isPinned } from '@/lib/geo';
 import type { Activity, Day, TripDetail } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
-type MainTab = 'overview' | 'itinerary' | 'people';
-const MAIN_TABS: { id: MainTab; label: string; icon: string }[] = [
-  { id: 'overview', label: 'Overview', icon: '📋' },
-  { id: 'itinerary', label: 'Itinerary', icon: '🗓️' },
-  { id: 'people', label: 'People', icon: '👥' },
-];
-const MORE_ITEMS = [
-  { label: 'Map', icon: '🗺️' },
-  { label: 'Memories', icon: '📸' },
-  { label: 'Expenses', icon: '👛' },
-  { label: 'Checklist', icon: '📝' },
-  { label: 'Group chat', icon: '💬' },
+type MainTab = 'overview' | 'itinerary' | 'photos' | 'money' | 'checklist' | 'people';
+/** Everything about the trip, one pill each. Chat opens full screen. */
+const MAIN_TABS: { value: MainTab | 'chat'; label: string }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'itinerary', label: 'Plan' },
+  { value: 'chat', label: 'Chat' },
+  { value: 'photos', label: 'Photos' },
+  { value: 'money', label: 'Money' },
+  { value: 'checklist', label: 'Checklist' },
+  { value: 'people', label: 'People' },
 ];
 
 export default function TripDetailScreen() {
@@ -58,8 +62,10 @@ export default function TripDetailScreen() {
   const [tab, setTab] = useState<MainTab>('overview');
   const [moreOpen, setMoreOpen] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
-  const { data: trip, loading, error, refresh } = useFetch<TripDetail>(id ? `/api/trips/${id}/` : null);
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  const insets = useSafeAreaInsets();
+  const { data: trip, loading, refreshing, error, refresh } = useFetch<TripDetail>(id ? `/api/trips/${id}/` : null, {
+    refetchOnFocusAfter: 5_000,
+  });
 
   if (loading && !trip) return <Loading />;
   if (error && !trip) return <ErrorState message={error} onRetry={refresh} />;
@@ -76,8 +82,7 @@ export default function TripDetailScreen() {
       let body: object = {};
       if (action === 'start') {
         try {
-          const { latitude, longitude } = await getPosition();
-          body = { latitude, longitude };
+          body = await getPosition();
         } catch {
           // No location — the first leg just earns nothing.
         }
@@ -95,30 +100,48 @@ export default function TripDetailScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.tint} />}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      // `refreshing` (not `loading`): on Android the spinner only stops when
+      // this flips back to false, and `loading` never flips on a pull.
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.tint} />}
     >
-      <Link href="/(tabs)/trips" style={styles.back}>
-        <Text style={{ color: colors.muted, fontWeight: '600', fontSize: 13 }}>← My Trips</Text>
-      </Link>
-
-      <TripCover cover={trip.cover_key} radius={0} style={styles.cover}>
+      <View style={[styles.cover, { height: 280 + insets.top }]}>
+        <Photo uri={trip.cover_image} cover={trip.cover_key} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.7)']} style={StyleSheet.absoluteFill} />
         <View style={styles.coverOverlay}>
-          <View style={[styles.badge, { backgroundColor: 'rgba(255,255,255,0.95)' }]}>
-            <Text style={{ color: trip.status === 'active' ? colors.success : colors.tint, fontWeight: '700', fontSize: 12 }}>
+          <View style={[styles.badge, { backgroundColor: trip.status === 'active' ? colors.highlight : 'rgba(255,255,255,0.95)' }]}>
+            <Text style={{ color: '#17191c', fontWeight: '800', fontSize: 12 }}>
               {badge.mark} {badge.label}
             </Text>
           </View>
           <Text style={styles.coverTitle}>{trip.title}</Text>
-          <Text style={styles.coverSubtitle}>
-            📍 {trip.destination}
-            {trip.region ? `, ${trip.region}` : ''} · {dateRange(trip.start_date, trip.end_date)}
-          </Text>
+          <View style={styles.coverPlace}>
+            <Ionicons name="location" size={14} color="#fff" />
+            <Text style={styles.coverSubtitle} numberOfLines={1}>
+              {trip.destination}
+              {trip.region ? `, ${trip.region}` : ''} · {dateRange(trip.start_date, trip.end_date)}
+            </Text>
+          </View>
         </View>
-      </TripCover>
+        <Pressable
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/trips'))}
+          accessibilityLabel="Back"
+          style={[styles.roundButton, { top: insets.top + 8, left: 16 }]}
+        >
+          <Ionicons name="chevron-back" size={22} color="#17191c" />
+        </Pressable>
+        <Pressable
+          onPress={() => setMoreOpen(true)}
+          accessibilityLabel="More"
+          style={[styles.roundButton, { top: insets.top + 8, right: 16 }]}
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color="#17191c" />
+        </Pressable>
+      </View>
 
       <View style={styles.body}>
         {trip.status === 'planning' && canEdit ? (
-          <View style={[styles.banner, { backgroundColor: colors.brandSoft, borderColor: colors.tint }]}>
+          <View style={[styles.banner, { backgroundColor: colors.card }]}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>Ready to go?</Text>
               <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
@@ -128,12 +151,12 @@ export default function TripDetailScreen() {
             <Pressable
               onPress={() => lifecycle('start', 'Trip started. Have a good one!')}
               disabled={lifecycleBusy}
-              style={[styles.bannerButton, { backgroundColor: colors.tint }]}
+              style={[styles.bannerButton, { backgroundColor: colors.highlight }]}
             >
               {lifecycleBusy ? (
-                <ActivityIndicator color={colors.onBrand} size="small" />
+                <ActivityIndicator color={colors.onHighlight} size="small" />
               ) : (
-                <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 13 }}>🚀 Start trip</Text>
+                <Text style={{ color: colors.onHighlight, fontWeight: '800', fontSize: 13 }}>Start trip</Text>
               )}
             </Pressable>
           </View>
@@ -157,30 +180,24 @@ export default function TripDetailScreen() {
           </View>
         ) : null}
 
-        <View style={styles.tabBar}>
-          {MAIN_TABS.map((t) => {
-            const active = tab === t.id;
-            return (
-              <Pressable
-                key={t.id}
-                onPress={() => setTab(t.id)}
-                style={[styles.tabItem, active && { borderBottomColor: colors.tint }]}
-              >
-                <Text style={{ color: active ? colors.tint : colors.muted, fontWeight: '700', fontSize: 13 }}>
-                  {t.icon} {t.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Pressable onPress={() => setMoreOpen(true)} style={styles.tabItem}>
-            <Text style={{ color: colors.muted, fontWeight: '700', fontSize: 13 }}>⋯ More</Text>
-          </Pressable>
-        </View>
+        <PillTabs
+          options={MAIN_TABS}
+          value={tab}
+          onChange={(value) =>
+            value === 'chat'
+              ? router.push({ pathname: '/chat/[tripId]', params: { tripId: trip.id, title: trip.title } } as never)
+              : setTab(value)
+          }
+          style={{ paddingHorizontal: 0, marginBottom: 16 }}
+        />
 
         {tab === 'overview' ? <Overview trip={trip} canEdit={canEdit} onGo={setTab} onChanged={refresh} /> : null}
         {tab === 'itinerary' ? (
           <ItineraryTab trip={trip} myId={user?.id} canEdit={canEdit} onChanged={refresh} />
         ) : null}
+        {tab === 'photos' ? <TripPhotos tripId={trip.id} canAdd={trip.status !== 'cancelled'} /> : null}
+        {tab === 'money' ? <TripMoney tripId={trip.id} /> : null}
+        {tab === 'checklist' ? <TripChecklist tripId={trip.id} /> : null}
         {tab === 'people' ? <People trip={trip} /> : null}
       </View>
 
@@ -212,12 +229,12 @@ function Overview({
 
   return (
     <View>
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={[styles.progressTrack, { backgroundColor: colors.raised }]}>
           <View
             style={[
               styles.progressFill,
-              { backgroundColor: trip.status === 'completed' ? colors.success : colors.tint, width: `${Math.max(4, trip.progress_percent)}%` },
+              { backgroundColor: colors.highlight, width: `${Math.max(4, trip.progress_percent)}%` },
             ]}
           />
         </View>
@@ -227,13 +244,13 @@ function Overview({
       </View>
 
       <View style={styles.statGrid}>
-        <StatTile emoji="📅" value={trip.duration_days} label="Days" colors={colors} />
-        <StatTile emoji="📍" value={trip.activity_count} label="Activities" colors={colors} />
-        <StatTile emoji="👥" value={trip.member_count} label="Travelling" colors={colors} />
-        <StatTile emoji="⭐" value={trip.planned_xp} label="XP on offer" colors={colors} />
+        <StatTile icon="calendar-outline" value={trip.duration_days} label="Days" colors={colors} />
+        <StatTile icon="location-outline" value={trip.activity_count} label="Stops" colors={colors} />
+        <StatTile icon="people-outline" value={trip.member_count} label="Going" colors={colors} />
+        <StatTile icon="star-outline" value={trip.planned_xp} label="XP on offer" colors={colors} />
       </View>
 
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
         <Text style={styles.cardLabel}>Budget</Text>
         {trip.budget_per_person ? (
           <>
@@ -248,7 +265,7 @@ function Overview({
           <Text style={{ color: colors.text, fontSize: 14, marginTop: 4 }}>No budget yet. Set one to keep spending in check.</Text>
         )}
         {canEdit ? (
-          <Pressable onPress={() => setBudgetOpen(true)} style={[styles.smallButton, { borderColor: colors.border }]}>
+          <Pressable onPress={() => setBudgetOpen(true)} style={[styles.smallButton, { backgroundColor: colors.raised }]}>
             <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>
               {trip.budget_per_person ? 'Edit budget' : 'Set budget'}
             </Text>
@@ -257,41 +274,39 @@ function Overview({
       </View>
 
       {nextUp ? (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={styles.cardLabel}>Next up</Text>
           <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 4 }}>{nextUp.title}</Text>
           <Text style={{ color: colors.muted, fontSize: 13 }}>
             {shortDate(nextUp.date)}
             {nextUp.place_name ? ` · ${nextUp.place_name}` : ''}
           </Text>
-          <Pressable onPress={() => onGo('itinerary')} style={[styles.smallButton, { borderColor: colors.border }]}>
+          <Pressable onPress={() => onGo('itinerary')} style={[styles.smallButton, { backgroundColor: colors.raised }]}>
             <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>See the full plan</Text>
           </Pressable>
         </View>
       ) : null}
 
       {trip.summary ? (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={styles.cardLabel}>About this trip</Text>
           <Text style={{ color: colors.text, fontSize: 15, marginTop: 4 }}>{trip.summary}</Text>
         </View>
       ) : null}
 
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
         <Text style={styles.cardLabel}>Who&apos;s coming</Text>
         <View style={styles.memberRow}>
           {trip.members.map((m) => (
             <View key={m.id} style={[styles.memberChip, { backgroundColor: colors.raised }]}>
-              <View style={[styles.memberAvatar, { backgroundColor: colors.brandSoft }]}>
-                <Text style={{ fontSize: 13 }}>{m.user.avatar_emoji}</Text>
-              </View>
+              <Avatar emoji={m.user.avatar_emoji} size={28} />
               <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{m.user.name}</Text>
             </View>
           ))}
         </View>
       </View>
 
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
         <Text style={styles.cardLabel}>Trip details</Text>
         <View style={styles.factGrid}>
           <Fact label="Kind of trip" value={TRIP_TYPE_LABELS[trip.trip_type] ?? trip.trip_type} colors={colors} />
@@ -312,11 +327,13 @@ function Overview({
   );
 }
 
-function StatTile({ emoji, value, label, colors }: { emoji: string; value: number; label: string; colors: (typeof Colors)['light'] }) {
+function StatTile({ icon, value, label, colors }: { icon: IconName; value: number; label: string; colors: (typeof Colors)['light'] }) {
   return (
-    <View style={[styles.statTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={{ fontSize: 16 }}>{emoji}</Text>
-      <Text style={{ color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 2 }}>{value}</Text>
+    <View style={[styles.statTile, { backgroundColor: colors.card }]}>
+      <View style={[styles.statIcon, { backgroundColor: colors.brandSoft }]}>
+        <Ionicons name={icon} size={17} color={colors.tint} />
+      </View>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 6 }}>{value}</Text>
       <Text style={{ color: colors.muted, fontSize: 10, textAlign: 'center' }}>{label}</Text>
     </View>
   );
@@ -382,8 +399,8 @@ function BudgetModal({
               </Pressable>
             ))}
           </View>
-          <Pressable onPress={save} disabled={busy} style={[styles.submit, { backgroundColor: colors.tint, opacity: busy ? 0.6 : 1 }]}>
-            {busy ? <ActivityIndicator color={colors.onBrand} /> : <Text style={{ color: colors.onBrand, fontWeight: '700' }}>Save budget</Text>}
+          <Pressable onPress={save} disabled={busy} style={[styles.submit, { backgroundColor: colors.highlight, opacity: busy ? 0.6 : 1 }]}>
+            {busy ? <ActivityIndicator color={colors.onHighlight} /> : <Text style={{ color: colors.onHighlight, fontWeight: '800' }}>Save budget</Text>}
           </Pressable>
         </Pressable>
       </Pressable>
@@ -485,9 +502,11 @@ function ActivityCard({
   }
 
   return (
-    <View style={[styles.activityCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[styles.activityCard, { backgroundColor: colors.card }]}>
       <View style={styles.activityHeader}>
-        <Text style={{ fontSize: 16 }}>{CATEGORY_ICONS[activity.category]}</Text>
+        <View style={[styles.activityIcon, { backgroundColor: colors.raised }]}>
+          <Text style={{ fontSize: 18 }}>{CATEGORY_ICONS[activity.category]}</Text>
+        </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{activity.title}</Text>
           <Text style={{ color: colors.muted, fontSize: 12 }}>
@@ -507,19 +526,23 @@ function ActivityCard({
       ) : (
         <View style={styles.activityActions}>
           {pinned && !activity.checked_in_at ? (
-            <Pressable onPress={checkIn} disabled={busy} style={[styles.smallButton, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}>
-              <Text style={{ color: colors.text, fontWeight: '600', fontSize: 12 }}>📍 Check in</Text>
+            <Pressable onPress={checkIn} disabled={busy} style={[styles.pillButton, { backgroundColor: colors.raised, opacity: busy ? 0.6 : 1 }]}>
+              <Ionicons name="location" size={14} color={colors.text} />
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>Check in</Text>
             </Pressable>
           ) : null}
           {canEdit ? (
-            <Pressable onPress={mark} disabled={busy} style={[styles.completeButton, { backgroundColor: colors.tint, opacity: busy ? 0.6 : 1 }]}>
-              {busy ? <ActivityIndicator size="small" color={colors.onBrand} /> : (
-                <Text style={{ color: colors.onBrand, fontWeight: '700', fontSize: 12 }}>Mark complete</Text>
+            <Pressable onPress={mark} disabled={busy} style={[styles.pillButton, { backgroundColor: colors.highlight, opacity: busy ? 0.6 : 1 }]}>
+              {busy ? <ActivityIndicator size="small" color={colors.onHighlight} /> : (
+                <>
+                  <Ionicons name="checkmark" size={15} color={colors.onHighlight} />
+                  <Text style={{ color: colors.onHighlight, fontWeight: '800', fontSize: 13 }}>Mark complete</Text>
+                </>
               )}
             </Pressable>
           ) : (
             <Text style={{ color: colors.muted, fontSize: 12, alignSelf: 'center' }}>
-              The organiser marks this done for everyone.
+              The organiser marks it done; check in to earn it.
             </Text>
           )}
         </View>
@@ -533,17 +556,17 @@ function ActivityCard({
 function People({ trip }: { trip: TripDetail }) {
   const colors = Colors[useColorScheme()];
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[styles.card, { backgroundColor: colors.card }]}>
       {trip.members.map((m, i) => (
         <View
           key={m.id}
           style={[styles.personRow, i < trip.members.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
         >
-          <View style={[styles.memberAvatar, { backgroundColor: colors.brandSoft }]}>
-            <Text style={{ fontSize: 16 }}>{m.user.avatar_emoji}</Text>
-          </View>
+          <Pressable onPress={() => router.push(`/u/${m.user.username}`)}>
+            <Avatar emoji={m.user.avatar_emoji} size={42} />
+          </Pressable>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{m.user.name}</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{m.user.name}</Text>
             <Text style={{ color: colors.muted, fontSize: 12 }}>
               {m.role === 'owner' ? 'Organiser' : m.role === 'admin' ? 'Co-planner' : 'Traveller'} · {m.progress_percent}% done
             </Text>
@@ -598,24 +621,18 @@ function MoreSheet({ trip, visible, onClose }: { trip: TripDetail; visible: bool
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
         <Pressable style={[styles.modalSheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+          <View style={[styles.grabber, { backgroundColor: colors.border }]} />
           <Text style={[styles.modalTitle, { color: colors.text }]}>More</Text>
-          {MORE_ITEMS.map((item) => (
-            <Pressable
-              key={item.label}
-              onPress={() => {
-                onClose();
-                Alert.alert(item.label, "This part of the trip isn't built in the mobile app yet — open it on the web for now.");
-              }}
-              style={[styles.moreItem, { borderColor: colors.border }]}
-            >
-              <Text style={{ fontSize: 18 }}>{item.icon}</Text>
-              <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{item.label}</Text>
-              <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 'auto' }}>Web only</Text>
-            </Pressable>
-          ))}
+          <View style={[styles.moreItem, { backgroundColor: colors.raised }]}>
+            <Ionicons name="ticket-outline" size={20} color={colors.text} />
+            <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>Invite code</Text>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800', letterSpacing: 2, marginLeft: 'auto' }}>
+              {trip.join_code}
+            </Text>
+          </View>
           {trip.leave_penalty !== null ? (
-            <Pressable onPress={confirmLeave} style={[styles.moreItem, { borderColor: colors.border }]}>
-              <Text style={{ fontSize: 18 }}>🚪</Text>
+            <Pressable onPress={confirmLeave} style={[styles.moreItem, { backgroundColor: colors.dangerSoft }]}>
+              <Ionicons name="exit-outline" size={20} color={colors.danger} />
               <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 14 }}>Leave trip</Text>
               {trip.leave_penalty ? (
                 <Text style={{ color: colors.danger, fontSize: 11, marginLeft: 'auto' }}>{trip.leave_penalty} XP</Text>
@@ -629,29 +646,37 @@ function MoreSheet({ trip, visible, onClose }: { trip: TripDetail; visible: bool
 }
 
 const styles = StyleSheet.create({
-  back: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  cover: { height: 200, justifyContent: 'flex-end' },
-  coverOverlay: { padding: 16, backgroundColor: 'rgba(0,0,0,0.15)' },
-  badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8 },
-  coverTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  coverSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 2 },
+  cover: { justifyContent: 'flex-end', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden' },
+  coverOverlay: { padding: 20, paddingBottom: 24 },
+  roundButton: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5, marginBottom: 10 },
+  coverTitle: { color: '#fff', fontSize: 26, fontWeight: '800' },
+  coverPlace: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  coverSubtitle: { color: 'rgba(255,255,255,0.92)', fontSize: 14, flexShrink: 1 },
   body: { padding: 16 },
 
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 14 },
-  bannerButton: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 24, padding: 16, marginBottom: 14 },
+  bannerButton: { borderRadius: 999, paddingHorizontal: 18, paddingVertical: 11 },
 
-  tabBar: { flexDirection: 'row', gap: 4, marginBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'transparent' },
-  tabItem: { paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-
-  card: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 12 },
-  cardLabel: { fontSize: 12, fontWeight: '700', color: '#8a8a8a' },
+  card: { borderRadius: 24, padding: 18, marginBottom: 12 },
+  cardLabel: { fontSize: 13, fontWeight: '700', color: '#8a8f96' },
   progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 999 },
 
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  statTile: { width: '23%', flexGrow: 1, borderWidth: 1, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
+  statTile: { width: '23%', flexGrow: 1, borderRadius: 22, paddingVertical: 14, alignItems: 'center' },
+  statIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
 
-  smallButton: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginTop: 10 },
+  smallButton: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9, marginTop: 12 },
+  pillButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
 
   memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   memberChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingRight: 12, paddingLeft: 4, paddingVertical: 4 },
@@ -664,8 +689,9 @@ const styles = StyleSheet.create({
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   dayDone: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
 
-  activityCard: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8 },
-  activityHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  activityCard: { borderRadius: 22, padding: 14, marginBottom: 10 },
+  activityHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  activityIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   doneBadge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 },
   activityActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 },
   completeButton: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9 },
@@ -673,11 +699,12 @@ const styles = StyleSheet.create({
   personRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
 
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 },
-  modalTitle: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
+  modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 36 },
+  grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, marginBottom: 14 },
+  modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
   modalInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 18, fontWeight: '700' },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   preset: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
-  submit: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
-  moreItem: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 14, marginTop: 10 },
+  submit: { borderRadius: 999, paddingVertical: 15, alignItems: 'center', marginTop: 16 },
+  moreItem: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, padding: 16, marginTop: 10 },
 });

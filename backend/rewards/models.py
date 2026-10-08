@@ -27,6 +27,10 @@ class XPTransaction(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     kind = models.CharField(max_length=20, choices=KINDS, default="activity")
     reason = models.CharField(max_length=160)
+    # Whether this counts towards the daily XP cap (see rewards.services.DAILY_XP_CAP).
+    # Achievements, referrals, admin-approved past trips and XP released after
+    # settling up (already counted when it was held) don't.
+    counts_to_cap = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -11,6 +11,7 @@ class TrackToggleTests(SafarTestCase):
         super().setUp()
         self.trip.status = "completed"
         self.trip.save()
+        self.was_at(self.owner, self.a1)
 
     def publish(self, published=True, user=None):
         return self.client_for(user or self.owner).post(
@@ -26,6 +27,11 @@ class TrackToggleTests(SafarTestCase):
         self.assertEqual(again.data["xp_awarded"], 0)
         self.assertEqual(again.data["track"]["id"], first.data["track"]["id"])
         self.assertEqual(Track.objects.filter(source_trip=self.trip).count(), 1)
+
+    def test_publishing_a_trip_you_never_checked_in_on_pays_nothing(self):
+        response = self.publish(user=self.friend)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["xp_awarded"], 0)
 
     def test_switching_off_hides_it_and_on_brings_the_same_one_back(self):
         track_id = self.publish().data["track"]["id"]

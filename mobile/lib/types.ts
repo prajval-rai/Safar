@@ -25,6 +25,9 @@ export interface User extends UserMini {
   xp_for_next_level: number;
   level_progress: number;
   date_joined: string;
+  /** Your personal referral code and how many people joined with it. */
+  referral_code?: string;
+  referral_count?: number;
 }
 
 export type TripStatus = "planning" | "active" | "completed" | "cancelled";
@@ -312,6 +315,8 @@ export type NotificationKind =
   | "activity_reminder"
   | "trip_cancelled"
   | "trip_completed"
+  | "expense_added"
+  | "settle_reminder"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"
@@ -420,4 +425,73 @@ export interface TripInvite {
     no_xp: boolean;
     organiser: { id: number; username: string; name: string };
   };
+}
+
+/** A pin on the Explore map (backend/explore/views.py `explore_map`): a
+ *  published track at its first stop, or an open trip at its destination. */
+export interface ExplorePin {
+  kind: 'track' | 'trip';
+  id: string;
+  title: string;
+  subtitle: string;
+  destination: string;
+  latitude: number;
+  longitude: number;
+  image: string;
+  cover_key: CoverKey;
+  days: number;
+  start_date?: string;
+  author: string;
+}
+
+/** A photo in a trip's shared album (backend/trips/serializers.py MemorySerializer). */
+export interface Memory {
+  id: string;
+  trip: string;
+  activity: string | null;
+  user: UserMini;
+  /** An uploaded file — a full URL, or a /media/ path on the API server. */
+  image: string | null;
+  image_url: string;
+  caption: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  trip: string;
+  user: UserMini;
+  text: string;
+  created_at: string;
+}
+
+export interface Expense {
+  id: string;
+  trip: string;
+  title: string;
+  amount: number;
+  category: string;
+  paid_by: UserMini;
+  split_type: 'equal' | 'payer';
+  note: string;
+  spent_on: string;
+  created_at: string;
+}
+
+export interface ExpenseSummary {
+  results: Expense[];
+  total: number;
+  per_person_share: number;
+  /** paid − fair share (+ confirmed settlements): positive = gets money back. */
+  balances: { user: UserMini; paid: number; share: number; balance: number }[];
+}
+
+export interface ChecklistItem {
+  id: number;
+  trip: string;
+  title: string;
+  category: string;
+  assigned_to: UserMini | null;
+  is_done: boolean;
+  created_at: string;
 }

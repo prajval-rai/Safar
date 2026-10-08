@@ -63,6 +63,7 @@ urlpatterns = [
     ),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
     path("api/explore/open-trips/", explore_views.open_trips, name="open_trips"),
+    path("api/explore/map/", explore_views.explore_map, name="explore_map"),
     path("api/explore/open-trips/<uuid:pk>/join/", explore_views.join_open_trip, name="join_open_trip"),
     path("api/music/search/", explore_views.music_search, name="music_search"),
     path("api/notifications/", notifications_views.notification_list, name="notification_list"),

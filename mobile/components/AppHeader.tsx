@@ -1,20 +1,20 @@
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useColorScheme } from '@/components/useColorScheme';
-import Colors from '@/constants/Colors';
+import { Avatar, CircleButton, usePalette } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
-/** The brand mark + notification bell shown at the top of every tab, matching
- *  the web app's `TopBar` (components/shell/AppShell.tsx). */
+/** "Hey, Name 👋" with your city, and round search + notification buttons —
+ *  shown at the top of every tab. Tapping your avatar opens your profile. */
 export function AppHeader() {
-  const colors = Colors[useColorScheme()];
+  const colors = usePalette();
   const { user } = useAuth();
   const [unread, setUnread] = useState(0);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!user) return;
@@ -29,53 +29,43 @@ export function AppHeader() {
         });
     };
     load();
-    const interval = setInterval(load, 45_000);
+    const interval = setInterval(load, 60_000);
     return () => {
       active = false;
       clearInterval(interval);
     };
   }, [user]);
 
-  const insets = useSafeAreaInsets();
+  const firstName = (user?.display_name || user?.username || 'there').split(' ')[0];
 
   return (
-    <View
-      style={[
-        styles.row,
-        { backgroundColor: colors.background, borderColor: colors.border, paddingTop: insets.top + 8 },
-      ]}
-    >
-      <View style={styles.brand}>
-        <View style={[styles.badge, { backgroundColor: colors.tint }]}>
-          <Text style={[styles.badgeText, { color: colors.onBrand }]}>S</Text>
+    <View style={[styles.row, { backgroundColor: colors.background, paddingTop: insets.top + 10 }]}>
+      <Pressable
+        onPress={() => router.push('/(tabs)/profile')}
+        accessibilityLabel="Your profile"
+        style={styles.who}
+      >
+        <Avatar emoji={user?.avatar_emoji ?? '🧳'} size={48} />
+        <View style={{ flexShrink: 1 }}>
+          <Text style={[styles.hey, { color: colors.muted }]} numberOfLines={1}>
+            Hey, <Text style={{ color: colors.text, fontWeight: '800' }}>{firstName}</Text> 👋
+          </Text>
+          <View style={styles.place}>
+            <Ionicons name="location" size={12} color={colors.text} />
+            <Text style={[styles.placeText, { color: colors.text }]} numberOfLines={1}>
+              {user?.home_city || `Level ${user?.level ?? 1} · ${user?.level_name ?? 'Traveller'}`}
+            </Text>
+          </View>
         </View>
-        <View>
-          <Text style={[styles.title, { color: colors.text }]}>Safar</Text>
-          <Text style={[styles.tagline, { color: colors.muted }]}>PLAN · TRACK · EARN</Text>
-        </View>
-      </View>
+      </Pressable>
 
       <View style={styles.actions}>
-        <Pressable
+        <CircleButton
+          icon="notifications-outline"
+          label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+          badge={unread}
           onPress={() => router.push('/notifications')}
-          accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
-          style={styles.bellButton}
-        >
-          <Ionicons name="notifications-outline" size={22} color={colors.text} />
-          {unread > 0 ? (
-            <View style={[styles.dot, { backgroundColor: colors.danger, borderColor: colors.background }]}>
-              <Text style={styles.dotText}>{unread > 9 ? '9+' : unread}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-
-        {user ? (
-          <Pressable onPress={() => router.push('/(tabs)/profile')} accessibilityLabel="Profile">
-            <View style={[styles.avatar, { backgroundColor: colors.brandSoft }]}>
-              <Text style={styles.avatarEmoji}>{user.avatar_emoji}</Text>
-            </View>
-          </Pressable>
-        ) : null}
+        />
       </View>
     </View>
   );
@@ -87,30 +77,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 8,
     paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  badge: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { fontSize: 16, fontWeight: '800' },
-  title: { fontSize: 15, fontWeight: '700', lineHeight: 18 },
-  tagline: { fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  bellButton: { padding: 4 },
-  dot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  dotText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  avatarEmoji: { fontSize: 17 },
+  who: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
+  hey: { fontSize: 18 },
+  place: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  placeText: { fontSize: 12, fontWeight: '500' },
+  actions: { flexDirection: 'row', gap: 10 },
 });

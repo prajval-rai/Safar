@@ -8,6 +8,9 @@ export interface Position {
   longitude: number;
   /** Metres, as reported by the device. */
   accuracy: number;
+  /** When the reading was taken (ms since epoch) — a check-in saved offline
+   *  is sent later, and the server checks the journey against this time. */
+  captured_at: number;
 }
 
 /**
@@ -35,6 +38,7 @@ export function getPosition(): Promise<Position> {
           latitude: p.coords.latitude,
           longitude: p.coords.longitude,
           accuracy: p.coords.accuracy,
+          captured_at: p.timestamp || Date.now(),
         }),
       (err) =>
         reject(
@@ -69,6 +73,21 @@ export async function completeStop(
   const label = `Complete "${activity.title}"`;
   if (!isPinned(activity)) return postOrQueue<XPResult>(path, {}, label);
   return postOrQueue<XPResult>(path, await getPosition(), label);
+}
+
+/** How long after the organiser completes a stop you can still check in
+ *  (trips.attendance.LATE_CHECKIN_WINDOW on the server). */
+const LATE_CHECKIN_MS = 24 * 60 * 60 * 1000;
+
+/** Whether you can still check in: a planned stop, or one completed in the
+ *  last 24 hours that you haven't checked in at yet. */
+export function canCheckIn(
+  activity: Pick<Activity, "status" | "completed_at" | "checked_in_at">,
+): boolean {
+  if (activity.checked_in_at) return false;
+  if (activity.status === "planned") return true;
+  if (activity.status !== "completed" || !activity.completed_at) return false;
+  return Date.now() - new Date(activity.completed_at).getTime() <= LATE_CHECKIN_MS;
 }
 
 /** "I'm here" — needs a real location whenever the stop is pinned. Same

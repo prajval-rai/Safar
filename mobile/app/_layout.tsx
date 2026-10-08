@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import Colors from '@/constants/Colors';
 import { applyAppFontDefault, useAppFont } from '@/lib/fonts';
 import { AuthProvider } from '@/lib/auth';
 import { useHandlePushNotificationTaps, useRegisterPushNotifications } from '@/lib/pushNotifications';
@@ -36,17 +37,27 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme];
   useRegisterPushNotifications();
   useHandlePushNotificationTaps();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.background },
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+          headerTitleStyle: { fontWeight: '800' },
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ title: 'Log in' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         <Stack.Screen name="trips/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="chat/[tripId]" options={{ title: 'Group chat' }} />
         <Stack.Screen name="tracks/[id]" options={{ title: 'Track' }} />
         <Stack.Screen name="u/[username]" options={{ title: 'Profile' }} />
       </Stack>

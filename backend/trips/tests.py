@@ -26,7 +26,7 @@ from rewards.services import (
     seed_achievements,
 )
 from trips.geo import haversine_km
-from trips.models import Activity, Day, Trip, TripMember
+from trips.models import Activity, Day, LocationFix, StopCheckIn, Trip, TripMember
 from trips.regional_theme import theme_for_trip
 
 User = get_user_model()
@@ -71,6 +71,12 @@ class SafarTestCase(TestCase):
         client.force_authenticate(user=user)
         return client
 
+    def was_at(self, user, *activities):
+        """`user` checked in on the spot at each of `activities` — straight
+        into the table, so the check-in's own XP stays out of the sums."""
+        for activity in activities:
+            StopCheckIn.objects.get_or_create(activity=activity, user=user, defaults={"distance_m": 50})
+
 
 MUMBAI = (19.0760, 72.8777)
 BAGA = (15.5553, 73.7517)
@@ -80,6 +86,13 @@ FORT_AGUADA = (15.4920, 73.7735)
 
 def leg_xp(origin, stop):
     return distance_xp(haversine_km(*origin, *stop))
+
+
+def forget_locations():
+    """Push every location we've recorded a day into the past — as if the
+    traveller had had time to get from one to the next (see
+    trips.geo.check_plausible), for tests that hop from Mumbai to Goa."""
+    LocationFix.objects.update(at=timezone.now() - timedelta(days=1))
 
 
 class XPTests(SafarTestCase):
@@ -96,11 +109,13 @@ class XPTests(SafarTestCase):
 
     def start(self, client=None, point=MUMBAI):
         client = client or self.client_for(self.owner)
-        return client.post(
+        response = client.post(
             f"/api/trips/{self.trip.id}/start/",
             {"latitude": point[0], "longitude": point[1]},
             format="json",
         )
+        forget_locations()
+        return response
 
     def complete(self, client, activity):
         return client.post(
@@ -168,19 +183,21 @@ class XPTests(SafarTestCase):
         response = self.complete(client, self.a3)
 
         self.assertTrue(response.data["trip_completed"])
-        # leg + its day bonus + the trip bonus + the organiser bonus + the
-        # planning XP, since self.owner (who tapped the last stop) organised it.
+        # leg + the trip bonus + the organiser bonus + the planning XP, since
+        # self.owner (who tapped the last stop) organised it. No day bonus:
+        # day 2 is tomorrow, and day 1's was already paid today.
         self.assertEqual(
             Decimal(str(response.data["xp_awarded"])),
-            self.leg3 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS + TRIP_CREATE_XP,
+            self.leg3 + TRIP_COMPLETE_BONUS + ORGANIZER_COMPLETE_BONUS + TRIP_CREATE_XP,
         )
         self.trip.refresh_from_db()
         self.assertEqual(self.trip.status, "completed")
         self.assertFalse(self.trip.finished_early)
 
-    def test_the_whole_group_earns_what_the_organiser_completes(self):
+    def test_everyone_who_checked_in_earns_what_the_organiser_completes(self):
         client = self.client_for(self.owner)
         self.start(client)
+        self.was_at(self.friend, self.a1, self.a2, self.a3)
         for activity in (self.a1, self.a2, self.a3):
             self.complete(client, activity)
 
@@ -189,7 +206,8 @@ class XPTests(SafarTestCase):
                 "xp_reward", flat=True
             )
         )
-        group_xp = self.leg1 + self.leg2 + self.leg3 + 2 * DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + badges
+        # One day bonus: there's at most one per real day (see trips.attendance.day_bonus_due).
+        group_xp = self.leg1 + self.leg2 + self.leg3 + DAY_COMPLETE_BONUS + TRIP_COMPLETE_BONUS + badges
         member = TripMember.objects.get(trip=self.trip, user=self.friend)
         organiser = TripMember.objects.get(trip=self.trip, user=self.owner)
         self.assertEqual(member.xp_earned, group_xp)
@@ -208,6 +226,7 @@ class XPTests(SafarTestCase):
     def test_organiser_can_finish_a_multi_day_trip_after_one_stop(self):
         client = self.client_for(self.owner)
         self.start(client)
+        self.was_at(self.friend, self.a1)
         self.complete(client, self.a1)
         self.friend.refresh_from_db()
         before = self.friend.xp
@@ -243,6 +262,7 @@ class XPTests(SafarTestCase):
     def test_undoing_on_an_early_finished_trip_reopens_it_and_takes_back_the_share(self):
         client = self.client_for(self.owner)
         self.start(client)
+        self.was_at(self.friend, self.a1)
         self.complete(client, self.a1)
         client.post(f"/api/trips/{self.trip.id}/finish/")
         self.trip.refresh_from_db()
@@ -326,6 +346,7 @@ class XPTests(SafarTestCase):
     def test_undo_takes_the_xp_back_from_everyone(self):
         client = self.client_for(self.owner)
         self.start(client)
+        self.was_at(self.friend, self.a1)
         self.complete(client, self.a1)
         client.post(f"/api/activities/{self.a1.id}/undo/")
 
@@ -351,6 +372,7 @@ class XPTests(SafarTestCase):
     def test_undoing_the_last_stop_takes_back_the_completion_bonuses(self):
         client = self.client_for(self.owner)
         self.start(client)
+        self.was_at(self.friend, self.a1, self.a2, self.a3)
         for activity in (self.a1, self.a2, self.a3):
             self.complete(client, activity)
         self.friend.refresh_from_db()
@@ -359,7 +381,8 @@ class XPTests(SafarTestCase):
         client.post(f"/api/activities/{self.a3.id}/undo/")
 
         self.friend.refresh_from_db()
-        self.assertEqual(self.friend.xp, before - self.leg3 - DAY_COMPLETE_BONUS - TRIP_COMPLETE_BONUS)
+        # Day 2's bonus was never paid (it's tomorrow), so only the leg and the trip bonus go.
+        self.assertEqual(self.friend.xp, before - self.leg3 - TRIP_COMPLETE_BONUS)
         self.trip.refresh_from_db()
         self.assertEqual(self.trip.status, "active")
 
@@ -551,7 +574,10 @@ class LiveTripTests(SafarTestCase):
         self.a1.latitude, self.a1.longitude = BAGA
         self.a1.save()
         client.post(f"/api/trips/{self.trip.id}/start/", {"latitude": MUMBAI[0], "longitude": MUMBAI[1]})
-        client.post(f"/api/activities/{self.a1.id}/complete/", {"latitude": BAGA[0], "longitude": BAGA[1]})
+        forget_locations()
+        client.post(
+            f"/api/activities/{self.a1.id}/complete/", {"latitude": BAGA[0], "longitude": BAGA[1], "accuracy": 10}
+        )
 
         response = client.get(f"/api/trips/{self.trip.id}/summary/")
         self.assertEqual(response.data["activities_completed"], 1)
@@ -593,6 +619,20 @@ class TrackTests(SafarTestCase):
         self.assertEqual(copied.status_code, 201)
         self.assertEqual(len(copied.data["days"]), self.trip.duration_days)
         self.assertEqual(copied.data["days"][0]["activities"][0]["title"], "Beach")
+        # Copied without a location: like any trip, it can't earn XP until one's shared.
+        self.assertEqual(copied.data["no_xp_reason"], "no_location")
+
+    def test_a_copied_track_starts_from_where_you_are(self):
+        client = self.client_for(self.owner)
+        published = client.post("/api/explore/tracks/from-trip/", {"trip": str(self.trip.id)}, format="json")
+        copied = client.post(
+            f"/api/explore/tracks/{published.data['track']['id']}/use/",
+            {"start_date": str(date.today()), "planner_latitude": MUMBAI[0], "planner_longitude": MUMBAI[1]},
+            format="json",
+        )
+        trip = Trip.objects.get(pk=copied.data["id"])
+        self.assertFalse(trip.no_xp)
+        self.assertEqual(trip.start_point, MUMBAI)
 
     def test_use_rejects_a_bad_date(self):
         client = self.client_for(self.owner)
@@ -672,6 +712,7 @@ class DestinationPlanningTests(SafarTestCase):
 
     def test_starting_a_trip_next_to_its_destination_makes_it_no_xp(self):
         trip_id = self.create_trip().data["id"]
+        forget_locations()  # planned in Pune a while back
         response = self.client_for(self.owner).post(
             f"/api/trips/{trip_id}/start/", {"latitude": 19.0178, "longitude": 72.8478}, format="json"
         )
@@ -898,6 +939,13 @@ class ReminderTests(SafarTestCase):
     """send_trip_reminders — day-before trip nudges and hour-before itinerary
     nudges, both computed straight from the plan rather than a separately
     stored reminder time."""
+
+    def setUp(self):
+        super().setUp()
+        # The fixture trip starts today; its "starts today" reminder is
+        # covered in test_trip_notifications, and would only add noise here.
+        self.trip.day_of_reminder_sent = True
+        self.trip.save(update_fields=["day_of_reminder_sent"])
 
     def test_day_before_reminder_for_a_trip_starting_tomorrow(self):
         self.trip.start_date = date.today() + timedelta(days=1)

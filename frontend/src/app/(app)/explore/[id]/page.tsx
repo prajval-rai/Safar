@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
+import { getPosition } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
 import type { TrackDetail, TripDetail } from "@/lib/types";
 import {
@@ -171,9 +172,14 @@ function UseTrackSheet({
   async function go() {
     setBusy(true);
     try {
+      // Where you are now is where the trip starts from — without it, the
+      // copied trip can't earn XP until you share a location.
+      const here = await getPosition().catch(() => null);
       const trip = await api.post<TripDetail>(`/api/explore/tracks/${trackId}/use/`, {
         start_date: startDate,
         title: title.trim(),
+        planner_latitude: here?.latitude ?? null,
+        planner_longitude: here?.longitude ?? null,
       });
       toast("Copied into your trips — edit anything you like.");
       router.push(`/trips/${trip.id}`);
