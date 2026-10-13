@@ -195,6 +195,21 @@ class TravelMapTests(SocialTestCase):
         self.assertEqual([t["destination"] for t in theirs["finished"]], ["Goa"])
         self.assertNotIn(str(private.id), [t["trip_id"] for t in theirs["finished"]])
 
+    def test_each_finished_trip_is_a_photo_pin(self):
+        goa = self.make_trip(self.me, "Goa")
+        goa.cover_image = "https://example.com/goa.jpg"
+        goa.save()
+        # No destination pin: placed at its first pinned stop instead.
+        hills = self.make_trip(self.me, "Hills", coords=None)
+        self.stop(hills, self.me, lat=19.0, lng=73.5)
+        self.make_trip(self.me, "Nowhere", coords=None)  # nothing to place it at
+        self.make_trip(self.me, "Manali", status="active")  # not finished
+
+        pins = {p["destination"]: p for p in self.client_for(self.me).get("/api/users/me/travel-map/").data["trip_pins"]}
+        self.assertEqual(set(pins), {"Goa", "Hills"})
+        self.assertEqual(pins["Goa"]["image"], "https://example.com/goa.jpg")
+        self.assertEqual((pins["Hills"]["latitude"], pins["Hills"]["longitude"]), (19.0, 73.5))
+
     def test_unfinished_trips_are_not_plotted_as_covered_areas(self):
         self.make_trip(self.me, "Manali", status="active")
         data = self.client_for(self.me).get("/api/users/me/travel-map/").data

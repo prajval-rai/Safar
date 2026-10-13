@@ -317,6 +317,17 @@ export interface TravelMapData {
     completed_at: string;
   }[];
   finished: { trip_id: string; title: string; destination: string; region: string; end_date: string }[];
+  /** One pin per finished trip, shown with its first photo. */
+  trip_pins: {
+    trip_id: string;
+    title: string;
+    destination: string;
+    latitude: number;
+    longitude: number;
+    image: string;
+    cover_key: CoverKey;
+    end_date: string;
+  }[];
   needs_coords: { trip_id: string; destination: string; region: string }[];
   areas_covered: number;
 }

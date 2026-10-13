@@ -227,10 +227,38 @@ def user_travel_map(request, username):
         for t in finished
     ]
 
+    # One pin per finished trip, shown with its first photo: at its destination,
+    # or — for a trip with no destination pin — at its first pinned stop.
+    trip_pins = []
+    for t in finished:
+        point = (t.latitude, t.longitude)
+        if point[0] is None or point[1] is None:
+            stop = (
+                Activity.objects.filter(day__trip=t, latitude__isnull=False, longitude__isnull=False)
+                .order_by("day__index", "order")
+                .first()
+            )
+            if stop is None:
+                continue
+            point = (stop.latitude, stop.longitude)
+        trip_pins.append(
+            {
+                "trip_id": str(t.id),
+                "title": t.title,
+                "destination": t.destination,
+                "latitude": point[0],
+                "longitude": point[1],
+                "image": t.display_cover(request),
+                "cover_key": t.cover_key,
+                "end_date": t.end_date,
+            }
+        )
+
     return Response(
         {
             "areas": areas,
             "places": places,
+            "trip_pins": trip_pins,
             "finished": finished_list,
             "needs_coords": needs_coords,
             "areas_covered": len({a["destination"].lower() for a in areas}),

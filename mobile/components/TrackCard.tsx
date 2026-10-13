@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -8,8 +7,9 @@ import { Avatar, Photo, usePalette } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { Track } from '@/lib/types';
 
-/** A published route as a big photo card: the title and place over the
- *  picture, the author and likes underneath. */
+/** A published route, in the same shape as the My Trips card on the website:
+ *  chips on top, the picture as a ringed circle beside the title and place,
+ *  a line of facts, then the author and likes along the bottom. */
 export function TrackCard({ track }: { track: Track }) {
   const colors = usePalette();
   const [liked, setLiked] = useState(track.liked);
@@ -30,69 +30,83 @@ export function TrackCard({ track }: { track: Track }) {
     }
   }
 
+  const facts = [
+    `${track.days} ${track.days === 1 ? 'day' : 'days'}`,
+    `${track.stop_count} ${track.stop_count === 1 ? 'stop' : 'stops'}`,
+    track.best_season || null,
+  ].filter(Boolean);
+
   return (
     <Pressable
       onPress={() => router.push(`/tracks/${track.id}`)}
-      style={({ pressed }) => [styles.card, { backgroundColor: colors.card, opacity: pressed ? 0.9 : 1 }]}
+      style={({ pressed }) => [styles.card, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.9 : 1 }]}
     >
-      <View style={styles.imageWrap}>
-        <Photo uri={track.cover_image} cover={track.cover_key} style={StyleSheet.absoluteFill} radius={22} />
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={styles.shade} />
-        <View style={[styles.daysChip, { backgroundColor: colors.highlight }]}>
-          <Text style={{ color: colors.onHighlight, fontWeight: '800', fontSize: 12 }}>
-            {track.days} {track.days === 1 ? 'day' : 'days'}
-          </Text>
+      <View style={styles.chips}>
+        <Chip text={`${track.days} ${track.days === 1 ? 'day' : 'days'}`} tone="brand" />
+        <Chip text={track.difficulty.charAt(0).toUpperCase() + track.difficulty.slice(1)} />
+        {track.estimated_cost ? <Chip text={`₹${track.estimated_cost.toLocaleString('en-IN')}`} /> : null}
+      </View>
+
+      <View style={styles.head}>
+        <View style={[styles.avatarRing, { borderColor: colors.brandSoft, backgroundColor: colors.card }]}>
+          <Photo uri={track.cover_image} cover={track.cover_key} style={styles.avatar} radius={30} />
         </View>
-        <View style={styles.overlay}>
-          <Text style={styles.title} numberOfLines={1}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {track.title}
           </Text>
-          <View style={styles.placeRow}>
-            <Ionicons name="location" size={13} color="#fff" />
-            <Text style={styles.place} numberOfLines={1}>
-              {track.destination}
-              {track.region ? `, ${track.region}` : ''}
-            </Text>
-          </View>
+          <Text style={{ color: colors.muted, fontSize: 14 }} numberOfLines={1}>
+            {track.destination}
+            {track.region ? `, ${track.region}` : ''}
+          </Text>
         </View>
       </View>
 
-      {track.summary ? (
-        <Text style={[styles.summary, { color: colors.muted }]} numberOfLines={2}>
+      <Text style={{ color: colors.muted, fontSize: 14 }} numberOfLines={1}>
+        {facts.join(' · ')}
+      </Text>
+
+      {track.route.length ? (
+        <Text style={{ color: colors.muted, fontSize: 12 }} numberOfLines={1}>
+          {track.route.join(' → ')}
+        </Text>
+      ) : track.summary ? (
+        <Text style={{ color: colors.muted, fontSize: 12 }} numberOfLines={1}>
           {track.summary}
         </Text>
       ) : null}
 
-      <View style={styles.footer}>
-        <Avatar emoji={track.author.avatar_emoji} size={28} />
-        <Text style={[styles.author, { color: colors.text }]} numberOfLines={1}>
+      <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        <Avatar emoji={track.author.avatar_emoji} size={26} />
+        <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }} numberOfLines={1}>
           {track.author.name}
         </Text>
-        {track.estimated_cost ? (
-          <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>
-            ₹{track.estimated_cost.toLocaleString('en-IN')}
-          </Text>
-        ) : null}
-        <Pressable onPress={toggleLike} style={styles.likeButton} hitSlop={8} accessibilityLabel={liked ? 'Unlike' : 'Like'}>
-          <Ionicons name={liked ? 'heart' : 'heart-outline'} size={19} color={liked ? colors.danger : colors.muted} />
-          <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700' }}>{likes}</Text>
+        <Pressable onPress={toggleLike} style={styles.like} hitSlop={8} accessibilityLabel={liked ? 'Unlike' : 'Like'}>
+          <Ionicons name={liked ? 'heart' : 'heart-outline'} size={18} color={liked ? colors.tint : colors.muted} />
+          <Text style={{ color: liked ? colors.tint : colors.muted, fontSize: 14, fontWeight: '700' }}>{likes}</Text>
         </Pressable>
       </View>
     </Pressable>
   );
 }
 
+function Chip({ text, tone }: { text: string; tone?: 'brand' }) {
+  const colors = usePalette();
+  return (
+    <View style={[styles.chip, { backgroundColor: tone === 'brand' ? colors.brandSoft : colors.raised }]}>
+      <Text style={{ color: tone === 'brand' ? colors.tint : colors.muted, fontSize: 12, fontWeight: '700' }}>{text}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  card: { borderRadius: 26, padding: 10, marginBottom: 16 },
-  imageWrap: { height: 200, borderRadius: 22, overflow: 'hidden' },
-  shade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%' },
-  daysChip: { position: 'absolute', top: 12, right: 12, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  overlay: { position: 'absolute', left: 16, right: 16, bottom: 14 },
-  title: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  placeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
-  place: { color: '#fff', fontSize: 13, opacity: 0.95 },
-  summary: { fontSize: 13, lineHeight: 19, marginTop: 10, marginHorizontal: 6 },
-  footer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginHorizontal: 6, marginBottom: 4 },
-  author: { flex: 1, fontSize: 13, fontWeight: '600' },
-  likeButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 6 },
+  card: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, padding: 18, gap: 10, marginBottom: 14 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatarRing: { width: 68, height: 68, borderRadius: 34, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 60, height: 60 },
+  title: { fontSize: 18, fontWeight: '800' },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
+  like: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 6 },
 });

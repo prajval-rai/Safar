@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { IndiaAchievementMap } from '@/components/IndiaAchievementMap';
 import { ErrorState, Loading } from '@/components/ScreenState';
@@ -98,7 +99,9 @@ export function ProfileView({
       <PillTabs options={TABS} value={tab} onChange={setTab} />
 
       <View style={styles.body}>
-        {tab === 'map' ? <MapTab data={travelMap.data} loading={travelMap.loading && !travelMap.data} /> : null}
+        {tab === 'map' ? (
+          <MapTab data={travelMap.data} loading={travelMap.loading && !travelMap.data} isMe={profile.data.is_me} />
+        ) : null}
         {tab === 'achievements' ? (
           profile.data.achievements.length ? (
             <View style={styles.achGrid}>
@@ -145,16 +148,26 @@ function MiniStat({ icon, value, label }: { icon: 'flag' | 'location' | 'git-bra
 
 /** Every stop they checked in at on the spot, as pins, and the areas their
  *  finished trips covered — then the states map. */
-function MapTab({ data, loading }: { data: TravelMapData | null; loading: boolean }) {
+function MapTab({ data, loading, isMe }: { data: TravelMapData | null; loading: boolean; isMe: boolean }) {
   const colors = usePalette();
+  // Every finished trip as a pin with its first photo, plus each stop checked
+  // in at on the spot as a small emoji pin.
   const pins = useMemo(
-    () =>
-      (data?.places ?? []).map((p) => ({
+    () => [
+      ...(data?.trip_pins ?? []).map((t) => ({
+        id: `trip:${t.trip_id}`,
+        latitude: t.latitude,
+        longitude: t.longitude,
+        image: t.image || null,
+        emoji: '🧳',
+      })),
+      ...(data?.places ?? []).map((p) => ({
         id: p.id,
         latitude: p.latitude,
         longitude: p.longitude,
         emoji: CATEGORY_ICONS[p.category] ?? '📍',
       })),
+    ],
     [data],
   );
   const areas = useMemo(
@@ -163,6 +176,7 @@ function MapTab({ data, loading }: { data: TravelMapData | null; loading: boolea
   );
   const [selected, setSelected] = useState<string | null>(null);
   const place = data?.places.find((p) => p.id === selected);
+  const tripPin = data?.trip_pins.find((t) => `trip:${t.trip_id}` === selected);
 
   if (loading) return <Loading />;
   if (!data) return null;
@@ -175,10 +189,20 @@ function MapTab({ data, loading }: { data: TravelMapData | null; loading: boolea
           <View style={[styles.mapCaption, { backgroundColor: colors.nav }]}>
             <Ionicons name="earth" size={16} color={colors.highlight} />
             <Text style={{ color: colors.onNav, fontSize: 13, fontWeight: '600', flex: 1 }} numberOfLines={1}>
-              {place
-                ? `${place.place_name || place.title} · ${place.trip_title}`
-                : `${data.places.length} places checked in · ${data.areas_covered} areas covered`}
+              {tripPin
+                ? `${tripPin.title} · ${tripPin.destination}`
+                : place
+                  ? `${place.place_name || place.title} · ${place.trip_title}`
+                  : `${data.trip_pins.length} trips · ${data.places.length} places checked in`}
             </Text>
+            {tripPin && isMe ? (
+              <Pressable
+                onPress={() => router.push(`/trips/${tripPin.trip_id}`)}
+                style={[styles.openTrip, { backgroundColor: colors.highlight }]}
+              >
+                <Text style={{ color: colors.onHighlight, fontWeight: '800', fontSize: 12 }}>Open</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       ) : (
@@ -208,6 +232,7 @@ const styles = StyleSheet.create({
   empty: { fontSize: 14, textAlign: 'center', marginVertical: 24, lineHeight: 20 },
   mapCard: { borderRadius: 24, overflow: 'hidden' },
   map: { height: 300 },
+  openTrip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   mapCaption: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12 },
   achGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   achTile: { width: '31.5%', borderRadius: 20, paddingVertical: 16, paddingHorizontal: 8, alignItems: 'center', gap: 6 },
