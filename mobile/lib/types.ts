@@ -136,6 +136,16 @@ export interface TripDetail extends Trip {
   /** The organiser's reminder before the trip, if they set one. */
   pre_start_reminder_at: string | null;
   pre_start_reminder_note: string;
+  /** Asking an admin to complete the trip from its photos (no signal at the
+   *  stops), or null when it doesn't apply. */
+  completion_review: {
+    status: '' | 'pending' | 'approved' | 'rejected';
+    note: string;
+    requested_at: string | null;
+    reviewed_at: string | null;
+    photos: number;
+    photos_needed: number;
+  } | null;
   created_at: string;
 }
 
@@ -324,6 +334,8 @@ export type NotificationKind =
   | "expense_added"
   | "settle_reminder"
   | "checklist_reminder"
+  | "completion_submitted"
+  | "completion_reviewed"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"

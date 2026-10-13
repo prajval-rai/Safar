@@ -18,6 +18,7 @@ import {
 import { ErrorState, Loading } from '@/components/ScreenState';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CompletionRequestCard } from '@/components/trip/CompletionRequestCard';
 import { ReminderCard } from '@/components/trip/ReminderCard';
 import { TripChecklist } from '@/components/trip/TripChecklist';
 import { TripMoney } from '@/components/trip/TripMoney';
@@ -246,6 +247,8 @@ function Overview({
           {completedCount} of {trip.activity_count} activities done · {trip.total_xp.toLocaleString('en-IN')} XP earned so far
         </Text>
       </View>
+
+      <CompletionRequestCard trip={trip} canEdit={canEdit} onAddPhotos={() => onGo('photos')} onChanged={onChanged} />
 
       <ReminderCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
 

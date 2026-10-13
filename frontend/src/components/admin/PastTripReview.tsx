@@ -63,12 +63,41 @@ const REVIEW_STYLE: Record<PastReviewStatus, { label: string; className: string 
 
 /* ------------------------------------------------------------------ queue */
 
+/** The two queues this screen reviews — the same shape from the API, so the
+ *  same screen: past trips logged after the fact, and live trips whose
+ *  organiser couldn't mark them done (no signal) and asked an admin to
+ *  confirm them from their photos (see backend trips/completion_review.py). */
+export type ReviewQueue = "past" | "completion";
+const QUEUES: Record<
+  ReviewQueue,
+  { base: string; noun: string; messageLabel: string; noMessage: string; emptyPending: string; emptyIcon: string }
+> = {
+  past: {
+    base: "/api/admin/past-trips/",
+    noun: "Past trip",
+    messageLabel: "Story",
+    noMessage: "No story written.",
+    emptyPending: "Nothing waiting — every past trip has been reviewed. 🎉",
+    emptyIcon: "🕰️",
+  },
+  completion: {
+    base: "/api/admin/completion-requests/",
+    noun: "Trip to confirm",
+    messageLabel: "Organiser's message",
+    noMessage: "No message.",
+    emptyPending: "Nothing waiting — every trip has been confirmed. 🎉",
+    emptyIcon: "🧳",
+  },
+};
+
 /**
- * Past trips travellers have sent in. Every admin is notified when one
- * arrives; any of them can open it, look through the photos, itinerary and
- * story, and approve it or send it back with a note.
+ * Trips travellers have sent in for review — past trips, or trips to confirm.
+ * Every admin is notified when one arrives; any of them can open it, look
+ * through the photos, itinerary and message, and approve it or send it back
+ * with a note.
  */
-export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
+export function PastTripsPanel({ onChanged, queue = "past" }: { onChanged: () => void; queue?: ReviewQueue }) {
+  const q = QUEUES[queue];
   const [status, setStatus] = useState<QueueFilter>("pending");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
@@ -76,7 +105,7 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
 
   const params = new URLSearchParams({ status, v: String(version) });
   if (query.trim().length >= 2) params.set("q", query.trim());
-  const { data, loading, error, reload } = useApi<AdminPastTripPage>(`/api/admin/past-trips/?${params}`);
+  const { data, loading, error, reload } = useApi<AdminPastTripPage>(`${q.base}?${params}`);
   const trips = data?.results ?? [];
 
   return (
@@ -107,7 +136,7 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search traveller, trip or place"
-          aria-label="Search past trips"
+          aria-label={`Search ${q.noun.toLowerCase()}s`}
           className="min-h-[40px] min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 text-sm text-ink"
         />
       </div>
@@ -127,7 +156,7 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
                     <img src={trip.photos[0].url} alt="" loading="lazy" className="h-full w-full object-cover" />
                   ) : (
                     <span className="flex h-full items-center justify-center text-2xl" aria-hidden="true">
-                      🕰️
+                      {q.emptyIcon}
                     </span>
                   )}
                 </div>
@@ -166,7 +195,7 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
         </ul>
       ) : (
         <p className="card p-8 text-center text-sm text-muted">
-          {status === "pending" ? "Nothing waiting — every past trip has been reviewed. 🎉" : "No past trips match."}
+          {status === "pending" ? q.emptyPending : "Nothing matches."}
         </p>
       )}
 
@@ -174,6 +203,7 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
         <ReviewSheet
           key={open}
           id={open}
+          queue={queue}
           onClose={() => setOpen(null)}
           onDone={() => {
             setOpen(null);
@@ -188,8 +218,19 @@ export function PastTripsPanel({ onChanged }: { onChanged: () => void }) {
 
 /* ----------------------------------------------------------------- review */
 
-function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void; onDone: () => void }) {
-  const { data: trip, loading, error, reload } = useApi<AdminPastTrip>(`/api/admin/past-trips/${id}/`);
+function ReviewSheet({
+  id,
+  queue,
+  onClose,
+  onDone,
+}: {
+  id: string;
+  queue: ReviewQueue;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const q = QUEUES[queue];
+  const { data: trip, loading, error, reload } = useApi<AdminPastTrip>(`${q.base}${id}/`);
   const { toast } = useCelebration();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
@@ -204,7 +245,7 @@ function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
     }
     setBusy(decision);
     try {
-      await api.post(`/api/admin/past-trips/${trip.id}/review/`, { decision, note: note.trim() });
+      await api.post(`${q.base}${trip.id}/review/`, { decision, note: note.trim() });
       toast(decision === "approve" ? `${trip.title} approved.` : `${trip.title} sent back to ${trip.created_by.name}.`);
       onDone();
     } catch (err) {
@@ -217,7 +258,7 @@ function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
     <Sheet
       open
       onClose={onClose}
-      title={trip ? trip.title : "Past trip"}
+      title={trip ? trip.title : q.noun}
       description={
         trip
           ? `${trip.created_by.name} (@${trip.created_by.username}) · ${trip.destination} · ${dateRange(trip.start_date, trip.end_date)}`
@@ -322,8 +363,8 @@ function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
 
           <section>
             <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-muted">
-              Story
-              {trip.story ? (
+              {q.messageLabel}
+              {trip.story && queue === "past" ? (
                 <Chip tone={trip.story.is_public ? "brand" : "neutral"}>
                   {trip.story.is_public ? "Goes on the Feed" : "Private"}
                 </Chip>
@@ -334,7 +375,7 @@ function ReviewSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
                 {trip.story.text}
               </p>
             ) : (
-              <p className="text-sm text-muted">No story written.</p>
+              <p className="text-sm text-muted">{q.noMessage}</p>
             )}
           </section>
 

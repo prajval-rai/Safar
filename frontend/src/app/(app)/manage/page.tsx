@@ -17,8 +17,8 @@ import { useApi } from "@/lib/hooks";
 import type { AdminClaim, AdminOverview, AdminReward, ClaimStatus } from "@/lib/types";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 
-type Tab = "claims" | "rewards" | "past" | "rules";
-const TABS: Tab[] = ["claims", "rewards", "past", "rules"];
+type Tab = "claims" | "rewards" | "past" | "completions" | "rules";
+const TABS: Tab[] = ["claims", "rewards", "past", "completions", "rules"];
 type StatusFilter = ClaimStatus | "all";
 
 const STATUS_STYLE: Record<ClaimStatus, { label: string; className: string }> = {
@@ -99,6 +99,7 @@ export default function ManagePage() {
             { value: "claims", label: "Claims", count: stats.pending || undefined },
             { value: "rewards", label: "Rewards", count: stats.rewards },
             { value: "past", label: "Past trips", count: stats.past_trips_pending || undefined },
+            { value: "completions", label: "Trips to confirm", count: stats.completions_pending || undefined },
             { value: "rules", label: "Past trip rules" },
           ]}
         />
@@ -106,6 +107,8 @@ export default function ManagePage() {
 
       {tab === "past" ? (
         <PastTripsPanel onChanged={reload} />
+      ) : tab === "completions" ? (
+        <PastTripsPanel queue="completion" onChanged={reload} />
       ) : tab === "rules" ? (
         <PastTripRules />
       ) : tab === "claims" ? (

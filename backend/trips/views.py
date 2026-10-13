@@ -881,6 +881,17 @@ class TripViewSet(viewsets.ModelViewSet):
         )
         return Response(TripListSerializer(trip, context=self.get_serializer_context()).data)
 
+    @action(detail=True, methods=["post"], url_path="request-completion")
+    def request_completion(self, request, pk=None):
+        """No signal to mark it done in the app? The organiser sends the trip
+        to an admin, with its photos as proof: {"note": "..."} (optional)."""
+        from .completion_review import request_completion
+
+        trip = self.get_object()
+        request_completion(trip, request.user, request.data.get("note", ""))
+        trip.refresh_from_db()
+        return Response(TripDetailSerializer(trip, context=self.get_serializer_context()).data)
+
     @action(detail=True, methods=["post"])
     def reminder(self, request, pk=None):
         """The organiser sets when the "trip's coming up" reminder goes out,

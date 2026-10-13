@@ -22,6 +22,8 @@ class Notification(models.Model):
         ("expense_added", "Someone added an expense"),
         ("settle_reminder", "Settle up after a trip"),
         ("checklist_reminder", "Checklist items left before a trip"),
+        ("completion_submitted", "A trip is waiting to be confirmed (admins)"),
+        ("completion_reviewed", "Your trip was confirmed (or not) by an admin"),
         ("chat_message", "New message in trip chat"),
         ("settle_paid", "Someone says they paid you back"),
         ("settle_confirmed", "Your payment was confirmed"),

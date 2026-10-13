@@ -26,6 +26,8 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
   expense_added: 'wallet-outline',
   settle_reminder: 'cash-outline',
   checklist_reminder: 'checkbox-outline',
+  completion_submitted: 'shield-outline',
+  completion_reviewed: 'shield-checkmark-outline',
   chat_message: 'chatbubble-outline',
   settle_paid: 'cash-outline',
   settle_confirmed: 'checkmark-done-outline',

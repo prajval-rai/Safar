@@ -164,6 +164,24 @@ class Trip(models.Model):
         on_delete=models.SET_NULL,
         related_name="reviewed_trips",
     )
+    # Asking an admin to complete a trip the app couldn't (no signal at the
+    # stops) — see trips.completion_review. "" until the organiser asks.
+    completion_review_status = models.CharField(
+        max_length=10,
+        blank=True,
+        choices=[("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
+    )
+    completion_request_note = models.CharField(max_length=300, blank=True)
+    completion_review_note = models.CharField(max_length=300, blank=True)
+    completion_requested_at = models.DateTimeField(null=True, blank=True)
+    completion_reviewed_at = models.DateTimeField(null=True, blank=True)
+    completion_reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="completion_reviews",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

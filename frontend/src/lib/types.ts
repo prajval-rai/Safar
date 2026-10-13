@@ -355,6 +355,16 @@ export interface TripDetail extends Trip {
   pending_invites: { id: number; user: UserMini }[];
   /** For a past trip: its review, and what's still needed to submit it. */
   past_trip: PastTripInfo | null;
+  /** Asking an admin to complete the trip from its photos (no signal at the
+   *  stops), or null when it doesn't apply. */
+  completion_review: {
+    status: "" | "pending" | "approved" | "rejected";
+    note: string;
+    requested_at: string | null;
+    reviewed_at: string | null;
+    photos: number;
+    photos_needed: number;
+  } | null;
   /** The track you made from this trip (one per trip), or null. */
   my_track: { id: string; is_published: boolean } | null;
   /** Whether this trip shows on your own public profile map. */
@@ -668,6 +678,8 @@ export type NotificationKind =
   | "expense_added"
   | "settle_reminder"
   | "checklist_reminder"
+  | "completion_submitted"
+  | "completion_reviewed"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"
@@ -770,6 +782,8 @@ export interface AdminOverview {
     rejected: number;
     /** Past trips waiting for an admin to review them. */
     past_trips_pending: number;
+    /** Trips waiting to be confirmed from their photos. */
+    completions_pending: number;
   };
   rewards: AdminReward[];
 }

@@ -10,6 +10,7 @@ from accounts import views as accounts_views
 from explore import views as explore_views
 from notifications import views as notifications_views
 from rewards import views as rewards_views
+from trips import completion_review
 from trips import past as past_trips
 from trips import views as trips_views
 
@@ -60,6 +61,17 @@ urlpatterns = [
         "api/admin/past-trips/<uuid:pk>/review/",
         past_trips.admin_review_past_trip,
         name="admin_past_trip_review",
+    ),
+    path("api/admin/completion-requests/", completion_review.admin_completion_requests, name="admin_completion_requests"),
+    path(
+        "api/admin/completion-requests/<uuid:pk>/",
+        completion_review.admin_completion_request_detail,
+        name="admin_completion_request",
+    ),
+    path(
+        "api/admin/completion-requests/<uuid:pk>/review/",
+        completion_review.admin_review_completion_request,
+        name="admin_review_completion_request",
     ),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
     path("api/explore/open-trips/", explore_views.open_trips, name="open_trips"),

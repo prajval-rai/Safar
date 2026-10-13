@@ -217,6 +217,9 @@ class TripDetailSerializer(TripListSerializer):
     pending_invites = serializers.SerializerMethodField()
     # For a past trip: its review, and what's still needed to submit it.
     past_trip = serializers.SerializerMethodField()
+    # Asking an admin to complete it (no signal at the stops): its status and
+    # what's needed, or null when it doesn't apply.
+    completion_review = serializers.SerializerMethodField()
     # The track you made from this trip, if any: {id, is_published}.
     my_track = serializers.SerializerMethodField()
     # Whether this trip shows on your own public profile map.
@@ -240,6 +243,7 @@ class TripDetailSerializer(TripListSerializer):
             "can_finish",
             "pending_invites",
             "past_trip",
+            "completion_review",
             "my_track",
             "my_show_on_map",
             "created_at",
@@ -260,6 +264,11 @@ class TripDetailSerializer(TripListSerializer):
         user = self.context["request"].user
         track = obj.tracks.filter(author=user).order_by("-is_published", "created_at").first()
         return {"id": str(track.id), "is_published": track.is_published} if track else None
+
+    def get_completion_review(self, obj) -> dict | None:
+        from .completion_review import completion_info
+
+        return completion_info(obj, self.context["request"].user)
 
     def get_past_trip(self, obj) -> dict | None:
         from .past import past_trip_info

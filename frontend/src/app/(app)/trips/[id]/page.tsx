@@ -9,6 +9,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Itinerary } from "@/components/trip/Itinerary";
 import { PastTripPanel, reviewBadge } from "@/components/trip/PastTripPanel";
+import { CompletionRequestCard } from "@/components/trip/CompletionRequestCard";
 import { ReminderCard } from "@/components/trip/ReminderCard";
 import { TripChecklist } from "@/components/trip/TripChecklist";
 import { TripChat, TripExpenses } from "@/components/trip/TripExtras";
@@ -497,6 +498,8 @@ function Overview({
       </div>
 
       <BudgetCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
+
+      <CompletionRequestCard trip={trip} canEdit={canEdit} onAddPhotos={() => onGo("memories")} onChanged={onChanged} />
 
       <ReminderCard trip={trip} canEdit={canEdit} onChanged={onChanged} />
 
