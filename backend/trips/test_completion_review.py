@@ -103,3 +103,36 @@ class CompletionReviewTests(SafarTestCase):
             f"/api/admin/completion-requests/{self.trip.id}/review/", {"decision": "approve"}, format="json"
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_an_approval_can_be_taken_back_to_pending(self):
+        self.add_photos(self.owner, 3)
+        self.ask()
+        self.review("approve")
+        self.owner.refresh_from_db()
+        approved_xp = self.owner.xp
+        self.assertGreater(approved_xp, 0)
+
+        response = self.review("reopen")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["review_status"], "pending")
+        self.trip.refresh_from_db()
+        self.assertEqual(self.trip.completion_review_status, "pending")
+        self.assertNotEqual(self.trip.status, "completed")
+        # The stops it ticked off are planned again, its check-ins are gone,
+        # and the completion XP went back.
+        self.assertFalse(self.trip.days.filter(activities__status="completed").exists())
+        self.assertFalse(StopCheckIn.objects.filter(activity__day__trip=self.trip).exists())
+        owner = TripMember.objects.get(trip=self.trip, user=self.owner)
+        self.assertEqual(owner.completion_xp, 0)
+        self.owner.refresh_from_db()
+        self.assertLess(self.owner.xp, approved_xp)
+
+        # …and it can be decided again.
+        self.assertEqual(self.review("reject", "Not enough proof").status_code, 200)
+        self.assertEqual(self.review("reopen").status_code, 200)
+        self.assertEqual(self.review("approve").status_code, 200)
+
+    def test_reopening_something_already_pending_is_refused(self):
+        self.add_photos(self.owner, 3)
+        self.ask()
+        self.assertEqual(self.review("reopen").status_code, 400)

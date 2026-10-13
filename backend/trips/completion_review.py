@@ -190,6 +190,56 @@ def reject_completion(trip, admin, note):
     )
 
 
+@transaction.atomic
+def reopen_completion(trip, admin):
+    """Change a decision: put the trip back in the queue as pending. Undoing
+    an approval reverses what it did — the stops it marked done go back to
+    planned (taking back their XP and day bonuses), the check-ins it gave
+    photographers are removed, completion bonuses are taken back, and the
+    trip is live again — so it can be approved or rejected afresh."""
+    from notifications.services import notify
+
+    from .attendance import take_back_completion, take_back_stop
+
+    if trip.completion_review_status == "approved":
+        decided_at = trip.completion_reviewed_at
+        # The stops the approval itself ticked off (stamped with its time).
+        by_approval = list(Activity.objects.filter(day__trip=trip, status="completed", completed_at=decided_at))
+        StopCheckIn.objects.filter(activity__in=by_approval, distance_m=0, created_at__gte=decided_at).delete()
+        for stop in by_approval:
+            take_back_stop(stop)
+        Activity.objects.filter(pk__in=[s.pk for s in by_approval]).update(
+            status="planned", completed_at=None, completed_by=None, xp_value=0, leg_distance_km=None
+        )
+        if trip.status == "completed":
+            take_back_completion(trip)
+        still_done = Activity.objects.filter(day__trip=trip, status="completed").exists()
+        trip.status = "active" if still_done else "planning"
+        trip.save(update_fields=["status", "completion_bonus", "organizer_bonus"])
+
+    trip.completion_review_status = "pending"
+    trip.completion_review_note = ""
+    trip.completion_reviewed_by = None
+    trip.completion_reviewed_at = None
+    trip.save(
+        update_fields=[
+            "completion_review_status",
+            "completion_review_note",
+            "completion_reviewed_by",
+            "completion_reviewed_at",
+            "updated_at",
+        ]
+    )
+    notify(
+        trip.created_by,
+        "completion_reviewed",
+        f"{trip.title} is back in review",
+        actor=admin,
+        body="An admin is taking another look at it — you'll hear when it's decided.",
+        trip=trip,
+    )
+
+
 # --- Admin queue ------------------------------------------------------------------
 
 
@@ -259,15 +309,22 @@ def admin_completion_request_detail(request, pk):
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
 def admin_review_completion_request(request, pk):
-    """{"decision": "approve" | "reject", "note": "..."} — rejecting needs a note."""
+    """{"decision": "approve" | "reject" | "reopen", "note": "..."} — rejecting
+    needs a note; "reopen" changes an earlier decision (back to pending)."""
     decision = request.data.get("decision")
     note = str(request.data.get("note") or "").strip()[:300]
-    if decision not in {"approve", "reject"}:
-        raise ValidationError({"decision": "Approve or reject."})
+    if decision not in {"approve", "reject", "reopen"}:
+        raise ValidationError({"decision": "Approve, reject or reopen."})
     with transaction.atomic():
         trip = _requests().select_for_update(of=("self",)).filter(pk=pk).first()
         if not trip:
             return Response({"detail": "That trip isn't in the queue."}, status=status.HTTP_404_NOT_FOUND)
+        if decision == "reopen":
+            if trip.completion_review_status == "pending":
+                raise ValidationError({"detail": "It's already waiting for review."})
+            reopen_completion(trip, request.user)
+            trip.refresh_from_db()
+            return Response(AdminCompletionSerializer(trip, context={"request": request, "full": True}).data)
         if trip.completion_review_status != "pending":
             raise ValidationError({"detail": "This trip isn't waiting for review any more."})
         if decision == "approve":

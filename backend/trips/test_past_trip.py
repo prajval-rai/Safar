@@ -193,6 +193,30 @@ class PastTripTests(SafarTestCase):
         # Approval is final: it can't be reviewed (or paid) twice.
         self.assertEqual(self.review(trip, "approve").status_code, 400)
 
+    def test_an_approval_can_be_taken_back_to_pending(self):
+        trip = self.make_ready()
+        self.client_for(self.owner).post(
+            f"/api/trips/{trip.id}/experience/",
+            {"text": "Snowball fights at Solang and maggi at the top.", "is_public": True},
+            format="json",
+        )
+        self.submit(trip)
+        self.owner.refresh_from_db()
+        before = self.owner.xp
+        self.review(trip, "approve")
+
+        res = self.review(trip, "reopen")
+        self.assertEqual(res.status_code, 200, res.data)
+        trip.refresh_from_db()
+        self.assertEqual(trip.review_status, "pending")
+        self.assertEqual(trip.status, "planning")
+        self.assertFalse(Activity.objects.filter(day__trip=trip, status="completed").exists())
+        self.assertFalse(TravelPost.objects.filter(trip=trip).exists())
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, before)
+        # Decided afresh: a rejection this time.
+        self.assertEqual(self.review(trip, "reject", "Wrong photos").status_code, 200)
+
     def test_private_story_stays_off_the_feed(self):
         trip = self.make_ready()
         self.client_for(self.owner).post(

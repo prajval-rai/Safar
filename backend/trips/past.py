@@ -336,6 +336,45 @@ def approve(trip, admin, note=""):
     )
 
 
+@transaction.atomic
+def reopen(trip, admin):
+    """Change a decision: back to pending. Undoing an approval takes back its
+    XP, puts the stops it marked done back to planned, takes the story off the
+    Feed, and the trip is no longer completed — so it can be decided afresh."""
+    from notifications.services import notify
+    from rewards.services import award_xp
+
+    from .views import unshare_experience
+
+    if trip.review_status == "approved":
+        owner = trip.created_by
+        for reason in (f"Past trip approved: {trip.title}", f"Wrote about {trip.title}"):
+            paid = owner.xp_transactions.filter(trip=trip, reason=reason, amount__gt=0).first()
+            if paid:
+                award_xp(owner, -paid.amount, f"Back in review: {trip.title}", kind=paid.kind, trip=trip, capped=False)
+        Activity.objects.filter(day__trip=trip, completed_at=trip.reviewed_at).update(
+            status="planned", completed_at=None, completed_by=None
+        )
+        story = trip.experiences.filter(user=owner, skipped=False).first()
+        if story:
+            unshare_experience(story)
+        trip.status = "planning"
+
+    trip.review_status = "pending"
+    trip.review_note = ""
+    trip.reviewed_by = None
+    trip.reviewed_at = None
+    trip.save(update_fields=["status", "review_status", "review_note", "reviewed_by", "reviewed_at", "updated_at"])
+    notify(
+        trip.created_by,
+        "past_trip_reviewed",
+        f"{trip.title} is back in review",
+        actor=admin,
+        body="An admin is taking another look at it — you'll hear when it's decided.",
+        trip=trip,
+    )
+
+
 def reject(trip, admin, note):
     from notifications.services import notify
 
@@ -542,16 +581,23 @@ def admin_past_trip_detail(request, pk):
 @api_view(["POST"])
 @permission_classes([IsAdminUser])
 def admin_review_past_trip(request, pk):
-    """{"decision": "approve" | "reject", "note": "..."} — a note is needed to
-    reject, so the traveller knows what to fix."""
+    """{"decision": "approve" | "reject" | "reopen", "note": "..."} — a note is
+    needed to reject, so the traveller knows what to fix; "reopen" changes an
+    earlier decision (back to pending)."""
     decision = request.data.get("decision")
     note = str(request.data.get("note") or "").strip()[:300]
-    if decision not in {"approve", "reject"}:
-        raise ValidationError({"decision": "Approve or reject."})
+    if decision not in {"approve", "reject", "reopen"}:
+        raise ValidationError({"decision": "Approve, reject or reopen."})
     with transaction.atomic():
         trip = _past_trips().select_for_update(of=("self",)).filter(pk=pk).first()
         if not trip:
             return Response({"detail": "That trip isn't in the review queue."}, status=status.HTTP_404_NOT_FOUND)
+        if decision == "reopen":
+            if trip.review_status == "pending":
+                raise ValidationError({"detail": "It's already waiting for review."})
+            reopen(trip, request.user)
+            trip.refresh_from_db()
+            return Response(AdminPastTripSerializer(trip, context={"request": request, "full": True}).data)
         if trip.review_status != "pending":
             raise ValidationError({"detail": "This trip isn't waiting for review any more."})
         if decision == "approve":

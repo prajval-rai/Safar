@@ -233,20 +233,36 @@ function ReviewSheet({
   const { data: trip, loading, error, reload } = useApi<AdminPastTrip>(`${q.base}${id}/`);
   const { toast } = useCelebration();
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "reject" | "reopen" | null>(null);
   const [noteError, setNoteError] = useState<string | undefined>();
   const pending = trip?.review_status === "pending";
 
-  async function decide(decision: "approve" | "reject") {
+  async function decide(decision: "approve" | "reject" | "reopen") {
     if (!trip) return;
     if (decision === "reject" && !note.trim()) {
       setNoteError("Say why, so they know what to fix.");
       return;
     }
+    if (
+      decision === "reopen" &&
+      !window.confirm(
+        trip.review_status === "approved"
+          ? `Move ${trip.title} back to pending? Its approval is undone: the XP it paid is taken back and the trip is no longer completed, until you decide again.`
+          : `Move ${trip.title} back to pending so you can decide again?`,
+      )
+    ) {
+      return;
+    }
     setBusy(decision);
     try {
       await api.post(`${q.base}${trip.id}/review/`, { decision, note: note.trim() });
-      toast(decision === "approve" ? `${trip.title} approved.` : `${trip.title} sent back to ${trip.created_by.name}.`);
+      toast(
+        decision === "approve"
+          ? `${trip.title} approved.`
+          : decision === "reopen"
+            ? `${trip.title} is back in pending.`
+            : `${trip.title} sent back to ${trip.created_by.name}.`,
+      );
       onDone();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : "Couldn't save that review.", "error");
@@ -274,6 +290,11 @@ function ReviewSheet({
               {busy === "approve" ? "Approving…" : "Approve"}
             </Button>
           </div>
+        ) : trip ? (
+          // Changed your mind? Put it back in the queue and decide again.
+          <Button fullWidth variant="secondary" icon="↩️" onClick={() => decide("reopen")} disabled={busy !== null}>
+            {busy === "reopen" ? "Moving back…" : "Change decision — move back to pending"}
+          </Button>
         ) : undefined
       }
     >
