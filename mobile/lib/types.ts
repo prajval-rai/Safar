@@ -336,6 +336,8 @@ export type NotificationKind =
   | "checklist_reminder"
   | "completion_submitted"
   | "completion_reviewed"
+  | "track_comment"
+  | "comment_reply"
   | "chat_message"
   | "settle_paid"
   | "settle_confirmed"
@@ -513,4 +515,27 @@ export interface ChecklistItem {
   assigned_to: UserMini | null;
   is_done: boolean;
   created_at: string;
+}
+
+/** A comment or suggestion on a track (backend explore/comments.py) — about the
+ *  whole route, a day, or a stop — with its replies nested. */
+export interface TrackComment {
+  id: number;
+  author: UserMini | null;
+  text: string;
+  is_deleted: boolean;
+  score: number;
+  my_vote: -1 | 0 | 1;
+  is_mine: boolean;
+  created_at: string;
+  edited: boolean;
+  parent_id: number | null;
+  day: { id: number; index: number } | null;
+  stop: { id: number; title: string } | null;
+  replies: TrackComment[];
+}
+
+export interface TrackCommentThread {
+  comments: TrackComment[];
+  counts: { total: number; general: number; by_day: Record<string, number>; by_stop: Record<string, number> };
 }

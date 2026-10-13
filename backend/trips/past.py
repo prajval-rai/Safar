@@ -358,6 +358,9 @@ def reopen(trip, admin):
         story = trip.experiences.filter(user=owner, skipped=False).first()
         if story:
             unshare_experience(story)
+        from .completion_review import undo_approval_extras
+
+        undo_approval_extras(trip, trip.reviewed_at, [owner])
         trip.status = "planning"
 
     trip.review_status = "pending"

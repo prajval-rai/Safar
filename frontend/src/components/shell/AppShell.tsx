@@ -306,6 +306,8 @@ const NOTIFICATION_ICONS: Record<NotificationKind, LucideIcon> = {
   checklist_reminder: ListChecks,
   completion_submitted: BadgeCheck,
   completion_reviewed: BadgeCheck,
+  track_comment: MessageCircle,
+  comment_reply: MessageCircle,
   chat_message: MessageCircle,
   settle_paid: IndianRupee,
   settle_confirmed: BadgeCheck,

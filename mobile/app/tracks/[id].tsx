@@ -1,5 +1,5 @@
 import { Link, router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -12,13 +12,14 @@ import {
 } from 'react-native';
 
 import { ErrorState, Loading } from '@/components/ScreenState';
+import { DiscussButton, TrackDiscussion, type DiscussionFocus } from '@/components/TrackDiscussion';
 import { TripCover } from '@/components/TripCover';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { ApiError, api } from '@/lib/api';
 import { CATEGORY_ICONS, clockTime, rupees, todayISO, TRIP_TYPE_LABELS } from '@/lib/format';
 import { getPosition } from '@/lib/geo';
-import type { TrackDetail, TrackStop, Trip } from '@/lib/types';
+import type { TrackCommentThread, TrackDetail, TrackStop, Trip } from '@/lib/types';
 import { useFetch } from '@/lib/useFetch';
 
 export default function TrackDetailScreen() {
@@ -27,6 +28,19 @@ export default function TrackDetailScreen() {
   const { data: track, loading, error, refresh, set } = useFetch<TrackDetail>(id ? `/api/explore/tracks/${id}/` : null);
   const [useOpen, setUseOpen] = useState(false);
   const [openDay, setOpenDay] = useState<number | null>(1);
+  const [focus, setFocus] = useState<DiscussionFocus>({ kind: 'all' });
+  const [counts, setCounts] = useState<TrackCommentThread['counts'] | null>(null);
+  const onCounts = useCallback((next: TrackCommentThread['counts']) => setCounts(next), []);
+  const scrollRef = useRef<ScrollView>(null);
+  // Where the discussion sits in the scroll view: the body's offset plus its own.
+  const bodyY = useRef(0);
+  const discussionY = useRef(0);
+
+  /** Narrow the discussion to a day or stop and scroll down to it. */
+  function discuss(next: DiscussionFocus) {
+    setFocus(next);
+    scrollRef.current?.scrollTo({ y: bodyY.current + discussionY.current, animated: true });
+  }
 
   if (loading && !track) return <Loading />;
   if (error && !track) return <ErrorState message={error} onRetry={refresh} />;
@@ -43,7 +57,7 @@ export default function TrackDetailScreen() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }}>
+    <ScrollView ref={scrollRef} style={{ backgroundColor: colors.background }} keyboardShouldPersistTaps="handled">
       <Link href="/(tabs)/explore" style={styles.back}>
         <Text style={{ color: colors.muted, fontWeight: '600', fontSize: 13 }}>← Explore</Text>
       </Link>
@@ -58,7 +72,7 @@ export default function TrackDetailScreen() {
         </View>
       </TripCover>
 
-      <View style={styles.body}>
+      <View style={styles.body} onLayout={(e) => (bodyY.current = e.nativeEvent.layout.y)}>
         <View style={styles.chips}>
           <Chip label={`${track.days} ${track.days === 1 ? 'day' : 'days'}`} tone="brand" colors={colors} />
           <Chip label={`${track.stop_count} stops`} colors={colors} />
@@ -118,18 +132,38 @@ export default function TrackDetailScreen() {
                     {day.stops.length} {day.stops.length === 1 ? 'stop' : 'stops'}
                   </Text>
                 </Text>
-                <Text style={{ color: colors.muted }}>{open ? '▲' : '▼'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <DiscussButton
+                    count={counts?.by_day[String(day.id)] ?? 0}
+                    label={`Suggestions for day ${day.index}`}
+                    onPress={() => discuss({ kind: 'day', id: day.id, label: `Day ${day.index}` })}
+                  />
+                  <Text style={{ color: colors.muted }}>{open ? '▲' : '▼'}</Text>
+                </View>
               </Pressable>
               {open ? (
                 <View style={{ marginTop: 10, gap: 10 }}>
                   {day.stops.map((stop) => (
-                    <StopRow key={stop.id} stop={stop} colors={colors} />
+                    <View key={stop.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <StopRow stop={stop} colors={colors} />
+                      </View>
+                      <DiscussButton
+                        count={counts?.by_stop[String(stop.id)] ?? 0}
+                        label={`Suggestions for ${stop.title}`}
+                        onPress={() => discuss({ kind: 'stop', id: stop.id, label: `Day ${day.index} · ${stop.title}` })}
+                      />
+                    </View>
                   ))}
                 </View>
               ) : null}
             </View>
           );
         })}
+
+        <View onLayout={(e) => (discussionY.current = e.nativeEvent.layout.y)} style={{ marginTop: 18 }}>
+          <TrackDiscussion track={track} focus={focus} onFocus={setFocus} onCounts={onCounts} />
+        </View>
       </View>
 
       <UseTrackModal visible={useOpen} onClose={() => setUseOpen(false)} trackId={track.id} defaultTitle={track.title} />

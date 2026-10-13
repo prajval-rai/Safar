@@ -15,6 +15,8 @@ The admin queue reuses the past-trip review screen: AdminCompletionSerializer
 speaks the same shape as AdminPastTripSerializer.
 """
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Q
@@ -190,6 +192,58 @@ def reject_completion(trip, admin, note):
     )
 
 
+# An approval runs in one transaction, so everything it paid is stamped within
+# moments of its decision time.
+APPROVAL_WINDOW = timedelta(minutes=2)
+
+
+def undo_approval_extras(trip, decided_at, users) -> None:
+    """Take back what an approval paid beyond the stops and completion bonuses:
+    the organiser's planning XP, achievements it unlocked (they can unlock
+    again), and referral XP a first finished trip paid to whoever invited
+    someone. Everything stays re-earnable when the trip is approved again."""
+    from rewards.models import UserAchievement, XPTransaction
+    from rewards.services import award_xp
+
+    if decided_at is None:
+        return
+    until = decided_at + APPROVAL_WINDOW
+    window = {"created_at__gte": decided_at - timedelta(seconds=5), "created_at__lte": until}
+
+    planned = XPTransaction.objects.filter(trip=trip, reason=f"Planned {trip.title}", amount__gt=0, **window)
+    for txn in planned:
+        award_xp(txn.user, -txn.amount, f"Planned {trip.title}", kind="trip", trip=trip, capped=False)
+
+    unlocked = UserAchievement.objects.filter(
+        trip=trip, user__in=users, unlocked_at__gte=decided_at - timedelta(seconds=5), unlocked_at__lte=until
+    ).select_related("achievement", "user")
+    for ua in unlocked:
+        paid = XPTransaction.objects.filter(
+            user=ua.user, trip=trip, reason=f"Achievement: {ua.achievement.title}", amount__gt=0, **window
+        ).first()
+        if paid:
+            award_xp(
+                ua.user, -paid.amount, f"Achievement taken back: {ua.achievement.title}",
+                kind="bonus", trip=trip, achievement=True,
+            )
+        ua.delete()
+
+    referred = get_user_model().objects.filter(
+        pk__in=[u.pk for u in users],
+        referred_by__isnull=False,
+        referral_paid_at__gte=decided_at - timedelta(seconds=5),
+        referral_paid_at__lte=until,
+    ).select_related("referred_by")
+    for user in referred:
+        paid = XPTransaction.objects.filter(
+            user=user.referred_by, reason=f"Referred {user.name} to Safar", amount__gt=0
+        ).order_by("-created_at").first()
+        if paid:
+            award_xp(user.referred_by, -paid.amount, f"Referral taken back: {user.name}", kind="bonus", capped=False)
+        user.referral_paid_at = None
+        user.save(update_fields=["referral_paid_at"])
+
+
 @transaction.atomic
 def reopen_completion(trip, admin):
     """Change a decision: put the trip back in the queue as pending. Undoing
@@ -213,6 +267,7 @@ def reopen_completion(trip, admin):
         )
         if trip.status == "completed":
             take_back_completion(trip)
+        undo_approval_extras(trip, decided_at, [m.user for m in trip.members.select_related("user")])
         still_done = Activity.objects.filter(day__trip=trip, status="completed").exists()
         trip.status = "active" if still_done else "planning"
         trip.save(update_fields=["status", "completion_bonus", "organizer_bonus"])

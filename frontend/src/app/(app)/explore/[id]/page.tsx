@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { TripCover } from "@/components/art/TripCover";
+import { TrackDiscussion, type DiscussionFocus } from "@/components/explore/TrackDiscussion";
 import { useCelebration } from "@/components/providers/CelebrationProvider";
 import { Avatar, Chip, ErrorNote, LoadingBlock } from "@/components/ui/Bits";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +14,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { ApiError, api } from "@/lib/api";
 import { getPosition } from "@/lib/geo";
 import { useApi } from "@/lib/hooks";
-import type { TrackDetail, TripDetail } from "@/lib/types";
+import type { TrackCommentThread, TrackDetail, TripDetail } from "@/lib/types";
 import {
   CATEGORY_ICONS,
   TRIP_TYPE_LABELS,
@@ -29,6 +30,15 @@ export default function TrackDetailPage() {
   const [useOpen, setUseOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const { toast } = useCelebration();
+  const [focus, setFocus] = useState<DiscussionFocus>({ kind: "all" });
+  const [counts, setCounts] = useState<TrackCommentThread["counts"] | null>(null);
+  const onCounts = useCallback((next: TrackCommentThread["counts"]) => setCounts(next), []);
+
+  /** Narrow the discussion to a day or stop and scroll down to it. */
+  function discuss(next: DiscussionFocus) {
+    setFocus(next);
+    document.getElementById("discussion")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   if (loading) return <LoadingBlock label="Loading this track…" />;
   if (error) return <ErrorNote message={error} onRetry={reload} />;
@@ -118,6 +128,17 @@ export default function TrackDetailPage() {
                 <span className="ml-2 text-sm font-normal text-muted">
                   {day.stops.length} {day.stops.length === 1 ? "stop" : "stops"}
                 </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    discuss({ kind: "day", id: day.id, label: `Day ${day.index}` });
+                  }}
+                  className="ml-2 rounded-full bg-raised px-2 py-0.5 text-xs font-semibold text-muted hover:text-ink"
+                  aria-label={`Suggestions for day ${day.index}`}
+                >
+                  💬 {counts?.by_day[String(day.id)] ?? 0}
+                </button>
               </summary>
               <ol className="mt-3 space-y-2">
                 {day.stops.map((stop) => (
@@ -134,6 +155,14 @@ export default function TrackDetailPage() {
                       </p>
                     </div>
                     {stop.xp_value > 0 ? <Chip tone="brand">+{formatNumber(stop.xp_value)} XP</Chip> : null}
+                    <button
+                      type="button"
+                      onClick={() => discuss({ kind: "stop", id: stop.id, label: `Day ${day.index} · ${stop.title}` })}
+                      className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-xs font-semibold text-muted hover:text-ink"
+                      aria-label={`Suggestions for ${stop.title}`}
+                    >
+                      💬 {counts?.by_stop[String(stop.id)] ?? 0}
+                    </button>
                   </li>
                 ))}
               </ol>
@@ -141,6 +170,8 @@ export default function TrackDetailPage() {
           ))}
         </div>
       </section>
+
+      <TrackDiscussion track={track} focus={focus} onFocus={setFocus} onCounts={onCounts} />
 
       <UseTrackSheet
         open={useOpen}

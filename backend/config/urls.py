@@ -7,6 +7,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from accounts import social as social_views
 from accounts import views as accounts_views
+from explore import comments as track_comments
 from explore import views as explore_views
 from notifications import views as notifications_views
 from rewards import views as rewards_views
@@ -74,6 +75,9 @@ urlpatterns = [
         name="admin_review_completion_request",
     ),
     path("api/explore/tracks/from-trip/", explore_views.track_from_trip, name="track_from_trip"),
+    path("api/explore/tracks/<uuid:pk>/comments/", track_comments.track_comments, name="track_comments"),
+    path("api/explore/comments/<int:comment_id>/", track_comments.track_comment, name="track_comment"),
+    path("api/explore/comments/<int:comment_id>/vote/", track_comments.vote_comment, name="vote_track_comment"),
     path("api/explore/open-trips/", explore_views.open_trips, name="open_trips"),
     path("api/explore/map/", explore_views.explore_map, name="explore_map"),
     path("api/explore/open-trips/<uuid:pk>/join/", explore_views.join_open_trip, name="join_open_trip"),

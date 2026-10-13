@@ -24,6 +24,8 @@ class Notification(models.Model):
         ("checklist_reminder", "Checklist items left before a trip"),
         ("completion_submitted", "A trip is waiting to be confirmed (admins)"),
         ("completion_reviewed", "Your trip was confirmed (or not) by an admin"),
+        ("track_comment", "Someone commented on your track"),
+        ("comment_reply", "Someone replied to your comment"),
         ("chat_message", "New message in trip chat"),
         ("settle_paid", "Someone says they paid you back"),
         ("settle_confirmed", "Your payment was confirmed"),

@@ -217,9 +217,14 @@ def pay_planning_xp(trip, organiser, attended) -> Decimal:
     creating it: paid once it's completed and they were at one of its
     completed stops. Once per trip, so undoing and finishing again never pays
     twice."""
+    from django.db.models import Sum
+
     reason = f"Planned {trip.title}"
     been = Activity.objects.filter(day__trip=trip, status="completed", pk__in=attended).exists()
-    if not been or organiser.xp_transactions.filter(trip=trip, reason=reason).exists():
+    # Net, not "any row": an admin taking back an approval reverses it, and
+    # approving again should pay it again — but finishing twice never does.
+    already = organiser.xp_transactions.filter(trip=trip, reason=reason).aggregate(t=Sum("amount"))["t"] or 0
+    if not been or already > 0:
         return Decimal("0")
     txn = award_xp(organiser, TRIP_CREATE_XP, reason, kind="trip", trip=trip)
     return txn.amount if txn else Decimal("0")

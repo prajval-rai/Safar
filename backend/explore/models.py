@@ -154,3 +154,39 @@ class PostLike(models.Model):
 
     class Meta:
         unique_together = ("post", "user")
+
+
+class TrackComment(models.Model):
+    """A comment or suggestion on a track, Reddit-style: about the whole
+    route, one of its days, or one stop; replies thread under their parent,
+    and people vote it up or down (see explore.comments)."""
+
+    track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="track_comments")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
+    # What it's about: a day, a stop (whose day is filled in too), or neither
+    # for the whole track. A reply is about whatever its parent is about.
+    day = models.ForeignKey(TrackDay, null=True, blank=True, on_delete=models.SET_NULL, related_name="comments")
+    stop = models.ForeignKey(TrackStop, null=True, blank=True, on_delete=models.SET_NULL, related_name="comments")
+    text = models.TextField(max_length=2000)
+    # Upvotes minus downvotes, kept in step with TrackCommentVote.
+    score = models.IntegerField(default=0)
+    # Deleted with replies under it: the text goes, the thread stays.
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-score", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.author} on {self.track}: {self.text[:40]}"
+
+
+class TrackCommentVote(models.Model):
+    comment = models.ForeignKey(TrackComment, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="track_comment_votes")
+    value = models.SmallIntegerField()  # +1 or -1
+
+    class Meta:
+        unique_together = ("comment", "user")

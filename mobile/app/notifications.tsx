@@ -28,6 +28,8 @@ const KIND_ICONS: Record<NotificationKind, IconName> = {
   checklist_reminder: 'checkbox-outline',
   completion_submitted: 'shield-outline',
   completion_reviewed: 'shield-checkmark-outline',
+  track_comment: 'chatbubble-ellipses-outline',
+  comment_reply: 'return-down-forward-outline',
   chat_message: 'chatbubble-outline',
   settle_paid: 'cash-outline',
   settle_confirmed: 'checkmark-done-outline',

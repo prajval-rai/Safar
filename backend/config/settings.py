@@ -243,6 +243,8 @@ REST_FRAMEWORK = {
         "invite_preview": "60/hour",
         # Song search for trip soundtracks — generous, but stops runaway loops.
         "music_search": "300/hour",
+        # Writing comments on tracks (reading is never limited).
+        "track_comments": "60/hour",
     },
 }
 

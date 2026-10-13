@@ -107,10 +107,13 @@ class CompletionReviewTests(SafarTestCase):
     def test_an_approval_can_be_taken_back_to_pending(self):
         self.add_photos(self.owner, 3)
         self.ask()
+        self.owner.refresh_from_db()
+        before_xp = self.owner.xp
         self.review("approve")
         self.owner.refresh_from_db()
         approved_xp = self.owner.xp
-        self.assertGreater(approved_xp, 0)
+        self.assertGreater(approved_xp, before_xp)
+        self.assertTrue(self.owner.achievements.exists())
 
         response = self.review("reopen")
         self.assertEqual(response.status_code, 200)
@@ -124,13 +127,38 @@ class CompletionReviewTests(SafarTestCase):
         self.assertFalse(StopCheckIn.objects.filter(activity__day__trip=self.trip).exists())
         owner = TripMember.objects.get(trip=self.trip, user=self.owner)
         self.assertEqual(owner.completion_xp, 0)
+        # Every bit of XP the approval paid — completion, organiser and
+        # planning bonuses, achievements — is back off.
         self.owner.refresh_from_db()
-        self.assertLess(self.owner.xp, approved_xp)
+        self.assertEqual(self.owner.xp, before_xp)
+        self.assertFalse(self.owner.achievements.exists())
 
-        # …and it can be decided again.
+        # …and it can be decided again — approving again pays it all again.
         self.assertEqual(self.review("reject", "Not enough proof").status_code, 200)
         self.assertEqual(self.review("reopen").status_code, 200)
         self.assertEqual(self.review("approve").status_code, 200)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.xp, approved_xp)
+
+    def test_taking_back_an_approval_takes_back_the_referral_it_paid(self):
+        self.friend.referred_by = self.stranger
+        self.friend.save()
+        self.add_photos(self.owner, 3)
+        self.add_photos(self.friend, 1)
+        self.ask()
+        self.review("approve")
+        self.stranger.refresh_from_db()
+        self.assertGreater(self.stranger.xp, 0)
+
+        self.review("reopen")
+        self.stranger.refresh_from_db()
+        self.friend.refresh_from_db()
+        self.assertEqual(self.stranger.xp, 0)
+        self.assertIsNone(self.friend.referral_paid_at)
+
+        self.review("approve")
+        self.stranger.refresh_from_db()
+        self.assertGreater(self.stranger.xp, 0)
 
     def test_reopening_something_already_pending_is_refused(self):
         self.add_photos(self.owner, 3)
